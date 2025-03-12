@@ -106,15 +106,14 @@ void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
             strcat(lista, row[2]);
             strcat(lista, "\n");
         }
-        mysql_free_result(res);
+    mysql_free_result(res);
     }
 }
 
-char* listarPartidas(MYSQL *conn) {
+void listarPartidas(MYSQL *conn, char *lista, int tamano_lista) {
     MYSQL_RES *res;
     MYSQL_ROW row;
 
-    char lista[1024];
     lista[0] = '\0';
 
     int err = mysql_query(conn, "SELECT * FROM Partidas");
@@ -126,6 +125,11 @@ char* listarPartidas(MYSQL *conn) {
     res = mysql_use_result(conn);
     if (res) {
         while ((row = mysql_fetch_row(res))) {
+            // Verificar que no se exceda el tamaño del buffer
+            if (strlen(lista) + strlen(row[0]) + strlen(row[1]) + strlen(row[2]) + strlen(row[3]) + strlen(row[4]) + 6 > tamano_lista) {
+                printf("Buffer insuficiente\n");
+                break;
+            }
             strcat(lista, row[0]);
             strcat(lista, " ");
             strcat(lista, row[1]);
@@ -137,18 +141,14 @@ char* listarPartidas(MYSQL *conn) {
             strcat(lista, row[4]);
             strcat(lista, "\n");
         }
-        mysql_free_result(res);
-        return lista;
-    } else {
-        return NULL;
-    }
+    mysql_free_result(res);
+}
 }
 
-char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
+char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista, int tamano_lista) {
     MYSQL_RES *res;
     MYSQL_ROW row;
 
-    char lista[1024];
     char consulta[256];
     lista[0] = '\0';
 
@@ -174,6 +174,11 @@ char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
             MYSQL_RES *res2 = mysql_store_result(conn);
             if (res2) {
                 while ((row = mysql_fetch_row(res2))) {
+                    // Verificar que no se exceda el tamaño del buffer
+                    if (strlen(lista) + strlen(row[0]) + strlen(row[1]) + strlen(row[2]) + strlen(row[3]) + strlen(row[4]) + 6 > tamano_lista) {
+                    printf("Buffer insuficiente\n");
+                    break;
+                    }
                     strcat(lista, row[0]);
                     strcat(lista, " ");
                     strcat(lista, row[1]);
@@ -188,9 +193,6 @@ char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
                 mysql_free_result(res2);
             }
         }
-        mysql_free_result(res);
-        return lista;
-    } else {
-        return NULL;
-    }
+    mysql_free_result(res);
+}
 }

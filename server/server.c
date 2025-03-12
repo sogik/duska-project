@@ -107,9 +107,11 @@ int main(int argc, char *argv[])
             listarJugadores(conn, buffer, sizeof(buffer));
             strcpy(respuesta, buffer);
         } else if (codigo == 3) {
-            strcpy(respuesta, listarPartidas(conn));
+            char buffer[1024];
+            strcpy(respuesta, listarPartidas(conn, buffer, sizeof(buffer));
         } else {
-            strcpy(respuesta, listarPartidasGanadas(conn,usuario));
+            char buffer[1024];
+            strcpy(respuesta, listarPartidasGanadas(conn, usuario, buffer, sizeof(buffer)));
         }
 
         printf("Resultado: %s\n", respuesta);

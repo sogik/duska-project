@@ -8,7 +8,7 @@ int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contras
 int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* contrasena);
 int desconectar_base_datos(MYSQL *conn);
 void listarJugadores(MYSQL *conn, char *lista, int tamano_lista);
-char* listarPartidas(MYSQL *conn);
-char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario);
+void listarPartidas(MYSQL *conn, char *lista, int tamano_lista);
+void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista, int tamano_lista);
 
 #endif
