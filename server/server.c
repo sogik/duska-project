@@ -105,16 +105,21 @@ int main(int argc, char *argv[])
         } else if (codigo == 2) {
             char buffer[1024];
             buffer[0] = '\0';
+
             listarJugadores(conn, buffer, sizeof(buffer));
             strcpy(respuesta, buffer);
         } else if (codigo == 3) {
             char buffer[1024];
             buffer[0] = '\0';
-            strcpy(respuesta, listarPartidas(conn, buffer, sizeof(buffer));
+
+            listarPartidas(conn, buffer, sizeof(buffer));
+            strcpy(respuesta, buffer);
         } else {
             char buffer[1024];
             buffer[0] = '\0';
-            strcpy(respuesta, listarPartidasGanadas(conn, usuario, buffer, sizeof(buffer)));
+
+            listarPartidasGanadas(conn, usuario, buffer, sizeof(buffer));
+            strcpy(respuesta, buffer);
         }
 
         printf("Resultado: %s\n", respuesta);
