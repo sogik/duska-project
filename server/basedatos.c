@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "database.h"
+#include "basedatos.h"
 
 int conexion_base_datos()
 {
@@ -18,8 +18,7 @@ int conexion_base_datos()
     conn = mysql_init(NULL);
     if (conn==NULL) 
     {
-    printf ("Error al crear la conexion: %u %s\n",
-    mysql_errno(conn), mysql_error(conn));
+    printf ("Error al crear la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
     exit (1);
     }
 
@@ -37,18 +36,20 @@ int conexion_base_datos()
 
 int desconectar_base_datos()
 {
+	MYSQL *conn;
     mysql_close (conn);
     exit(0);
 }
 
 int usuarioExiste(const char* nombre_usuario) {
 
+	MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
     char consulta[256];
 
-    err=mysql_query (conn, "SELECT nombre_usuario FROM Jugadores");
+    int err=mysql_query (conn, "SELECT nombre_usuario FROM Jugadores");
 
     if (err!=0) 
     {
@@ -96,10 +97,12 @@ int usuarioExiste(const char* nombre_usuario) {
     }
 
     return 0;
+    mysql_free_result()
 }
 
 int insertarUsuario(const char* nombre_usuario, const char* contrasena) {
 
+	MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
@@ -112,7 +115,7 @@ int insertarUsuario(const char* nombre_usuario, const char* contrasena) {
     strcat (consulta, contrasena);
     strcat (consulta, ");");
 
-    err=mysql_query (conn, consulta);
+    int err=mysql_query (conn, consulta);
 
     if (err!=0) 
     {
@@ -122,16 +125,18 @@ int insertarUsuario(const char* nombre_usuario, const char* contrasena) {
     }
 
     return 0;
+    mysql_free_result()
 }
 
 int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
 
+	MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
     char consulta[256];
 
-    err=mysql_query (conn, "SELECT nombre_usuario, contraseña FROM Jugadores");
+    int err=mysql_query (conn, "SELECT nombre_usuario, contraseña FROM Jugadores");
 
     if (err!=0) 
     {
@@ -181,10 +186,11 @@ int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
             {
                 return 0;
             }
-        }¡
+        }
     }
 
     return 3;
+    mysql_free_result()
 }
 
 void listarJugadores() {
@@ -222,7 +228,7 @@ void listarPartidas() {
 
     // Mostrar todas las partidas
     strcpy(consulta, "SELECT * FROM Partidas");
-    err = mysql_query(conn, consulta);
+    int err = mysql_query(conn, consulta);
     if (err != 0) {
         printf("Error al consultar\n");
         mysql_close(conn);
@@ -256,7 +262,7 @@ void listarPartidasGanadas(const char* nombre_usuario) {
         exit(1);
     }
     res = mysql_use_result(conn);
-    row = mysql_fetch_row(res)
+    row = mysql_fetch_row(res);
     if (row == NULL) {
         printf("No se han obtenido datos en la consulta\n");
         exit(1);

@@ -3,8 +3,12 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <mysql.h>
-#include <auth.h>
-#include <basedatos.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include "basedatos.h"
+#include "auth.h"
 
 int main(int argc, char *argv[])
 {
@@ -23,7 +27,7 @@ int main(int argc, char *argv[])
 
     serv_adr.sin_port = htons(9050);
 
-    if(bind(sock_listen, (struct sockdaddr *) &serv_adr, sizeof(serv_adr)) < 0)
+    if(bind(sock_listen, (struct sockaddr *) &serv_adr, sizeof(serv_adr)) < 0)
         printf("Error al bind");
 
     if(listen(sock_listen, 3) < 0)
@@ -57,10 +61,12 @@ int main(int argc, char *argv[])
         if (codigo == 0)
         {
             registrarUsuario(usuario, contrasena);
+            printf("Usuario registrado\n");
         }
         else if (codigo == 1)
         {
             iniciarSesion(usuario, contrasena);
+            printf("Sesion iniciada\n");
         }
         else if (codigo == 2)
         {
