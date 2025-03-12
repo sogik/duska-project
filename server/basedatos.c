@@ -128,6 +128,13 @@ void listarPartidas(MYSQL *conn, char *lista, int tamano_lista) {
 
     res = mysql_use_result(conn);
     if (res) {
+
+        if (mysql_num_rows(res) == 0) 
+        {
+            printf("La tabla Partidas está vacía.\n");
+            mysql_free_result(res);
+            return;
+        }
         while ((row = mysql_fetch_row(res))) {
             // Verificar que no se exceda el tamaño del buffer
             if (strlen(lista) + strlen(row[0]) + strlen(row[1]) + strlen(row[2]) + strlen(row[3]) + strlen(row[4]) + 6 > tamano_lista) {
