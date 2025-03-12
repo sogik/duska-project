@@ -48,7 +48,33 @@ int main(int argc, char *argv[])
 
         printf("Peticion: %s\n",peticion);
 
-        conexion_base_datos();
+        //Conexion a la base de datos
+        MYSQL *conn
+        MYSQL_RES *res;
+        MYSQL_ROW row;
+
+        int err;
+        int i;
+        char consulta[256];
+
+        //Creamos una conexion al servidor MYSQL
+        conn = mysql_init(NULL);
+        if (conn==NULL) 
+        {
+            printf ("Error al crear la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
+            exit (1);
+        }
+
+        //inicializar la conexiￃﾳn, entrando nuestras claves de acceso y
+        //el nombre de la base de datos a la que queremos acceder
+        conn = mysql_real_connect (conn, "localhost","root", "mysql", "duska_project",0, NULL, 0);
+
+        if (conn==NULL) 
+        {
+            printf ("Error al inicializar la conexion: %u %s\n",
+            mysql_errno(conn), mysql_error(conn));
+            exit (1);
+        }
 
         char *p = strtok(peticion, "/");
         int codigo =  atoi(p);
@@ -60,25 +86,25 @@ int main(int argc, char *argv[])
 
         if (codigo == 0)
         {
-            registrarUsuario(usuario, contrasena);
+            registrarUsuario(conn, usuario, contrasena);
             printf("Usuario registrado\n");
         }
         else if (codigo == 1)
         {
-            iniciarSesion(usuario, contrasena);
+            iniciarSesion(conn, usuario, contrasena);
             printf("Sesion iniciada\n");
         }
         else if (codigo == 2)
         {
-            listarJugadores();
+            listarJugadores(conn);
         }
         else if (codigo == 3)
         {
-            listarPartidas();
+            listarPartidas(conn);
         }
         else
         {
-            listarPartidasGanadas(usuario);    
+            listarPartidasGanadas(conn, usuario);    
         }
 
         while(p!=NULL)

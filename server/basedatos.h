@@ -1,13 +1,12 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 
-int usuarioExiste(const char* nombre_usuario);
-int insertarUsuario(const char* nombre_usuario, const char* contrasena);
-int verificarCredenciales(const char* nombre_usuario, const char* contrasena);
-int conexion_base_datos();
-int desconectar_base_datos();
-void listarJugadores();
-void listarPartidas();
-void listarPartidasGanadas(const char* nombre_usuario);
+int usuarioExiste(MYSQL *conn, const char* nombre_usuario);
+int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena);
+int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* contrasena);
+int desconectar_base_datos(MYSQL *conn);
+void listarJugadores(MYSQL *conn);
+void listarPartidas(MYSQL *conn);
+void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario);
 
 #endif

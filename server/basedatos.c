@@ -4,46 +4,14 @@
 #include <stdio.h>
 #include "basedatos.h"
 
-int conexion_base_datos()
+int desconectar_base_datos(MYSQL *conn)
 {
-    MYSQL *conn;
-    MYSQL_RES *res;
-    MYSQL_ROW row;
-
-    int err;
-    int i;
-    char consulta[256];
-
-    //Creamos una conexion al servidor MYSQL
-    conn = mysql_init(NULL);
-    if (conn==NULL) 
-    {
-    printf ("Error al crear la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
-    exit (1);
-    }
-
-    //inicializar la conexiￃﾳn, entrando nuestras claves de acceso y
-    //el nombre de la base de datos a la que queremos acceder
-    conn = mysql_real_connect (conn, "localhost","root", "mysql", "duska_project",0, NULL, 0);
-
-    if (conn==NULL) 
-    {
-    printf ("Error al inicializar la conexion: %u %s\n",
-    mysql_errno(conn), mysql_error(conn));
-    exit (1);
-    }
-}
-
-int desconectar_base_datos()
-{
-	MYSQL *conn;
     mysql_close (conn);
     exit(0);
 }
 
-int usuarioExiste(const char* nombre_usuario) {
+int usuarioExiste(MYSQL *conn, const char* nombre_usuario) {
 
-	MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
@@ -100,9 +68,8 @@ int usuarioExiste(const char* nombre_usuario) {
     return 0;
 }
 
-int insertarUsuario(const char* nombre_usuario, const char* contrasena) {
+int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
 
-	MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
@@ -128,9 +95,8 @@ int insertarUsuario(const char* nombre_usuario, const char* contrasena) {
     mysql_free_result(res);
 }
 
-int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
+int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
 
-	MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
@@ -194,9 +160,8 @@ int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
     return 3;
 }
 
-void listarJugadores() {
+void listarJugadores(MYSQL *conn) {
 
-    MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
@@ -219,9 +184,8 @@ void listarJugadores() {
     mysql_free_result(res);
 }
 
-void listarPartidas() {
+void listarPartidas(MYSQL *conn) {
 
-    MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
@@ -246,7 +210,7 @@ void listarPartidas() {
 
 
 // EN PRUEBA
-void listarPartidasGanadas(const char* nombre_usuario) {
+void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
     
     MYSQL *conn;
     MYSQL_RES *res;
