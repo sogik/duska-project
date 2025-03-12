@@ -108,7 +108,10 @@ void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
         }
     mysql_free_result(res);
     }
-    strcat(lista, "\n");
+    else 
+    {
+    printf("Error al obtener el resultado: %s\n", mysql_error(conn));
+    }
 }
 
 void listarPartidas(MYSQL *conn, char *lista, int tamano_lista) {
@@ -144,7 +147,10 @@ void listarPartidas(MYSQL *conn, char *lista, int tamano_lista) {
             }
         mysql_free_result(res);
         }
-    strcat(lista, "\n");
+        else 
+        {
+        printf("Error al obtener el resultado: %s\n", mysql_error(conn));
+        }
 }
 
 char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista, int tamano_lista) {
@@ -197,5 +203,8 @@ char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista
         }
     mysql_free_result(res);
     }
-  strcat(lista, "\n");
+    else 
+    {
+    printf("Error al obtener el resultado: %s\n", mysql_error(conn));
+    }
 }
