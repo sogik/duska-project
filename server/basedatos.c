@@ -12,6 +12,7 @@ int desconectar_base_datos(MYSQL *conn) {
 int usuarioExiste(MYSQL *conn, const char* nombre_usuario) {
     MYSQL_RES *res;
     MYSQL_ROW row;
+    
     char consulta[256];
 
     snprintf(consulta, sizeof(consulta), "SELECT nombre_usuario FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
@@ -52,6 +53,7 @@ int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contras
 int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
     MYSQL_RES *res;
     MYSQL_ROW row;
+
     char consulta[256];
 
     snprintf(consulta, sizeof(consulta), "SELECT contrasena FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
@@ -84,6 +86,7 @@ int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* c
 char* listarJugadores(MYSQL *conn) {
     MYSQL_RES *res;
     MYSQL_ROW row;
+
     char lista[1024];
 
     int err = mysql_query(conn, "SELECT * FROM Jugadores");
@@ -112,6 +115,7 @@ char* listarJugadores(MYSQL *conn) {
 char* listarPartidas(MYSQL *conn) {
     MYSQL_RES *res;
     MYSQL_ROW row;
+
     char lista[1024];
 
     int err = mysql_query(conn, "SELECT * FROM Partidas");
@@ -144,8 +148,8 @@ char* listarPartidas(MYSQL *conn) {
 char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
     MYSQL_RES *res;
     MYSQL_ROW row;
-    char lista[1024]
 
+    char lista[1024];
     char consulta[256];
 
     snprintf(consulta, sizeof(consulta), "SELECT id_jugador FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
