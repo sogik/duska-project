@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
     int sock_conn, sock_listen, ret;
     struct sockaddr_in serv_adr;
     char peticion[512];
-    char respuesta[512];
+    char respuesta[1024];
 
     if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Error creant socket");

@@ -79,15 +79,12 @@ int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* c
     return 1;
 }
 
-#include <mysql.h>
-#include <stdio.h>
-#include <string.h>
-
 char* listarJugadores(MYSQL *conn) {
     MYSQL_RES *res;
     MYSQL_ROW row;
 
     char lista[1024];
+    lista[0] = '\0';
 
     int err = mysql_query(conn, "SELECT * FROM Jugadores");
     if (err != 0) {
@@ -117,6 +114,7 @@ char* listarPartidas(MYSQL *conn) {
     MYSQL_ROW row;
 
     char lista[1024];
+    lista[0] = '\0';
 
     int err = mysql_query(conn, "SELECT * FROM Partidas");
     if (err != 0) {
@@ -151,6 +149,7 @@ char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
 
     char lista[1024];
     char consulta[256];
+    lista[0] = '\0';
 
     snprintf(consulta, sizeof(consulta), "SELECT id_jugador FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
     int err = mysql_query(conn, consulta);
