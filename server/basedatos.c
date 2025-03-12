@@ -79,22 +79,26 @@ int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* c
     return 1;
 }
 
-char* listarJugadores(MYSQL *conn) {
+void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
     MYSQL_RES *res;
     MYSQL_ROW row;
 
-    char lista[1024];
     lista[0] = '\0';
 
     int err = mysql_query(conn, "SELECT * FROM Jugadores");
     if (err != 0) {
         printf("Error al consultar: %s\n", mysql_error(conn));
-        return NULL;
+        return;
     }
 
     res = mysql_use_result(conn);
     if (res) {
         while ((row = mysql_fetch_row(res))) {
+            // Verificar que no se exceda el tamaño del buffer
+            if (strlen(lista) + strlen(row[0]) + strlen(row[1]) + strlen(row[2]) + 4 > tamano_lista) {
+                printf("Buffer insuficiente\n");
+                break;
+            }
             strcat(lista, row[0]);
             strcat(lista, " ");
             strcat(lista, row[1]);
@@ -103,9 +107,6 @@ char* listarJugadores(MYSQL *conn) {
             strcat(lista, "\n");
         }
         mysql_free_result(res);
-        return lista;
-    } else {
-        return NULL;
     }
 }
 

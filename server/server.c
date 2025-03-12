@@ -103,7 +103,9 @@ int main(int argc, char *argv[])
                 strcpy(respuesta, "El nombre de usuario no existe");
             }
         } else if (codigo == 2) {
-            strcpy(respuesta, listarJugadores(conn));
+            char buffer[1024];
+            listarJugadores(conn, buffer, sizeof(buffer));
+            strcpy(respuesta, buffer);
         } else if (codigo == 3) {
             strcpy(respuesta, listarPartidas(conn));
         } else {
