@@ -89,6 +89,7 @@ int usuarioExiste(const char* nombre_usuario) {
     {
         res = mysql_store_result (conn);
         row = mysql_fetch_row (res);
+        mysql_free_result(res);
 
         if (row == NULL)
         {
@@ -97,7 +98,6 @@ int usuarioExiste(const char* nombre_usuario) {
     }
 
     return 0;
-    mysql_free_result();
 }
 
 int insertarUsuario(const char* nombre_usuario, const char* contrasena) {
@@ -125,7 +125,7 @@ int insertarUsuario(const char* nombre_usuario, const char* contrasena) {
     }
 
     return 0;
-    mysql_free_result();
+    mysql_free_result(res);
 }
 
 int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
@@ -147,6 +147,7 @@ int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
 
     res = mysql_store_result (conn);
     row = mysql_fetch_row (res);
+    mysql_free_result(res);
 
     if (row == NULL)
     {
@@ -175,6 +176,7 @@ int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
     {
         res = mysql_store_result (conn);
         row = mysql_fetch_row (res);
+        mysql_free_result(res);
 
         if (row == NULL)
         {
@@ -190,7 +192,6 @@ int verificarCredenciales(const char* nombre_usuario, const char* contrasena) {
     }
 
     return 3;
-    mysql_free_result();
 }
 
 void listarJugadores() {
