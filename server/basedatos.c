@@ -150,7 +150,7 @@ void listarPartidas(MYSQL *conn, char *lista, int tamano_lista) {
         }
 }
 
-char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista, int tamano_lista) {
+void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista, int tamano_lista) {
     MYSQL_RES *res;
     MYSQL_ROW row;
 
