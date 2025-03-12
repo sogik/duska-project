@@ -3,7 +3,7 @@
 #include <string.h>
 #include "auth.h"
 #include "basedatos.h"
-#include <mysql/mysql.h>
+#include <mysql.h>
 
 int registrarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
 

@@ -1,7 +1,7 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 
-#include <mysql/mysql.h>
+#include <mysql.h>
 
 int usuarioExiste(MYSQL *conn, const char* nombre_usuario);
 int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena);
