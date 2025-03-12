@@ -38,7 +38,7 @@ int usuarioExiste(MYSQL *conn, const char* nombre_usuario) {
 int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
     char consulta[256];
 
-    snprintf(consulta, sizeof(consulta), "INSERT INTO Jugadores (nombre_usuario, contraseña) VALUES ('%s', '%s')", nombre_usuario, contrasena);
+    snprintf(consulta, sizeof(consulta), "INSERT INTO Jugadores (nombre_usuario, contrasena) VALUES ('%s', '%s')", nombre_usuario, contrasena);
 
     int err = mysql_query(conn, consulta);
     if (err != 0) {
@@ -54,7 +54,7 @@ int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* c
     MYSQL_ROW row;
     char consulta[256];
 
-    snprintf(consulta, sizeof(consulta), "SELECT contraseña FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
+    snprintf(consulta, sizeof(consulta), "SELECT contrasena FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
 
     int err = mysql_query(conn, consulta);
     if (err != 0) {
