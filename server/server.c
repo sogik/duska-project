@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
         printf("Resultado: %s\n", respuesta);
         write(sock_conn, respuesta, strlen(respuesta));
 
-        desconectar_base_datos();
+        desconectar_base_datos(conn);
         close(sock_conn);
         return 0;
     }

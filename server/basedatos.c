@@ -212,7 +212,6 @@ void listarPartidas(MYSQL *conn) {
 // EN PRUEBA
 void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
     
-    MYSQL *conn;
     MYSQL_RES *res;
     MYSQL_ROW row;
 
