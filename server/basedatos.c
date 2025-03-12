@@ -108,6 +108,7 @@ void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
         }
     mysql_free_result(res);
     }
+    strcat(lista, "\n");
 }
 
 void listarPartidas(MYSQL *conn, char *lista, int tamano_lista) {
@@ -140,9 +141,10 @@ void listarPartidas(MYSQL *conn, char *lista, int tamano_lista) {
             strcat(lista, " ");
             strcat(lista, row[4]);
             strcat(lista, "\n");
+            }
+        mysql_free_result(res);
         }
-    mysql_free_result(res);
-}
+    strcat(lista, "\n");
 }
 
 char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista, int tamano_lista) {
@@ -194,5 +196,6 @@ char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista
             }
         }
     mysql_free_result(res);
-}
+    }
+  strcat(lista, "\n");
 }
