@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
         } else if (codigo == 3) {
             strcpy(respuesta, listarPartidas(conn));
         } else {
-            strcpy(respuesta, listarJugadores(conn));
+            strcpy(respuesta, listarPartidasGanadas(conn));
         }
 
         printf("Resultado: %s\n", respuesta);
