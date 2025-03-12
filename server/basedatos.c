@@ -77,56 +77,82 @@ int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* c
     return 1;
 }
 
-void listarJugadores(MYSQL *conn) {
+#include <mysql.h>
+#include <stdio.h>
+#include <string.h>
+
+char* listarJugadores(MYSQL *conn) {
     MYSQL_RES *res;
     MYSQL_ROW row;
+    char lista[1024];
 
     int err = mysql_query(conn, "SELECT * FROM Jugadores");
     if (err != 0) {
         printf("Error al consultar: %s\n", mysql_error(conn));
-        return;
+        return NULL;
     }
 
     res = mysql_use_result(conn);
     if (res) {
-        printf("Todos los jugadores:\n");
         while ((row = mysql_fetch_row(res))) {
-            printf("%s %s %s\n", row[0], row[1], row[2]);
+            strcat(lista, row[0]);
+            strcat(lista, " ");
+            strcat(lista, row[1]);
+            strcat(lista, " ");
+            strcat(lista, row[2]);
+            strcat(lista, "\n");
         }
         mysql_free_result(res);
+        return lista;
+    } else {
+        return NULL;
     }
 }
 
-void listarPartidas(MYSQL *conn) {
+char* listarPartidas(MYSQL *conn) {
     MYSQL_RES *res;
     MYSQL_ROW row;
+    char lista[1024];
 
     int err = mysql_query(conn, "SELECT * FROM Partidas");
     if (err != 0) {
         printf("Error al consultar: %s\n", mysql_error(conn));
-        return;
+        return NULL;
     }
 
     res = mysql_use_result(conn);
     if (res) {
-        printf("\nTodas las partidas:\n");
         while ((row = mysql_fetch_row(res))) {
-            printf("%s %s %s %s %s\n", row[0], row[1], row[2], row[3], row[4]);
+            strcat(lista, row[0]);
+            strcat(lista, " ");
+            strcat(lista, row[1]);
+            strcat(lista, " ");
+            strcat(lista, row[2]);
+            strcat(lista, " ");
+            strcat(lista, row[3]);
+            strcat(lista, " ");
+            strcat(lista, row[4]);
+            strcat(lista, "\n");
         }
         mysql_free_result(res);
+        return lista;
+    } else {
+        return NULL;
     }
 }
 
-void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
+char* listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
     MYSQL_RES *res;
     MYSQL_ROW row;
+    char lista[1024]
+
     char consulta[256];
 
     snprintf(consulta, sizeof(consulta), "SELECT id_jugador FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
     int err = mysql_query(conn, consulta);
     if (err != 0) {
         printf("Error al consultar: %s\n", mysql_error(conn));
-        return;
+        return NULL;
     }
 
     res = mysql_store_result(conn);
@@ -138,18 +164,29 @@ void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario) {
             if (err != 0) {
                 printf("Error al consultar: %s\n", mysql_error(conn));
                 mysql_free_result(res);
-                return;
+                return NULL;
             }
 
             MYSQL_RES *res2 = mysql_store_result(conn);
             if (res2) {
-                printf("\nPartidas ganadas por %s:\n", nombre_usuario);
                 while ((row = mysql_fetch_row(res2))) {
-                    printf("%s %s %s %s %s\n", row[0], row[1], row[2], row[3], row[4]);
+                    strcat(lista, row[0]);
+                    strcat(lista, " ");
+                    strcat(lista, row[1]);
+                    strcat(lista, " ");
+                    strcat(lista, row[2]);
+                    strcat(lista, " ");
+                    strcat(lista, row[3]);
+                    strcat(lista, " ");
+                    strcat(lista, row[4]);
+                    strcat(lista, "\n");
                 }
                 mysql_free_result(res2);
             }
         }
         mysql_free_result(res);
+        return lista;
+    } else {
+        return NULL;
     }
 }

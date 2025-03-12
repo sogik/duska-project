@@ -83,26 +83,31 @@ int main(int argc, char *argv[])
         }
 
         if (codigo == 0) {
-            if (registrarUsuario(conn, usuario, contrasena)) {
+            if (registrarUsuario(conn, usuario, contrasena) == 0) 
+            {
                 strcpy(respuesta, "Usuario registrado correctamente");
-            } else {
+            } else if (registrarUsuario(conn, usuario, contrasena) == 1) {
+                strcpy(respuesta, "El nombre de usuario ya está en uso"); 
+            }
+            else {
                 strcpy(respuesta, "Error al registrar usuario");
             }
         } else if (codigo == 1) {
-            if (iniciarSesion(conn, usuario, contrasena)) {
+            if (iniciarSesion(conn, usuario, contrasena) == 0) 
+            {
                 strcpy(respuesta, "Sesion iniciada correctamente");
+            } else if (iniciarSesion(conn, usuario, contrasena) == 1) 
+            {
+                strcpy(respuesta, "Contraseña incorrecta");
             } else {
-                strcpy(respuesta, "Error al iniciar sesion");
+                strcpy(respuesta, "El nombre de usuario no existe");
             }
         } else if (codigo == 2) {
-            listarJugadores(conn);
-            strcpy(respuesta, "Listado de jugadores enviado");
+            strcpy(respuesta, listarJugadores(conn));
         } else if (codigo == 3) {
-            listarPartidas(conn);
-            strcpy(respuesta, "Listado de partidas enviado");
+            strcpy(respuesta, listarPartidas(conn));
         } else {
-            listarPartidasGanadas(conn, usuario);
-            strcpy(respuesta, "Listado de partidas ganadas enviado");
+            strcpy(respuesta, listarJugadores(conn));
         }
 
         printf("Resultado: %s\n", respuesta);
