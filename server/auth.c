@@ -12,6 +12,7 @@ int registrarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contra
         printf("El nombre de usuario ya está en uso.\n");
         return 1;
     }
+    printf("El nombre de usuario no está en uso.\n");
     else 
     {
          if (insertarUsuario(conn, nombre_usuario, contrasena) == 0) 
