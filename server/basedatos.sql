@@ -16,6 +16,13 @@ CREATE TABLE Partidas (
     fecha_inicio DATETIME DEFAULT CURRENT_TIMESTAMP,
     duracion INT NOT NULL,
     ganador_id INT NOT NULL,
-    jugadores_ids JSON NOT NULL,
     FOREIGN KEY (ganador_id) REFERENCES Jugadores(id_jugador)
 );
+
+CREATE TABLE Participantes (
+    id_partida INT NOT NULL,
+    id_jugador INT NOT NULL,
+    fecha_participacion DATETIME DEFAULT CURRENT_TIMESTAMP,    
+    FOREIGN KEY (id_partida) REFERENCES Partidas(id_partida),
+    FOREIGN KEY (id_jugador) REFERENCES Jugadores(id_jugador)
+)

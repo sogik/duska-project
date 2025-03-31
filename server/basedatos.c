@@ -3,6 +3,19 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "basedatos.h"
+//#include <openssl/sha.h>
+
+/*
+void generarHashSHA256(const char* input, char* output) {
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256((const unsigned char*)input, strlen(input), hash);
+
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        sprintf(output + (i * 2), "%02x", hash[i]);
+    }
+    output[64] = '\0'; // Asegurarse de que el string esté terminado
+}
+*/
 
 int desconectar_base_datos(MYSQL *conn) {
     mysql_close(conn);
@@ -38,13 +51,15 @@ int usuarioExiste(MYSQL *conn, const char* nombre_usuario) {
 
 int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
     char consulta[256];
+    //char hash[65];
+    //generarHashSHA256(contrasena, hash);
 
     snprintf(consulta, sizeof(consulta), "INSERT INTO Jugadores (nombre_usuario, contrasena) VALUES ('%s', '%s')", nombre_usuario, contrasena);
 
     int err = mysql_query(conn, consulta);
     if (err != 0) {
         printf("Error al introducir datos en la base %u %s\n", mysql_errno(conn), mysql_error(conn));
-        exit(1);
+        return 1;
     }
 
     return 0;
@@ -70,7 +85,9 @@ int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* c
         mysql_free_result(res);
 
         if (row) {
-            if (strcmp(row[0], contrasena) == 0) {
+            //char hashedInput[65];
+            //generarHashSHA256(contrasena, hashedInput);
+            if (strcmp(row[0], contrasena /*AQUI DEBERIA CAMBAR POR hashedInput*/) == 0) {
                 return 0;
             }
         }

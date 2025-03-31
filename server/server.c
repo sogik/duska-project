@@ -7,15 +7,85 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "basedatos.h"
 #include "auth.h"
 
-int main(int argc, char *argv[])
-{
-    int sock_conn, sock_listen, ret;
-    struct sockaddr_in serv_adr;
+void* cliente(void* socket_ptr) {
+    int sock_conn = *((int*)socket_ptr);
     char peticion[512];
     char respuesta[1024];
+    int ret;
+
+    ret = read(sock_conn, peticion, sizeof(peticion));
+    peticion[ret] = '\0';
+    printf("Peticion: %s\n", peticion);
+
+    MYSQL *conn = mysql_init(NULL);
+    if (!mysql_real_connect(conn, "localhost", "root", "mysql", "duska_project", 0, NULL, 0)) {
+        printf("Error MySQL: %s\n", mysql_error(conn));
+        strcpy(respuesta, "Error en la base de datos");
+        write(sock_conn, respuesta, strlen(respuesta));
+        close(sock_conn);
+        free(socket_ptr);
+        return NULL;
+    }
+
+    char *p = strtok(peticion, "/");
+    int codigo = atoi(p);
+    p = strtok(NULL, "/");
+    char usuario[50];
+    strcpy(usuario, p);
+    p = strtok(NULL, "/");
+    char contrasena[72];
+    if (p != NULL) strcpy(contrasena, p);
+    else strcpy(contrasena, "");
+
+    if (codigo == 0) {
+        if (registrarUsuario(conn, usuario, contrasena) == 0) 
+            strcpy(respuesta, "Usuario registrado correctamente");
+        else if (registrarUsuario(conn, usuario, contrasena) == 1) 
+            strcpy(respuesta, "El nombre de usuario ya está en uso"); 
+        else 
+            strcpy(respuesta, "Error al registrar usuario");
+    } 
+    else if (codigo == 1) {
+        if (iniciarSesion(conn, usuario, contrasena) == 0) 
+            strcpy(respuesta, "Sesion iniciada correctamente");
+        else if (iniciarSesion(conn, usuario, contrasena) == 1) 
+            strcpy(respuesta, "Contraseña incorrecta");
+        else 
+            strcpy(respuesta, "El nombre de usuario no existe");
+    } 
+    else if (codigo == 2) {
+        char buffer[1024] = {0};
+        listarJugadores(conn, buffer, sizeof(buffer));
+        strcpy(respuesta, buffer);
+    } 
+    else if (codigo == 3) {
+        char buffer[1024] = {0};
+        listarPartidas(conn, buffer, sizeof(buffer));
+        strcpy(respuesta, buffer);
+    } 
+    else {
+        char buffer[1024] = {0};
+        listarPartidasGanadas(conn, usuario, buffer, sizeof(buffer));
+        strcpy(respuesta, buffer);
+    }
+
+    printf("Resultado: %s\n", respuesta);
+    write(sock_conn, respuesta, strlen(respuesta));
+
+    mysql_close(conn);
+    close(sock_conn);
+    free(socket_ptr);
+
+    return NULL;
+}
+
+int main(int argc, char *argv[]) {
+    int sock_conn, sock_listen;
+    struct sockaddr_in serv_adr;
 
     if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("Error creant socket");
@@ -33,100 +103,33 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (listen(sock_listen, 3) < 0) {
+    if (listen(sock_listen, 10) < 0) {
         perror("Error en el listen");
         close(sock_listen);
         exit(1);
     }
 
-    printf("Eschuchando\n");
+    printf("Servidor escuchando en el puerto 9050...\n");
 
     while (1) {
         sock_conn = accept(sock_listen, NULL, NULL);
-        printf("He recibido conexion\n");
-
-        ret = read(sock_conn, peticion, sizeof(peticion));
-        printf("Recibido\n");
-
-        peticion[ret] = '\0';
-        printf("Peticion: %s\n", peticion);
-
-        // Conexion a la base de datos
-        MYSQL *conn;
-        MYSQL_RES *res;
-        MYSQL_ROW row;
-
-        conn = mysql_init(NULL);
-        if (conn == NULL) {
-            printf("Error al crear la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
-            exit(1);
+        if (sock_conn < 0) {
+            perror("Error en accept");
+            continue;
         }
+        printf("Nuevo cliente conectado.\n");
 
-        conn = mysql_real_connect(conn, "localhost", "root", "mysql", "duska_project", 0, NULL, 0);
-        if (conn == NULL) {
-            printf("Error al inicializar la conexion: %u %s\n", mysql_errno(conn), mysql_error(conn));
-            exit(1);
-        }
+        int* socket_ptr = malloc(sizeof(int));
+        *socket_ptr = sock_conn;
 
-        // Procesar la petición
-        char *p = strtok(peticion, "/");
-        int codigo = atoi(p);
-        p = strtok(NULL, "/");
-        char usuario[50];
-        strcpy(usuario, p);
-        p = strtok(NULL, "/");
-        char contrasena[72];
-        if (p != NULL) {
-            strcpy(contrasena, p);
+        pthread_t hilo;
+        if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0) {
+            perror("Error al crear hilo");
+            close(sock_conn);
+            free(socket_ptr);
         } else {
-            strcpy(contrasena, "");
+            pthread_detach(hilo);
         }
-
-        if (codigo == 0) {
-            if (registrarUsuario(conn, usuario, contrasena) == 0) 
-            {
-                strcpy(respuesta, "Usuario registrado correctamente");
-            } else if (registrarUsuario(conn, usuario, contrasena) == 1) {
-                strcpy(respuesta, "El nombre de usuario ya está en uso"); 
-            }
-            else {
-                strcpy(respuesta, "Error al registrar usuario");
-            }
-        } else if (codigo == 1) {
-            if (iniciarSesion(conn, usuario, contrasena) == 0) 
-            {
-                strcpy(respuesta, "Sesion iniciada correctamente");
-            } else if (iniciarSesion(conn, usuario, contrasena) == 1) 
-            {
-                strcpy(respuesta, "Contraseña incorrecta");
-            } else {
-                strcpy(respuesta, "El nombre de usuario no existe");
-            }
-        } else if (codigo == 2) {
-            char buffer[1024];
-            buffer[0] = '\0';
-
-            listarJugadores(conn, buffer, sizeof(buffer));
-            strcpy(respuesta, buffer);
-        } else if (codigo == 3) {
-            char buffer[1024];
-            buffer[0] = '\0';
-
-            listarPartidas(conn, buffer, sizeof(buffer));
-            strcpy(respuesta, buffer);
-        } else {
-            char buffer[1024];
-            buffer[0] = '\0';
-
-            listarPartidasGanadas(conn, usuario, buffer, sizeof(buffer));
-            strcpy(respuesta, buffer);
-        }
-
-        printf("Resultado: %s\n", respuesta);
-        write(sock_conn, respuesta, strlen(respuesta));
-
-        desconectar_base_datos(conn);
-        close(sock_conn);
     }
 
     close(sock_listen);
