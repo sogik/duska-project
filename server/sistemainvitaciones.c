@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sistema_invitaciones.h"
+#include "sistemainvitaciones.h"
 #include "basedatos.h"
 
 void enviar_invitacion(MYSQL *conn, int invitador_id, const char* invitado_nombre) {
