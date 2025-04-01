@@ -51,11 +51,11 @@ void* cliente(void* socket_ptr) {
     } 
     else if (codigo == 1) {
         if (iniciarSesion(conn, usuario, contrasena) == 0) 
-            strcpy(respuesta, "Sesion iniciada correctamente");
+            strcpy(respuesta, "0");
         else if (iniciarSesion(conn, usuario, contrasena) == 1) 
-            strcpy(respuesta, "Contraseña incorrecta");
+            strcpy(respuesta, "2");
         else 
-            strcpy(respuesta, "El nombre de usuario no existe");
+            strcpy(respuesta, "3");
     } 
     else if (codigo == 2) {
         char buffer[1024] = {0};
@@ -67,9 +67,14 @@ void* cliente(void* socket_ptr) {
         listarPartidas(conn, buffer, sizeof(buffer));
         strcpy(respuesta, buffer);
     } 
-    else {
+    else if (codigo == 4) {
         char buffer[1024] = {0};
         listarPartidasGanadas(conn, usuario, buffer, sizeof(buffer));
+        strcpy(respuesta, buffer);
+    }
+    else if (codigo == 5) {
+        char buffer[1024] = {0};
+        listarConectados(conn, buffer, sizeof(buffer));
         strcpy(respuesta, buffer);
     }
 
