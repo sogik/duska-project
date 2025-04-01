@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include "basedatos.h"
 #include "auth.h"
+#include "sistemainvitaciones.h"
 
 void* cliente(void* socket_ptr) {
     int sock_conn = *((int*)socket_ptr);
