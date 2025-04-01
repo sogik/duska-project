@@ -84,7 +84,7 @@ int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contras
 }
 
 int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, 
-                        const char* contrasena, int *id_jugador) {
+                        const char* contrasena) {
     MYSQL_STMT *stmt = mysql_stmt_init(conn);
     const char *query = "SELECT id_jugador, contrasena FROM Jugadores WHERE nombre_usuario = ?";
     
