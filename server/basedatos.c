@@ -11,14 +11,14 @@ int num_conexiones = 0;
 pthread_mutex_t mutex_conexiones = PTHREAD_MUTEX_INITIALIZER;
 
 // Generación de hash SHA-256
-void generarHashSHA256(const char* input, char* output) {
+/*void generarHashSHA256(const char* input, char* output) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
     SHA256((const unsigned char*)input, strlen(input), hash);
     for(int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
         sprintf(output + (i * 2), "%02x", hash[i]);
     }
     output[LONGITUD_HASH] = '\0';
-}
+}*/
 
 int desconectar_base_datos(MYSQL *conn) {
     if(conn) mysql_close(conn);
@@ -55,85 +55,46 @@ int usuarioExiste(MYSQL *conn, const char* nombre_usuario) {
 }
 
 int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
-    char hash[LONGITUD_HASH + 1];
-    generarHashSHA256(contrasena, hash);
+    char consulta[256];
 
-    MYSQL_STMT *stmt = mysql_stmt_init(conn);
-    const char *query = "INSERT INTO Jugadores (nombre_usuario, contrasena) VALUES (?, ?)";
-    
-    if(mysql_stmt_prepare(stmt, query, strlen(query))) {
-        return BD_ERROR;
+    snprintf(consulta, sizeof(consulta), "INSERT INTO Jugadores (nombre_usuario, contrasena) VALUES ('%s', '%s')", nombre_usuario, contrasena);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0) {
+        printf("Error al introducir datos en la base %u %s\n", mysql_errno(conn), mysql_error(conn));
+        exit(1);
     }
 
-    MYSQL_BIND params[2] = {{0}};
-    params[0].buffer_type = MYSQL_TYPE_STRING;
-    params[0].buffer = (char*)nombre_usuario;
-    params[0].buffer_length = strlen(nombre_usuario);
-    
-    params[1].buffer_type = MYSQL_TYPE_STRING;
-    params[1].buffer = hash;
-    params[1].buffer_length = LONGITUD_HASH;
-
-    if(mysql_stmt_bind_param(stmt, params) || mysql_stmt_execute(stmt)) {
-        mysql_stmt_close(stmt);
-        return BD_ERROR;
-    }
-
-    mysql_stmt_close(stmt);
-    return BD_OK;
+    return 0;
 }
 
-int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, 
-                        const char* contrasena) {
-    MYSQL_STMT *stmt = mysql_stmt_init(conn);
-    const char *query = "SELECT id_jugador, contrasena FROM Jugadores WHERE nombre_usuario = ?";
-    
-    if(mysql_stmt_prepare(stmt, query, strlen(query))) {
-        return BD_ERROR;
+int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+
+    char consulta[256];
+
+    snprintf(consulta, sizeof(consulta), "SELECT contrasena FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0) {
+        printf("Error al consultar datos de la base %u %s\n", mysql_errno(conn), mysql_error(conn));
+        exit(1);
     }
 
-    MYSQL_BIND param = {0};
-    param.buffer_type = MYSQL_TYPE_STRING;
-    param.buffer = (char*)nombre_usuario;
-    param.buffer_length = strlen(nombre_usuario);
+    res = mysql_store_result(conn);
+    if (res) {
+        row = mysql_fetch_row(res);
+        mysql_free_result(res);
 
-    if(mysql_stmt_bind_param(stmt, &param)) {
-        mysql_stmt_close(stmt);
-        return BD_ERROR;
+        if (row) {
+            if (strcmp(row[0], contrasena) == 0) {
+                return 0;
+            }
+        }
     }
 
-    int result_id;
-    char stored_hash[LONGITUD_HASH + 1];
-    MYSQL_BIND result[2] = {{0}};
-    
-    result[0].buffer_type = MYSQL_TYPE_LONG;
-    result[0].buffer = &result_id;
-    
-    result[1].buffer_type = MYSQL_TYPE_STRING;
-    result[1].buffer = stored_hash;
-    result[1].buffer_length = LONGITUD_HASH;
-
-    if(mysql_stmt_bind_result(stmt, result) || mysql_stmt_execute(stmt)) {
-        mysql_stmt_close(stmt);
-        return BD_ERROR;
-    }
-
-    if(mysql_stmt_fetch(stmt)) {
-        mysql_stmt_close(stmt);
-        return BD_CREDENCIALES_INVALIDAS;
-    }
-
-    char input_hash[LONGITUD_HASH + 1];
-    generarHashSHA256(contrasena, input_hash);
-    
-    if(strcmp(stored_hash, input_hash) != 0) {
-        mysql_stmt_close(stmt);
-        return BD_CREDENCIALES_INVALIDAS;
-    }
-
-    *id_jugador = result_id;
-    mysql_stmt_close(stmt);
-    return BD_OK;
+    return 1;
 }
 
 void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
