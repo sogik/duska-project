@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <openssl/sha.h>
 #include "basedatos.h"
-#include "sistemainvitaciones.h"
+//#include "sistemainvitaciones.h"
 
 //ConexionJugador conexiones[MAX_CONEXIONES];
 int num_conexiones = 0;

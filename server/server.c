@@ -10,7 +10,7 @@
 #include <pthread.h>
 #include "basedatos.h"
 #include "auth.h"
-#include "sistemainvitaciones.h"
+//#include "sistemainvitaciones.h"
 
 void* cliente(void* socket_ptr) {
     int sock_conn = *((int*)socket_ptr);
@@ -75,7 +75,7 @@ void* cliente(void* socket_ptr) {
     }
     else if (codigo == 5) {
         char buffer[1024] = {0};
-        listarConectados(conn, buffer, sizeof(buffer));
+        listarlistaconectados(conn, buffer, sizeof(buffer));
         strcpy(respuesta, buffer);
     }
 
