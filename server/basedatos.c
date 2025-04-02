@@ -219,7 +219,7 @@ void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista,
 }
 
 // Funciones de gestión de conexiones
-int buscar_socket_por_id(int id_jugador) {
+/*int buscar_socket_por_id(int id_jugador) {
     pthread_mutex_lock(&mutex_conexiones);
     for(int i = 0; i < num_conexiones; i++) {
         if(conexiones[i].id_jugador == id_jugador) {
@@ -246,4 +246,4 @@ void registrar_conexion(int id_jugador, int socket) {
         num_conexiones++;
     }
     pthread_mutex_unlock(&mutex_conexiones);
-}
+}*/
