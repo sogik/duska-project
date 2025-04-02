@@ -6,7 +6,7 @@
 #include "basedatos.h"
 #include "sistemainvitaciones.h"
 
-ConexionJugador conexiones[MAX_CONEXIONES];
+//ConexionJugador conexiones[MAX_CONEXIONES];
 int num_conexiones = 0;
 pthread_mutex_t mutex_conexiones = PTHREAD_MUTEX_INITIALIZER;
 
