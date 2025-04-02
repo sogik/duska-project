@@ -8,7 +8,7 @@
 
 //ConexionJugador conexiones[MAX_CONEXIONES];
 int num_conexiones = 0;
-pthread_mutex_t mutex_conexiones = PTHREAD_MUTEX_INITIALIZER;
+//pthread_mutex_t mutex_conexiones = PTHREAD_MUTEX_INITIALIZER;
 
 // Generación de hash SHA-256
 /*void generarHashSHA256(const char* input, char* output) {
@@ -21,37 +21,35 @@ pthread_mutex_t mutex_conexiones = PTHREAD_MUTEX_INITIALIZER;
 }*/
 
 int desconectar_base_datos(MYSQL *conn) {
-    if(conn) mysql_close(conn);
-    return BD_OK;
+    mysql_close(conn);
+    return 0;
 }
 
 int usuarioExiste(MYSQL *conn, const char* nombre_usuario) {
-    MYSQL_STMT *stmt = mysql_stmt_init(conn);
-    const char *query = "SELECT nombre_usuario FROM Jugadores WHERE nombre_usuario = ?";
+    MYSQL_RES *res;
+    MYSQL_ROW row;
     
-    if(mysql_stmt_prepare(stmt, query, strlen(query))) {
-        fprintf(stderr, "Error preparando consulta: %s\n", mysql_stmt_error(stmt));
-        mysql_stmt_close(stmt);
-        return BD_ERROR;
+    char consulta[256];
+
+    snprintf(consulta, sizeof(consulta), "SELECT nombre_usuario FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0) {
+        printf("Error al consultar datos de la base %u %s\n", mysql_errno(conn), mysql_error(conn));
+        exit(1);
     }
 
-    MYSQL_BIND param = {0};
-    param.buffer_type = MYSQL_TYPE_STRING;
-    param.buffer = (char*)nombre_usuario;
-    param.buffer_length = strlen(nombre_usuario);
+    res = mysql_store_result(conn);
+    if (res) {
+        row = mysql_fetch_row(res);
+        mysql_free_result(res);
 
-    if(mysql_stmt_bind_param(stmt, &param)) {
-        mysql_stmt_close(stmt);
-        return BD_ERROR;
+        if (row) {
+            return 1;
+        }
     }
 
-    int existe = BD_OK;
-    if(mysql_stmt_execute(stmt) == 0 && mysql_stmt_fetch(stmt) == 0) {
-        existe = BD_USUARIO_EXISTE;
-    }
-
-    mysql_stmt_close(stmt);
-    return existe;
+    return 0;
 }
 
 int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
