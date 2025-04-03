@@ -52,14 +52,20 @@ void* cliente(void* socket_ptr) {
     } 
     else if (codigo == 1) {
         if (iniciarSesion(conn, usuario, contrasena) == 0)
-            int est = actualizarEstado(conn, nombre_usuario, 1);
+        {
+            int est = actualizarEstado(conn, usuario, 1);
             strcpy(respuesta, "0");
+        }
         else if (iniciarSesion(conn, usuario, contrasena) == 1)
-            int est = actualizarEstado(conn, nombre_usuario, 0); 
+        {
+            int est = actualizarEstado(conn, usuario, 0); 
             strcpy(respuesta, "2");
+        }
         else 
-            int est = actualizarEstado(conn, nombre_usuario, 0);    
+        {
+            int est = actualizarEstado(conn, usuario, 0);    
             strcpy(respuesta, "3");
+        }
     } 
     else if (codigo == 2) {
         char buffer[1024] = {0};
@@ -78,7 +84,7 @@ void* cliente(void* socket_ptr) {
     }
     else if (codigo == 5) {
         char buffer[1024] = {0};
-        listarConectados(conn, buffer, sizeof(buffer));
+        listarConectados(conn, buffer, sizeof(buffes));
         strcpy(respuesta, buffer);
     }
 
