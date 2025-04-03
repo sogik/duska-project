@@ -90,7 +90,7 @@ void* cliente(void* socket_ptr) {
     }
     else if (codigo == 6) {
         char buffer[1024] = {0};
-        int estado = actualizarEstado(conn, usuario, contrasena);
+        int estado = actualizarEstado(conn, usuario, atoi(contrasena));
         if (estado == 0) 
         {
             strcpy(respuesta, "0");
