@@ -231,11 +231,11 @@ void listarConectados (MYSQL *conn, char *lista, int tamano_lista) {
     if (res) {
         while ((row = mysql_fetch_row(res))) {
             strcat(lista, row[0]);
-            strcat(lista, " ");
+            strcat(lista, "/");
             strcat(lista, row[1]);
-            strcat(lista, " ");
+            strcat(lista, "/");
             strcat(lista, row[2]);
-            strcat(lista, "\n");
+            strcat(lista, "/");
         }
         mysql_free_result(res);
     }
