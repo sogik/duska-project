@@ -53,17 +53,18 @@ void* cliente(void* socket_ptr) {
     else if (codigo == 1) {
         if (iniciarSesion(conn, usuario, contrasena) == 0)
         {
-            int est = actualizarEstado(conn, usuario, 1);
             strcpy(respuesta, "0");
         }
         else if (iniciarSesion(conn, usuario, contrasena) == 1)
         {
-            int est = actualizarEstado(conn, usuario, 0); 
+            strcpy(respuesta, "1");
+        }
+        else if (iniciarSesion(conn, usuario, contrasena) == 2)
+        {
             strcpy(respuesta, "2");
         }
         else 
-        {
-            int est = actualizarEstado(conn, usuario, 0);    
+        {  
             strcpy(respuesta, "3");
         }
     } 
@@ -86,6 +87,18 @@ void* cliente(void* socket_ptr) {
         char buffer[1024] = {0};
         listarConectados(conn, buffer, sizeof(buffer));
         strcpy(respuesta, buffer);
+    }
+    else if (codigo == 6) {
+        char buffer[1024] = {0};
+        int estado = actualizarEstado(conn, usuario, contrasena);
+        if (estado == 0) 
+        {
+            strcpy(respuesta, "0");
+        } 
+        else  
+        {
+            strcpy(respuesta, "1");
+        }
     }
 
     printf("Resultado: %s\n", respuesta);
