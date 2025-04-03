@@ -36,6 +36,20 @@ int usuarioExiste(MYSQL *conn, const char* nombre_usuario) {
     return 0;
 }
 
+int actualizarEstado(MYSQL *conn, const char* nombre_usuario, int estado) {
+    char consulta[256];
+
+    snprintf(consulta, sizeof(consulta), "UPDATE Jugadores SET estado = '%d' WHERE nombre_usuario = '%s'", estado, nombre_usuario);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0) {
+        printf("Error al actualizar los datos en la base %u %s\n", mysql_errno(conn), mysql_error(conn));
+        exit(1);
+    }
+
+    return 0;
+}
+
 int insertarUsuario(MYSQL *conn, const char* nombre_usuario, const char* contrasena) {
     char consulta[256];
 
