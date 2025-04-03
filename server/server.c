@@ -44,11 +44,11 @@ void* cliente(void* socket_ptr) {
 
     if (codigo == 0) {
         if (registrarUsuario(conn, usuario, contrasena) == 0) 
-            strcpy(respuesta, "Usuario registrado correctamente");
+            strcpy(respuesta, "0");
         else if (registrarUsuario(conn, usuario, contrasena) == 1) 
-            strcpy(respuesta, "El nombre de usuario ya está en uso"); 
+            strcpy(respuesta, "1"); 
         else 
-            strcpy(respuesta, "Error al registrar usuario");
+            strcpy(respuesta, "2");
     } 
     else if (codigo == 1) {
         if (iniciarSesion(conn, usuario, contrasena) == 0) 

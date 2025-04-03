@@ -10,7 +10,7 @@ CREATE TABLE Jugadores (
     contrasena VARCHAR(255) NOT NULL,
     fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
     ultima_conexion DATETIME DEFAULT CURRENT_TIMESTAMP,
-    estado INT DEFAULT 1
+    estado INT DEFAULT 0
 );
 
 CREATE TABLE Partidas (

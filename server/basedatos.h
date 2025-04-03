@@ -22,6 +22,6 @@ int verificarCredenciales(MYSQL *conn, const char* nombre_usuario, const char* c
 void listarJugadores(MYSQL *conn, char *lista, int tamano_lista);
 void listarPartidas(MYSQL *conn, char *lista, int tamano_lista);
 void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista, int tamano_lista);
-void listarlistaconectados(MYSQL *conn, char *lista, int tamano_lista);
+void listarConectados(MYSQL *conn, char *lista, int tamano_lista);
 
 #endif
