@@ -84,7 +84,7 @@ void* cliente(void* socket_ptr) {
     }
     else if (codigo == 5) {
         char buffer[1024] = {0};
-        listarConectados(conn, buffer, sizeof(buffes));
+        listarConectados(conn, buffer, sizeof(buffer));
         strcpy(respuesta, buffer);
     }
 
