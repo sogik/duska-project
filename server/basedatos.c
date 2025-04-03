@@ -221,7 +221,7 @@ void listarConectados (MYSQL *conn, char *lista, int tamano_lista) {
 
     lista[0] = '\0';
 
-    int err = mysql_query(conn, "SELECT * FROM Jugadores WHERE estado = 1");
+    int err = mysql_query(conn, "SELECT nombre_usuario FROM Jugadores WHERE estado = 1");
     if (err != 0) {
         printf("Error al consultar: %s\n", mysql_error(conn));
         return NULL;
@@ -231,10 +231,6 @@ void listarConectados (MYSQL *conn, char *lista, int tamano_lista) {
     if (res) {
         while ((row = mysql_fetch_row(res))) {
             strcat(lista, row[0]);
-            strcat(lista, "/");
-            strcat(lista, row[1]);
-            strcat(lista, "/");
-            strcat(lista, row[2]);
             strcat(lista, "/");
         }
         mysql_free_result(res);
