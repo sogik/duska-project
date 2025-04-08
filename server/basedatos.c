@@ -214,7 +214,7 @@ void listarPartidasGanadas(MYSQL *conn, const char* nombre_usuario, char *lista,
     printf("Error al obtener el resultado: %s\n", mysql_error(conn));
     }
 }
-
+// ñ
 void listarConectados (MYSQL *conn, char *lista, int tamano_lista) {
     MYSQL_RES *res;
     MYSQL_ROW row;
@@ -229,6 +229,7 @@ void listarConectados (MYSQL *conn, char *lista, int tamano_lista) {
 
     res = mysql_use_result(conn);
     if (res) {
+        strcat(lista, "LIST/");
         while ((row = mysql_fetch_row(res))) {
             strcat(lista, row[0]);
             strcat(lista, "/");
