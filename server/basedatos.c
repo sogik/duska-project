@@ -47,6 +47,7 @@ int actualizarEstado(MYSQL *conn, const char* nombre_usuario, int estado) {
         exit(1);
     }
 
+    
     return 0;
 }
 

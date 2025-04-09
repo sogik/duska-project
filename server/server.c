@@ -91,14 +91,10 @@ void* cliente(void* socket_ptr) {
     else if (codigo == 6) {
         char buffer[1024] = {0};
         int estado = actualizarEstado(conn, usuario, atoi(contrasena));
-        if (estado == 0) 
-        {
-            strcpy(respuesta, "0");
-        } 
-        else  
-        {
-            strcpy(respuesta, "1");
-        }
+    
+        char conectados[1024] = {0};
+        listarConectados(conn, conectados, sizeof(conectados));
+        strcat(respuesta, conectados);
     }
 
     printf("Resultado: %s\n", respuesta);
