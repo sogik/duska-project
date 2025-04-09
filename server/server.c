@@ -94,6 +94,8 @@ void* cliente(void* socket_ptr) {
 
         if (estado == 0) {
             listarConectados(conn, buffer, sizeof(buffer));
+            printf("Buffer conectados: %s\n", buffer);
+            memset(respuesta, 0, sizeof(respuesta));
             strcat(respuesta, buffer);
         }
     }
