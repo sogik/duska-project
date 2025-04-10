@@ -13,32 +13,20 @@
 
 #define MAX_CLIENTES 100
 
-int clientes[MAX_CLIENTES];  // Lista de clientes conectados
-int num_clientes = 0;        // Número de clientes conectados
-pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER; // Mutex para acceso seguro
+int clientes[MAX_CLIENTES];
+int num_clientes = 0;
+pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
 
-// Función para agregar clientes a la lista
-void agregarCliente(int sock_conn) {
+void enviarATodos(const char* mensaje) {
     pthread_mutex_lock(&mutex_clientes);
-    if (num_clientes < MAX_CLIENTES) {
-        clientes[num_clientes++] = sock_conn; // Agregamos el nuevo cliente
-        printf("Cliente agregado: %d\n", sock_conn);
-    } else {
-        printf("Lista de clientes llena\n");
-    }
-    pthread_mutex_unlock(&mutex_clientes);
-}
-
-// Función para enviar mensaje a todos los clientes
-void enviarAClientes(const char* mensaje) {
-    pthread_mutex_lock(&mutex_clientes);
-    printf("Enviando a todos: %s\n", mensaje);  // Depuración para ver qué se está enviando
-
-    for (int i = 0; i < num_clientes; ++i) {
-        if (write(clientes[i], mensaje, strlen(mensaje)) == -1) {
-            perror("Error al enviar mensaje");
-        } else {
-            printf("Mensaje enviado a cliente: %d\n", clientes[i]);
+    for (int i = 0; i < num_clientes; i++) {
+        if (clientes[i] != -1) {
+            int r = write(clientes[i], mensaje, strlen(mensaje));
+            if (r < 0) {
+                perror("Error enviando a cliente");
+            } else {
+                printf("Mensaje enviado correctamente al cliente %d\n", clientes[i]);
+            }
         }
     }
     pthread_mutex_unlock(&mutex_clientes);
@@ -50,10 +38,15 @@ void* cliente(void* socket_ptr) {
     char respuesta[1024];
     int ret;
 
-    // Leer la petición del cliente
-    ret = read(sock_conn, peticion, sizeof(peticion));
-    peticion[ret] = '\0';
-    printf("Peticion recibida: %s\n", peticion);
+    // Leer hasta '\n'
+    int pos = 0;
+    char c;
+    while (read(sock_conn, &c, 1) > 0 && c != '\n' && pos < sizeof(peticion) - 1) {
+        peticion[pos++] = c;
+    }
+    peticion[pos] = '\0';
+
+    printf("Peticion: %s\n", peticion);
 
     MYSQL *conn = mysql_init(NULL);
     if (!mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0)) {
@@ -65,10 +58,7 @@ void* cliente(void* socket_ptr) {
         return NULL;
     }
 
-    // Agregar cliente a la lista global
-    agregarCliente(sock_conn);
-
-    // Procesar la petición
+    // Parseo seguro
     char *p = strtok(peticion, "/");
     int codigo = atoi(p ? p : "0");
 
@@ -110,34 +100,26 @@ void* cliente(void* socket_ptr) {
             strcpy(respuesta, buffer);
             printf("Buffer conectados: %s\n", buffer);
 
-            // Enviar la lista a todos los clientes
-            enviarAClientes(buffer);
+            // Enviar a todos los clientes conectados
+            printf("Enviando mensaje a todos los clientes conectados...\n");
+            enviarATodos(respuesta);
         } else {
             strcpy(respuesta, "Error al cambiar estado");
         }
     }
 
     printf("Resultado: %s\n", respuesta);
-    write(sock_conn, respuesta, strlen(respuesta));
+    int bytes_enviados = write(sock_conn, respuesta, strlen(respuesta));
+    if (bytes_enviados < 0) {
+        perror("Error al enviar respuesta al cliente");
+    } else {
+        printf("Respuesta enviada al cliente correctamente. Bytes enviados: %d\n", bytes_enviados);
+    }
 
-    // Cerrar la conexión con el cliente
     mysql_close(conn);
     close(sock_conn);
-
-    // Eliminar cliente de la lista cuando se desconecta
-    pthread_mutex_lock(&mutex_clientes);
-    for (int i = 0; i < num_clientes; ++i) {
-        if (clientes[i] == sock_conn) {
-            for (int j = i; j < num_clientes - 1; ++j) {
-                clientes[j] = clientes[j + 1];
-            }
-            num_clientes--;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&mutex_clientes);
-
     free(socket_ptr);
+
     return NULL;
 }
 
