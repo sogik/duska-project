@@ -8,18 +8,79 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <errno.h>
 #include "basedatos.h"
 #include "auth.h"
 
+// Estructura para mantener los clientes conectados
+typedef struct ClientNode {
+    int socket;
+    char usuario[50];
+    struct ClientNode* next;
+} ClientNode;
+
+ClientNode* client_list = NULL;
+pthread_mutex_t client_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Función para añadir un cliente a la lista
+void add_client(int sock, const char* usuario) {
+    pthread_mutex_lock(&client_list_mutex);
+    
+    ClientNode* new_node = (ClientNode*)malloc(sizeof(ClientNode));
+    new_node->socket = sock;
+    strncpy(new_node->usuario, usuario, sizeof(new_node->usuario)-1);
+    new_node->usuario[sizeof(new_node->usuario)-1] = '\0';
+    new_node->next = client_list;
+    client_list = new_node;
+    
+    pthread_mutex_unlock(&client_list_mutex);
+}
+
+// Función para eliminar un cliente de la lista
+void remove_client(int sock) {
+    pthread_mutex_lock(&client_list_mutex);
+    
+    ClientNode** pp = &client_list;
+    while (*pp) {
+        if ((*pp)->socket == sock) {
+            ClientNode* to_free = *pp;
+            *pp = (*pp)->next;
+            free(to_free);
+            break;
+        }
+        pp = &(*pp)->next;
+    }
+    
+    pthread_mutex_unlock(&client_list_mutex);
+}
+
+// Función para enviar datos a todos los clientes
+void broadcast_to_all(const char* message) {
+    pthread_mutex_lock(&client_list_mutex);
+    
+    ClientNode* current = client_list;
+    while (current != NULL) {
+        if (write(current->socket, message, strlen(message)) < 0) {
+            perror("Error al enviar broadcast");
+            // Si hay error, probablemente el cliente se desconectó
+            ClientNode* to_remove = current;
+            current = current->next;
+            remove_client(to_remove->socket);
+            continue;
+        }
+        current = current->next;
+    }
+    
+    pthread_mutex_unlock(&client_list_mutex);
+}
+
 void* cliente(void* socket_ptr) {
     int sock_conn = *((int*)socket_ptr);
+    free(socket_ptr); // Liberamos la memoria ahora que tenemos el valor
     char peticion[512];
     char respuesta[1024];
     int ret;
-
-    ret = read(sock_conn, peticion, sizeof(peticion));
-    peticion[ret] = '\0';
-    printf("Peticion: %s\n", peticion);
+    char usuario[50] = {0}; // Para mantener el nombre de usuario
 
     MYSQL *conn = mysql_init(NULL);
     if (!mysql_real_connect(conn, "shiva2.upc.es", "root", "mysql", "duska_project", 0, NULL, 0)) {
@@ -27,85 +88,94 @@ void* cliente(void* socket_ptr) {
         strcpy(respuesta, "Error en la base de datos");
         write(sock_conn, respuesta, strlen(respuesta));
         close(sock_conn);
-        free(socket_ptr);
         return NULL;
     }
 
-    char *p = strtok(peticion, "/");
-    int codigo = atoi(p);
-    p = strtok(NULL, "/");
-    char usuario[50];
-    strcpy(usuario, p);
-    p = strtok(NULL, "/");
-    char contrasena[72];
-    if (p != NULL) strcpy(contrasena, p);
-    else strcpy(contrasena, "");
+    while (1) {
+        ret = read(sock_conn, peticion, sizeof(peticion)-1);
+        if (ret <= 0) {
+            // Cliente desconectado
+            if (strlen(usuario) > 0) {
+                // Actualizar estado como desconectado
+                actualizarEstado(conn, usuario, 0);
+                
+                // Enviar lista actualizada a todos
+                char buffer[1024] = {0};
+                listarConectados(conn, buffer, sizeof(buffer));
+                broadcast_to_all(buffer);
+                
+                // Eliminar de la lista de clientes
+                remove_client(sock_conn);
+            }
+            break;
+        }
+        peticion[ret] = '\0';
+        printf("Peticion: %s\n", peticion);
 
-    if (codigo == 0) {
-        if (registrarUsuario(conn, usuario, contrasena) == 0) 
-            strcpy(respuesta, "0");
-        else if (registrarUsuario(conn, usuario, contrasena) == 1) 
-            strcpy(respuesta, "1"); 
-        else 
-            strcpy(respuesta, "2");
-    } 
-    else if (codigo == 1) {
-        if (iniciarSesion(conn, usuario, contrasena) == 0)
-        {
-            strcpy(respuesta, "0");
+        char *p = strtok(peticion, "/");
+        int codigo = atoi(p);
+        p = strtok(NULL, "/");
+        if (p != NULL) {
+            strncpy(usuario, p, sizeof(usuario)-1);
+            usuario[sizeof(usuario)-1] = '\0';
         }
-        else if (iniciarSesion(conn, usuario, contrasena) == 1)
-        {
-            strcpy(respuesta, "1");
+        p = strtok(NULL, "/");
+        char contrasena[72] = {0};
+        if (p != NULL) {
+            strncpy(contrasena, p, sizeof(contrasena)-1);
+            contrasena[sizeof(contrasena)-1] = '\0';
         }
-        else if (iniciarSesion(conn, usuario, contrasena) == 2)
-        {
-            strcpy(respuesta, "2");
-        }
-        else 
-        {  
-            strcpy(respuesta, "3");
-        }
-    } 
-    else if (codigo == 2) {
-        char buffer[1024] = {0};
-        listarJugadores(conn, buffer, sizeof(buffer));
-        strcpy(respuesta, buffer);
-    } 
-    else if (codigo == 3) {
-        char buffer[1024] = {0};
-        listarPartidas(conn, buffer, sizeof(buffer));
-        strcpy(respuesta, buffer);
-    } 
-    else if (codigo == 4) {
-        char buffer[1024] = {0};
-        listarPartidasGanadas(conn, usuario, buffer, sizeof(buffer));
-        strcpy(respuesta, buffer);
-    }
-    else if (codigo == 5) {
-        char buffer[1024] = {0};
-        listarConectados(conn, buffer, sizeof(buffer));
-        strcpy(respuesta, buffer);
-    }
-    else if (codigo == 6) {
-        char buffer[1024] = {0};
-        int estado = actualizarEstado(conn, usuario, atoi(contrasena));
 
-        if (estado == 0) {
-            listarConectados(conn, buffer, sizeof(buffer));
-            printf("Buffer conectados: %s\n", buffer);
-            memset(respuesta, 0, sizeof(respuesta));
-            strcat(respuesta, buffer);
+        memset(respuesta, 0, sizeof(respuesta));
+
+        if (codigo == 0) {
+            int reg_result = registrarUsuario(conn, usuario, contrasena);
+            snprintf(respuesta, sizeof(respuesta), "%d", reg_result);
+        } 
+        else if (codigo == 1) {
+            int login_result = iniciarSesion(conn, usuario, contrasena);
+            if (login_result == 0) {
+                add_client(sock_conn, usuario); // Añadir a la lista de clientes
+            }
+            snprintf(respuesta, sizeof(respuesta), "%d", login_result);
+        } 
+        else if (codigo == 2) {
+            listarJugadores(conn, respuesta, sizeof(respuesta));
+        } 
+        else if (codigo == 3) {
+            listarPartidas(conn, respuesta, sizeof(respuesta));
+        } 
+        else if (codigo == 4) {
+            listarPartidasGanadas(conn, usuario, respuesta, sizeof(respuesta));
+        }
+        else if (codigo == 5) {
+            listarConectados(conn, respuesta, sizeof(respuesta));
+        }
+        else if (codigo == 6) {
+            int estado = atoi(contrasena);
+            int update_result = actualizarEstado(conn, usuario, estado);
+            
+            if (update_result == 0) {
+                char buffer[1024] = {0};
+                listarConectados(conn, buffer, sizeof(buffer));
+                strcpy(respuesta, buffer);
+                
+                // Enviar la lista actualizada a todos los clientes
+                broadcast_to_all(buffer);
+            } else {
+                strcpy(respuesta, "Error al actualizar estado");
+            }
+        }
+
+        printf("Resultado: %s\n", respuesta);
+        if (write(sock_conn, respuesta, strlen(respuesta)) < 0) {
+            perror("Error al escribir en socket");
+            break;
         }
     }
-
-    printf("Resultado: %s\n", respuesta);
-    write(sock_conn, respuesta, strlen(respuesta));
 
     mysql_close(conn);
     close(sock_conn);
-    free(socket_ptr);
-
     return NULL;
 }
 
