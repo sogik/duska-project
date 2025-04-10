@@ -11,17 +11,17 @@
 #include "basedatos.h"
 #include "auth.h"
 
-// Variables globales
 #define MAX_CLIENTES 100
 int clientes[MAX_CLIENTES];
 int num_clientes = 0;
 pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
 
-// Función para enviar un mensaje a todos los clientes conectados
 void enviarATodos(const char* mensaje) {
     pthread_mutex_lock(&mutex_clientes);
-    for (int i = 0; i < num_clientes; ++i) {
-        write(clientes[i], mensaje, strlen(mensaje));
+    for (int i = 0; i < num_clientes; i++) {
+        if (clientes[i] != -1) {
+            write(clientes[i], mensaje, strlen(mensaje));
+        }
     }
     pthread_mutex_unlock(&mutex_clientes);
 }
@@ -102,13 +102,11 @@ void* cliente(void* socket_ptr) {
         if (estado == 0) {
             listarConectados(conn, buffer, sizeof(buffer));
             printf("Buffer conectados: %s\n", buffer);
-            memset(respuesta, 0, sizeof(respuesta));
-            strcat(respuesta, buffer);
+            sprintf(respuesta, "%s", buffer);
 
-            // ENVIAR A TODOS LOS CLIENTES LA LISTA ACTUALIZADA
-            enviarATodos(respuesta);
-        } else {
-            strcpy(respuesta, "Error al actualizar estado");
+            // Enviar a todos los clientes conectados
+            enviarATodos(buffer);
+            printf("Enviando a todos: %s\n", buffer);
         }
     }
 
@@ -117,13 +115,11 @@ void* cliente(void* socket_ptr) {
 
     mysql_close(conn);
 
-    // Eliminar socket de la lista global de clientes
+    // Eliminar cliente desconectado
     pthread_mutex_lock(&mutex_clientes);
-    for (int i = 0; i < num_clientes; ++i) {
+    for (int i = 0; i < num_clientes; i++) {
         if (clientes[i] == sock_conn) {
-            for (int j = i; j < num_clientes - 1; ++j)
-                clientes[j] = clientes[j + 1];
-            num_clientes--;
+            clientes[i] = -1;
             break;
         }
     }
@@ -131,6 +127,7 @@ void* cliente(void* socket_ptr) {
 
     close(sock_conn);
     free(socket_ptr);
+
     return NULL;
 }
 
@@ -160,7 +157,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    printf("Servidor escuchando en el puerto 50756...\n");
+    printf("Servidor escuchando en el puerto 9050...\n");
 
     while (1) {
         sock_conn = accept(sock_listen, NULL, NULL);
@@ -170,7 +167,6 @@ int main(int argc, char *argv[]) {
         }
         printf("Nuevo cliente conectado.\n");
 
-        // Añadir a la lista de clientes conectados
         pthread_mutex_lock(&mutex_clientes);
         if (num_clientes < MAX_CLIENTES) {
             clientes[num_clientes++] = sock_conn;
