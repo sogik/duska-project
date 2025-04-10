@@ -32,20 +32,18 @@ void enviarATodos(const char* mensaje) {
 
 void* cliente(void* socket_ptr) {
     int sock_conn = *((int*)socket_ptr);
-    free(socket_ptr);
-
-    pthread_mutex_lock(&mutex_clientes);
-    if (num_clientes < MAX_CLIENTES) {
-        clientes[num_clientes++] = sock_conn;
-    }
-    pthread_mutex_unlock(&mutex_clientes);
-
     char peticion[512];
     char respuesta[1024];
     int ret;
 
-    ret = read(sock_conn, peticion, sizeof(peticion));
-    peticion[ret] = '\0';
+    // Leer hasta '\n'
+    int pos = 0;
+    char c;
+    while (read(sock_conn, &c, 1) > 0 && c != '\n' && pos < sizeof(peticion) - 1) {
+        peticion[pos++] = c;
+    }
+    peticion[pos] = '\0';
+
     printf("Peticion: %s\n", peticion);
 
     MYSQL *conn = mysql_init(NULL);
@@ -54,26 +52,25 @@ void* cliente(void* socket_ptr) {
         strcpy(respuesta, "Error en la base de datos");
         write(sock_conn, respuesta, strlen(respuesta));
         close(sock_conn);
+        free(socket_ptr);
         return NULL;
     }
 
+    // Parseo seguro
     char *p = strtok(peticion, "/");
-    int codigo = atoi(p);
+    int codigo = atoi(p ? p : "0");
+
     p = strtok(NULL, "/");
-    char usuario[50];
-    strcpy(usuario, p);
+    char usuario[50] = "";
+    if (p) strcpy(usuario, p);
+
     p = strtok(NULL, "/");
-    char contrasena[72];
-    if (p != NULL) strcpy(contrasena, "");
-    else strcpy(contrasena, "");
+    char contrasena[72] = "";
+    if (p) strcpy(contrasena, p);
 
     if (codigo == 0) {
-        if (registrarUsuario(conn, usuario, contrasena) == 0) 
-            strcpy(respuesta, "0");
-        else if (registrarUsuario(conn, usuario, contrasena) == 1) 
-            strcpy(respuesta, "1"); 
-        else 
-            strcpy(respuesta, "2");
+        int res = registrarUsuario(conn, usuario, contrasena);
+        sprintf(respuesta, "%d", res);
     } 
     else if (codigo == 1) {
         int res = iniciarSesion(conn, usuario, contrasena);
@@ -87,10 +84,10 @@ void* cliente(void* socket_ptr) {
     } 
     else if (codigo == 4) {
         listarPartidasGanadas(conn, usuario, respuesta, sizeof(respuesta));
-    } 
+    }
     else if (codigo == 5) {
         listarConectados(conn, respuesta, sizeof(respuesta));
-    } 
+    }
     else if (codigo == 6) {
         char buffer[1024] = {0};
         int estado = actualizarEstado(conn, usuario, atoi(contrasena));
@@ -98,12 +95,13 @@ void* cliente(void* socket_ptr) {
 
         if (estado == 0) {
             listarConectados(conn, buffer, sizeof(buffer));
+            strcpy(respuesta, buffer);
             printf("Buffer conectados: %s\n", buffer);
-            sprintf(respuesta, "%s\n", buffer);  // IMPORTANTE: termina en \n
-            printf("Enviando a todos: %s", respuesta);
-            enviarATodos(respuesta);
+
+            // Enviar a todos los clientes conectados
+            enviarAClientes(buffer);
         } else {
-            strcpy(respuesta, "Error al actualizar estado");
+            strcpy(respuesta, "Error al cambiar estado");
         }
     }
 
@@ -111,20 +109,9 @@ void* cliente(void* socket_ptr) {
     write(sock_conn, respuesta, strlen(respuesta));
 
     mysql_close(conn);
-
-    pthread_mutex_lock(&mutex_clientes);
-    for (int i = 0; i < num_clientes; i++) {
-        if (clientes[i] == sock_conn) {
-            for (int j = i; j < num_clientes - 1; j++) {
-                clientes[j] = clientes[j + 1];
-            }
-            num_clientes--;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&mutex_clientes);
-
     close(sock_conn);
+    free(socket_ptr);
+
     return NULL;
 }
 
