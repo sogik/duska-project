@@ -1,5 +1,0 @@
-D:\Proyectos\duska-project\duska-project\GeonBit.UI\Content\GeonBit.UI\Themes\lowres\fonts\obj\Debug\net7.0\GeonBit.UI.Examples.csproj.AssemblyReference.cache
-D:\Proyectos\duska-project\duska-project\GeonBit.UI\Content\GeonBit.UI\Themes\lowres\fonts\obj\Debug\net7.0\GeonBit.UI.Examples.GeneratedMSBuildEditorConfig.editorconfig
-D:\Proyectos\duska-project\duska-project\GeonBit.UI\Content\GeonBit.UI\Themes\lowres\fonts\obj\Debug\net7.0\GeonBit.UI.Examples.AssemblyInfoInputs.cache
-D:\Proyectos\duska-project\duska-project\GeonBit.UI\Content\GeonBit.UI\Themes\lowres\fonts\obj\Debug\net7.0\GeonBit.UI.Examples.AssemblyInfo.cs
-D:\Proyectos\duska-project\duska-project\GeonBit.UI\Content\GeonBit.UI\Themes\lowres\fonts\obj\Debug\net7.0\GeonBit.UI.Examples.csproj.CoreCompileInputs.cache
