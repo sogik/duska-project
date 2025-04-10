@@ -1,3 +1,16 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <mysql.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <pthread.h>
+#include "basedatos.h"
+#include "auth.h"
+
 #define MAX_CLIENTES 100
 
 int clientes[MAX_CLIENTES];  // Lista de clientes conectados
