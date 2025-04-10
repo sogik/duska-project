@@ -22,7 +22,7 @@ void* cliente(void* socket_ptr) {
     printf("Peticion: %s\n", peticion);
 
     MYSQL *conn = mysql_init(NULL);
-    if (!mysql_real_connect(conn, "shiva2.upc.ess", "root", "mysql", "duska_project", 0, NULL, 0)) {
+    if (!mysql_real_connect(conn, "shiva2.upc.es", "root", "mysql", "duska_project", 0, NULL, 0)) {
         printf("Error MySQL: %s\n", mysql_error(conn));
         strcpy(respuesta, "Error en la base de datos");
         write(sock_conn, respuesta, strlen(respuesta));
