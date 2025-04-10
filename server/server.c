@@ -1,30 +1,31 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <mysql.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <pthread.h>
-#include "basedatos.h"
-#include "auth.h"
-
 #define MAX_CLIENTES 100
 
-int clientes[MAX_CLIENTES];
-int num_clientes = 0;
-pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
+int clientes[MAX_CLIENTES];  // Lista de clientes conectados
+int num_clientes = 0;        // Número de clientes conectados
+pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER; // Mutex para acceso seguro
 
-void enviarATodos(const char* mensaje) {
+// Función para agregar clientes a la lista
+void agregarCliente(int sock_conn) {
     pthread_mutex_lock(&mutex_clientes);
-    for (int i = 0; i < num_clientes; i++) {
-        if (clientes[i] != -1) {
-            int r = write(clientes[i], mensaje, strlen(mensaje));
-            if (r < 0) {
-                perror("Error enviando a cliente");
-            }
+    if (num_clientes < MAX_CLIENTES) {
+        clientes[num_clientes++] = sock_conn; // Agregamos el nuevo cliente
+        printf("Cliente agregado: %d\n", sock_conn);
+    } else {
+        printf("Lista de clientes llena\n");
+    }
+    pthread_mutex_unlock(&mutex_clientes);
+}
+
+// Función para enviar mensaje a todos los clientes
+void enviarAClientes(const char* mensaje) {
+    pthread_mutex_lock(&mutex_clientes);
+    printf("Enviando a todos: %s\n", mensaje);  // Depuración para ver qué se está enviando
+
+    for (int i = 0; i < num_clientes; ++i) {
+        if (write(clientes[i], mensaje, strlen(mensaje)) == -1) {
+            perror("Error al enviar mensaje");
+        } else {
+            printf("Mensaje enviado a cliente: %d\n", clientes[i]);
         }
     }
     pthread_mutex_unlock(&mutex_clientes);
@@ -36,15 +37,10 @@ void* cliente(void* socket_ptr) {
     char respuesta[1024];
     int ret;
 
-    // Leer hasta '\n'
-    int pos = 0;
-    char c;
-    while (read(sock_conn, &c, 1) > 0 && c != '\n' && pos < sizeof(peticion) - 1) {
-        peticion[pos++] = c;
-    }
-    peticion[pos] = '\0';
-
-    printf("Peticion: %s\n", peticion);
+    // Leer la petición del cliente
+    ret = read(sock_conn, peticion, sizeof(peticion));
+    peticion[ret] = '\0';
+    printf("Peticion recibida: %s\n", peticion);
 
     MYSQL *conn = mysql_init(NULL);
     if (!mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0)) {
@@ -56,7 +52,10 @@ void* cliente(void* socket_ptr) {
         return NULL;
     }
 
-    // Parseo seguro
+    // Agregar cliente a la lista global
+    agregarCliente(sock_conn);
+
+    // Procesar la petición
     char *p = strtok(peticion, "/");
     int codigo = atoi(p ? p : "0");
 
@@ -98,8 +97,8 @@ void* cliente(void* socket_ptr) {
             strcpy(respuesta, buffer);
             printf("Buffer conectados: %s\n", buffer);
 
-            // Enviar a todos los clientes conectados
-            enviarATodos(respuesta);
+            // Enviar la lista a todos los clientes
+            enviarAClientes(buffer);
         } else {
             strcpy(respuesta, "Error al cambiar estado");
         }
@@ -108,10 +107,24 @@ void* cliente(void* socket_ptr) {
     printf("Resultado: %s\n", respuesta);
     write(sock_conn, respuesta, strlen(respuesta));
 
+    // Cerrar la conexión con el cliente
     mysql_close(conn);
     close(sock_conn);
-    free(socket_ptr);
 
+    // Eliminar cliente de la lista cuando se desconecta
+    pthread_mutex_lock(&mutex_clientes);
+    for (int i = 0; i < num_clientes; ++i) {
+        if (clientes[i] == sock_conn) {
+            for (int j = i; j < num_clientes - 1; ++j) {
+                clientes[j] = clientes[j + 1];
+            }
+            num_clientes--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&mutex_clientes);
+
+    free(socket_ptr);
     return NULL;
 }
 
@@ -120,7 +133,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in serv_adr;
 
     if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Error creant socket");
+        perror("Error creando socket");
         exit(1);
     }
 
