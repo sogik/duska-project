@@ -101,8 +101,7 @@ void* cliente(void* socket_ptr) {
 
         if (estado == 0) {
             listarConectados(conn, buffer, sizeof(buffer));
-            printf("Buffer conectados: %s\n", buffer);
-            sprintf(respuesta, "%s", buffer);
+            sprintf(respuesta, "%s", "0");
 
             // Enviar a todos los clientes conectados
             enviarATodos(buffer);
