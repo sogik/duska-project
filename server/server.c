@@ -17,13 +17,43 @@ int clientes[MAX_CLIENTES];
 int num_clientes = 0;
 pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
 
+void agregarCliente(int sock_conn) {
+    pthread_mutex_lock(&mutex_clientes);
+    if (num_clientes < MAX_CLIENTES) {
+        clientes[num_clientes++] = sock_conn;
+        printf("Cliente agregado a la lista de clientes. Total clientes: %d\n", num_clientes);
+    } else {
+        printf("No se pueden agregar más clientes. Lista llena.\n");
+    }
+    pthread_mutex_unlock(&mutex_clientes);
+}
+
+void eliminarCliente(int sock_conn) {
+    pthread_mutex_lock(&mutex_clientes);
+    for (int i = 0; i < num_clientes; i++) {
+        if (clientes[i] == sock_conn) {
+            clientes[i] = clientes[num_clientes - 1];
+            clientes[num_clientes - 1] = -1;
+            num_clientes--;
+            printf("Cliente eliminado de la lista. Total clientes: %d\n", num_clientes);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&mutex_clientes);
+}
+
 void enviarATodos(const char* mensaje) {
     pthread_mutex_lock(&mutex_clientes);
     for (int i = 0; i < num_clientes; i++) {
         if (clientes[i] != -1) {
             int r = write(clientes[i], mensaje, strlen(mensaje));
             if (r < 0) {
-                perror("Error enviando a cliente");
+                if (errno == EPIPE) {
+                    perror("Error de pipe roto (Broken pipe), cliente desconectado");
+                    eliminarCliente(clientes[i]);  // Eliminar cliente desconectado
+                } else {
+                    perror("Error enviando a cliente");
+                }
             } else {
                 printf("Mensaje enviado correctamente al cliente %d\n", clientes[i]);
             }
@@ -37,6 +67,9 @@ void* cliente(void* socket_ptr) {
     char peticion[512];
     char respuesta[1024];
     int ret;
+
+    // Agregar cliente a la lista
+    agregarCliente(sock_conn);
 
     // Leer hasta '\n'
     int pos = 0;
@@ -53,8 +86,10 @@ void* cliente(void* socket_ptr) {
         printf("Error MySQL: %s\n", mysql_error(conn));
         strcpy(respuesta, "Error en la base de datos");
         write(sock_conn, respuesta, strlen(respuesta));
+        shutdown(sock_conn, SHUT_RDWR); // Cerramos adecuadamente la conexión
         close(sock_conn);
         free(socket_ptr);
+        eliminarCliente(sock_conn);
         return NULL;
     }
 
@@ -111,14 +146,19 @@ void* cliente(void* socket_ptr) {
     printf("Resultado: %s\n", respuesta);
     int bytes_enviados = write(sock_conn, respuesta, strlen(respuesta));
     if (bytes_enviados < 0) {
-        perror("Error al enviar respuesta al cliente");
+        if (errno == EPIPE) {
+            perror("Error de pipe roto (Broken pipe), cliente desconectado");
+        } else {
+            perror("Error al enviar respuesta al cliente");
+        }
     } else {
         printf("Respuesta enviada al cliente correctamente. Bytes enviados: %d\n", bytes_enviados);
     }
 
-    mysql_close(conn);
+    shutdown(sock_conn, SHUT_RDWR); // Cerramos adecuadamente la conexión
     close(sock_conn);
     free(socket_ptr);
+    eliminarCliente(sock_conn);
 
     return NULL;
 }
