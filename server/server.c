@@ -28,7 +28,7 @@ void enviarATodos(const char* mensaje) {
                 perror("Error enviando a cliente");
                 if (errno == EPIPE) {
                     printf("Cliente %d desconectado.\n", clientes[i]);
-                    // Eliminar el cliente de la lista
+                    // Eliminar el cliente de la lista después de intentar enviar el mensaje
                     clientes[i] = -1;
                     num_clientes--;
                 }
@@ -118,18 +118,18 @@ void* cliente(void* socket_ptr) {
     printf("Resultado: %s\n", respuesta);
     write(sock_conn, respuesta, strlen(respuesta));
 
-    // Eliminar cliente de la lista una vez que se ha procesado la petición
+    // Aquí se elimina el cliente de la lista y se cierra la conexión
     pthread_mutex_lock(&mutex_clientes);
     for (int i = 0; i < num_clientes; i++) {
         if (clientes[i] == sock_conn) {
-            clientes[i] = -1;  // Marca como desconectado
-            num_clientes--;    // Reduce el contador de clientes
+            clientes[i] = -1;
+            num_clientes--;
+            printf("Cliente eliminado de la lista. Total clientes: %d\n", num_clientes);
             break;
         }
     }
     pthread_mutex_unlock(&mutex_clientes);
 
-    printf("Cerrando conexión con el cliente %d\n", sock_conn);
     close(sock_conn);
     free(socket_ptr);
 
@@ -171,17 +171,6 @@ int main(int argc, char *argv[]) {
             continue;
         }
         printf("Nuevo cliente conectado.\n");
-
-        // Añadir cliente a la lista
-        pthread_mutex_lock(&mutex_clientes);
-        if (num_clientes < MAX_CLIENTES) {
-            clientes[num_clientes++] = sock_conn;
-            printf("Cliente agregado a la lista de clientes. Total clientes: %d\n", num_clientes);
-        } else {
-            printf("No hay espacio para más clientes.\n");
-            close(sock_conn);
-        }
-        pthread_mutex_unlock(&mutex_clientes);
 
         int* socket_ptr = malloc(sizeof(int));
         *socket_ptr = sock_conn;
