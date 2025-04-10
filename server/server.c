@@ -23,9 +23,14 @@ pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
 void enviarATodos(const char* mensaje) {
     pthread_mutex_lock(&mutex_clientes);
     printf("Enviando mensaje a todos los clientes: %s\n", mensaje);
+
+    // Crear un buffer con el mensaje y un '\n' al final
+    char mensajeConNuevaLinea[1024];
+    snprintf(mensajeConNuevaLinea, sizeof(mensajeConNuevaLinea), "%s\n", mensaje);
+
     for (int i = 0; i < num_clientes; ) {
         if (clientes[i] != -1) {
-            int r = write(clientes[i], mensaje, strlen(mensaje));
+            int r = write(clientes[i], mensajeConNuevaLinea, strlen(mensajeConNuevaLinea));
             if (r < 0) {
                 perror("Error enviando a cliente");
                 if (errno == EPIPE) {
@@ -66,7 +71,7 @@ void* cliente(void* socket_ptr) {
     MYSQL *conn = mysql_init(NULL);
     if (!mysql_real_connect(conn, "shiva2.upc.es", "root", "mysql", "duska_project", 0, NULL, 0)) {
         printf("Error MySQL: %s\n", mysql_error(conn));
-        strcpy(respuesta, "Error en la base de datos");
+        strcpy(respuesta, "Error en la base de datos\n");
         write(sock_conn, respuesta, strlen(respuesta));
         close(sock_conn);
         free(socket_ptr);
@@ -75,7 +80,7 @@ void* cliente(void* socket_ptr) {
 
     // Parsear la petición
     char *p = strtok(peticion, "/");
-    int codigo = atoi(p ? p : "0");
+    int codigo = atoi(p);
 
     p = strtok(NULL, "/");
     char usuario[50] = "";
@@ -88,23 +93,27 @@ void* cliente(void* socket_ptr) {
     // Manejar las diferentes peticiones
     if (codigo == 0) { // Registrar usuario
         int res = registrarUsuario(conn, usuario, contrasena);
-        sprintf(respuesta, "%d", res);
+        sprintf(respuesta, "%d\n", res);
     } 
     else if (codigo == 1) { // Iniciar sesión
         int res = iniciarSesion(conn, usuario, contrasena);
-        sprintf(respuesta, "%d", res);
+        sprintf(respuesta, "%d\n", res);
     } 
     else if (codigo == 2) { // Listar jugadores
         listarJugadores(conn, respuesta, sizeof(respuesta));
+        strcat(respuesta, "\n");
     } 
     else if (codigo == 3) { // Listar partidas
         listarPartidas(conn, respuesta, sizeof(respuesta));
+        strcat(respuesta, "\n");
     } 
     else if (codigo == 4) { // Listar partidas ganadas
         listarPartidasGanadas(conn, usuario, respuesta, sizeof(respuesta));
+        strcat(respuesta, "\n");
     }
     else if (codigo == 5) { // Listar conectados
         listarConectados(conn, respuesta, sizeof(respuesta));
+        strcat(respuesta, "\n");
     }
     else if (codigo == 6) { // Actualizar estado y enviar lista a todos
         char buffer[1024] = {0};
@@ -118,7 +127,7 @@ void* cliente(void* socket_ptr) {
             // Enviar a todos los clientes conectados
             enviarATodos(buffer);
         } else {
-            strcpy(respuesta, "Error al cambiar estado");
+            strcpy(respuesta, "Error al cambiar estado\n");
         }
     }
 
