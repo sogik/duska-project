@@ -99,7 +99,7 @@ void* cliente(void* socket_ptr) {
             printf("Buffer conectados: %s\n", buffer);
 
             // Enviar a todos los clientes conectados
-            enviarAClientes(buffer);
+            enviarATodos(respuesta);
         } else {
             strcpy(respuesta, "Error al cambiar estado");
         }
