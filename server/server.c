@@ -8,7 +8,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <pthread.h>
-#include <errno.h>  // Se incluye errno.h para manejo de errores
+#include <errno.h>
 
 #include "basedatos.h"
 #include "auth.h"
@@ -21,21 +21,25 @@ pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
 
 void enviarATodos(const char* mensaje) {
     pthread_mutex_lock(&mutex_clientes);
-    for (int i = 0; i < num_clientes; i++) {
+    for (int i = 0; i < num_clientes; ) {
         if (clientes[i] != -1) {
             int r = write(clientes[i], mensaje, strlen(mensaje));
             if (r < 0) {
                 perror("Error enviando a cliente");
                 if (errno == EPIPE) {
                     printf("Cliente %d desconectado.\n", clientes[i]);
-                    // Eliminar el cliente de la lista después de intentar enviar el mensaje
-                    clientes[i] = -1;
+                    // Mover los clientes restantes hacia adelante
+                    for (int j = i; j < num_clientes - 1; j++) {
+                        clientes[j] = clientes[j + 1];
+                    }
                     num_clientes--;
+                    continue; // No incrementar `i` porque ya hemos movido los clientes
                 }
             } else {
                 printf("Mensaje enviado correctamente al cliente %d\n", clientes[i]);
             }
         }
+        i++;
     }
     pthread_mutex_unlock(&mutex_clientes);
 }
@@ -46,7 +50,6 @@ void* cliente(void* socket_ptr) {
     char respuesta[1024];
     int ret;
 
-    // Leer hasta '\n'
     int pos = 0;
     char c;
     while (read(sock_conn, &c, 1) > 0 && c != '\n' && pos < sizeof(peticion) - 1) {
@@ -66,7 +69,6 @@ void* cliente(void* socket_ptr) {
         return NULL;
     }
 
-    // Parseo seguro
     char *p = strtok(peticion, "/");
     int codigo = atoi(p ? p : "0");
 
@@ -108,7 +110,6 @@ void* cliente(void* socket_ptr) {
             strcpy(respuesta, buffer);
             printf("Buffer conectados: %s\n", buffer);
 
-            // Enviar a todos los clientes conectados
             enviarATodos(respuesta);
         } else {
             strcpy(respuesta, "Error al cambiar estado");
@@ -118,11 +119,12 @@ void* cliente(void* socket_ptr) {
     printf("Resultado: %s\n", respuesta);
     write(sock_conn, respuesta, strlen(respuesta));
 
-    // Aquí se elimina el cliente de la lista y se cierra la conexión
     pthread_mutex_lock(&mutex_clientes);
     for (int i = 0; i < num_clientes; i++) {
         if (clientes[i] == sock_conn) {
-            clientes[i] = -1;
+            for (int j = i; j < num_clientes - 1; j++) {
+                clientes[j] = clientes[j + 1];
+            }
             num_clientes--;
             printf("Cliente eliminado de la lista. Total clientes: %d\n", num_clientes);
             break;
@@ -171,6 +173,18 @@ int main(int argc, char *argv[]) {
             continue;
         }
         printf("Nuevo cliente conectado.\n");
+
+        pthread_mutex_lock(&mutex_clientes);
+        if (num_clientes < MAX_CLIENTES) {
+            clientes[num_clientes++] = sock_conn;
+            printf("Cliente añadido a la lista. Total clientes: %d\n", num_clientes);
+        } else {
+            printf("Máximo número de clientes alcanzado. Rechazando conexión.\n");
+            close(sock_conn);
+            pthread_mutex_unlock(&mutex_clientes);
+            continue;
+        }
+        pthread_mutex_unlock(&mutex_clientes);
 
         int* socket_ptr = malloc(sizeof(int));
         *socket_ptr = sock_conn;
