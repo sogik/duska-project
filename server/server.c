@@ -19,8 +19,10 @@ int clientes[MAX_CLIENTES];
 int num_clientes = 0;
 pthread_mutex_t mutex_clientes = PTHREAD_MUTEX_INITIALIZER;
 
+// Función para enviar un mensaje a todos los clientes conectados
 void enviarATodos(const char* mensaje) {
     pthread_mutex_lock(&mutex_clientes);
+    printf("Enviando mensaje a todos los clientes: %s\n", mensaje);
     for (int i = 0; i < num_clientes; ) {
         if (clientes[i] != -1) {
             int r = write(clientes[i], mensaje, strlen(mensaje));
@@ -44,12 +46,14 @@ void enviarATodos(const char* mensaje) {
     pthread_mutex_unlock(&mutex_clientes);
 }
 
+// Función que maneja la conexión de un cliente
 void* cliente(void* socket_ptr) {
     int sock_conn = *((int*)socket_ptr);
     char peticion[512];
     char respuesta[1024];
     int ret;
 
+    // Leer la petición del cliente
     int pos = 0;
     char c;
     while (read(sock_conn, &c, 1) > 0 && c != '\n' && pos < sizeof(peticion) - 1) {
@@ -69,6 +73,7 @@ void* cliente(void* socket_ptr) {
         return NULL;
     }
 
+    // Parsear la petición
     char *p = strtok(peticion, "/");
     int codigo = atoi(p ? p : "0");
 
@@ -80,37 +85,38 @@ void* cliente(void* socket_ptr) {
     char contrasena[72] = "";
     if (p) strcpy(contrasena, p);
 
-    if (codigo == 0) {
+    // Manejar las diferentes peticiones
+    if (codigo == 0) { // Registrar usuario
         int res = registrarUsuario(conn, usuario, contrasena);
         sprintf(respuesta, "%d", res);
     } 
-    else if (codigo == 1) {
+    else if (codigo == 1) { // Iniciar sesión
         int res = iniciarSesion(conn, usuario, contrasena);
         sprintf(respuesta, "%d", res);
     } 
-    else if (codigo == 2) {
+    else if (codigo == 2) { // Listar jugadores
         listarJugadores(conn, respuesta, sizeof(respuesta));
     } 
-    else if (codigo == 3) {
+    else if (codigo == 3) { // Listar partidas
         listarPartidas(conn, respuesta, sizeof(respuesta));
     } 
-    else if (codigo == 4) {
+    else if (codigo == 4) { // Listar partidas ganadas
         listarPartidasGanadas(conn, usuario, respuesta, sizeof(respuesta));
     }
-    else if (codigo == 5) {
+    else if (codigo == 5) { // Listar conectados
         listarConectados(conn, respuesta, sizeof(respuesta));
     }
-    else if (codigo == 6) {
+    else if (codigo == 6) { // Actualizar estado y enviar lista a todos
         char buffer[1024] = {0};
         int estado = actualizarEstado(conn, usuario, atoi(contrasena));
         printf("Estado: %d\n", estado);
 
         if (estado == 0) {
             listarConectados(conn, buffer, sizeof(buffer));
-            strcpy(respuesta, buffer);
             printf("Buffer conectados: %s\n", buffer);
 
-            enviarATodos(respuesta);
+            // Enviar a todos los clientes conectados
+            enviarATodos(buffer);
         } else {
             strcpy(respuesta, "Error al cambiar estado");
         }
@@ -119,6 +125,7 @@ void* cliente(void* socket_ptr) {
     printf("Resultado: %s\n", respuesta);
     write(sock_conn, respuesta, strlen(respuesta));
 
+    // Eliminar el cliente de la lista y cerrar la conexión
     pthread_mutex_lock(&mutex_clientes);
     for (int i = 0; i < num_clientes; i++) {
         if (clientes[i] == sock_conn) {
@@ -138,12 +145,13 @@ void* cliente(void* socket_ptr) {
     return NULL;
 }
 
+// Función principal del servidor
 int main(int argc, char *argv[]) {
     int sock_conn, sock_listen;
     struct sockaddr_in serv_adr;
 
     if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Error creant socket");
+        perror("Error creando socket");
         exit(1);
     }
 
@@ -153,13 +161,13 @@ int main(int argc, char *argv[]) {
     serv_adr.sin_port = htons(50756);
 
     if (bind(sock_listen, (struct sockaddr *) &serv_adr, sizeof(serv_adr)) < 0) {
-        perror("Error al bind");
+        perror("Error en bind");
         close(sock_listen);
         exit(1);
     }
 
     if (listen(sock_listen, 10) < 0) {
-        perror("Error en el listen");
+        perror("Error en listen");
         close(sock_listen);
         exit(1);
     }
@@ -174,6 +182,7 @@ int main(int argc, char *argv[]) {
         }
         printf("Nuevo cliente conectado.\n");
 
+        // Agregar el cliente a la lista
         pthread_mutex_lock(&mutex_clientes);
         if (num_clientes < MAX_CLIENTES) {
             clientes[num_clientes++] = sock_conn;
@@ -186,6 +195,7 @@ int main(int argc, char *argv[]) {
         }
         pthread_mutex_unlock(&mutex_clientes);
 
+        // Crear un hilo para manejar al cliente
         int* socket_ptr = malloc(sizeof(int));
         *socket_ptr = sock_conn;
 
