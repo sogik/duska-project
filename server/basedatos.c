@@ -107,6 +107,7 @@ void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
 
     res = mysql_use_result(conn);
     if (res) {
+        strcat(lista, "LISTU/");
         while ((row = mysql_fetch_row(res))) {
             strcat(lista, row[0]);
             strcat(lista, "/");
