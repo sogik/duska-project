@@ -99,7 +99,7 @@ void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
 
     lista[0] = '\0';
 
-    int err = mysql_query(conn, "SELECT * FROM Jugadores");
+    int err = mysql_query(conn, "SELECT nombre_usuario FROM Jugadores");
     if (err != 0) {
         printf("Error al consultar: %s\n", mysql_error(conn));
         return;
@@ -109,11 +109,7 @@ void listarJugadores(MYSQL *conn, char *lista, int tamano_lista) {
     if (res) {
         while ((row = mysql_fetch_row(res))) {
             strcat(lista, row[0]);
-            strcat(lista, " ");
-            strcat(lista, row[1]);
-            strcat(lista, " ");
-            strcat(lista, row[2]);
-            strcat(lista, "\n");
+            strcat(lista, "/");
         }
     mysql_free_result(res);
     }
