@@ -13,69 +13,105 @@
 #include "auth.h"
 
 // Estructura para mantener los clientes conectados
-typedef struct ClientNode {
+typedef struct ClientNode
+{
     int socket;
     char usuario[50];
-    struct ClientNode* next;
+    struct ClientNode *next;
 } ClientNode;
 
-ClientNode* client_list = NULL;
+ClientNode *client_list = NULL;
 pthread_mutex_t client_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Función para añadir un cliente a la lista
-void add_client(int sock, const char* usuario) {
+void add_client(int sock, const char *usuario)
+{
     pthread_mutex_lock(&client_list_mutex);
-    
-    ClientNode* new_node = (ClientNode*)malloc(sizeof(ClientNode));
+
+    ClientNode *new_node = (ClientNode *)malloc(sizeof(ClientNode));
     new_node->socket = sock;
-    strncpy(new_node->usuario, usuario, sizeof(new_node->usuario)-1);
-    new_node->usuario[sizeof(new_node->usuario)-1] = '\0';
+    strncpy(new_node->usuario, usuario, sizeof(new_node->usuario) - 1);
+    new_node->usuario[sizeof(new_node->usuario) - 1] = '\0';
     new_node->next = client_list;
     client_list = new_node;
-    
+
     pthread_mutex_unlock(&client_list_mutex);
 }
 
 // Función para eliminar un cliente de la lista
-void remove_client(int sock) {
+void remove_client(int sock)
+{
     pthread_mutex_lock(&client_list_mutex);
-    
-    ClientNode** pp = &client_list;
-    while (*pp) {
-        if ((*pp)->socket == sock) {
-            ClientNode* to_free = *pp;
+
+    ClientNode **pp = &client_list;
+    while (*pp)
+    {
+        if ((*pp)->socket == sock)
+        {
+            ClientNode *to_free = *pp;
             *pp = (*pp)->next;
             free(to_free);
             break;
         }
         pp = &(*pp)->next;
     }
-    
+
     pthread_mutex_unlock(&client_list_mutex);
 }
 
 // Función para enviar datos a todos los clientes
-void broadcast_to_all(const char* message) {
+void broadcast_to_all(const char *message)
+{
     pthread_mutex_lock(&client_list_mutex);
-    
-    ClientNode* current = client_list;
-    while (current != NULL) {
-        if (write(current->socket, message, strlen(message)) < 0) {
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (write(current->socket, message, strlen(message)) < 0)
+        {
             perror("Error al enviar broadcast");
             // Si hay error, probablemente el cliente se desconectó
-            ClientNode* to_remove = current;
+            ClientNode *to_remove = current;
             current = current->next;
             remove_client(to_remove->socket);
             continue;
         }
         current = current->next;
     }
-    
+
     pthread_mutex_unlock(&client_list_mutex);
 }
 
-void* cliente(void* socket_ptr) {
-    int sock_conn = *((int*)socket_ptr);
+int send_to_user(const char *destinatario, const char *mensaje)
+{
+    int enviado = 0;
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, destinatario) == 0)
+        {
+            // Asegurarnos que el mensaje tiene un formato estándar y termina con \n
+            char mensaje_formateado[1024] = {0};
+            snprintf(mensaje_formateado, sizeof(mensaje_formateado), "%s\n", mensaje);
+
+            if (write(current->socket, mensaje_formateado, strlen(mensaje_formateado)) >= 0)
+            {
+                enviado = 1;
+            }
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return enviado;
+}
+
+void *cliente(void *socket_ptr)
+{
+    int sock_conn = *((int *)socket_ptr);
     free(socket_ptr); // Liberamos la memoria ahora que tenemos el valor
     char peticion[512];
     char respuesta[1024];
@@ -83,7 +119,8 @@ void* cliente(void* socket_ptr) {
     char usuario[50] = {0}; // Para mantener el nombre de usuario
 
     MYSQL *conn = mysql_init(NULL);
-    if (!mysql_real_connect(conn, "shiva2.upc.es", "root", "mysql", "duska_project", 0, NULL, 0)) {
+    if (!mysql_real_connect(conn, "shiva2.upc.es", "root", "mysql", "duska_project", 0, NULL, 0))
+    {
         printf("Error MySQL: %s\n", mysql_error(conn));
         strcpy(respuesta, "Error en la base de datos");
         write(sock_conn, respuesta, strlen(respuesta));
@@ -91,19 +128,22 @@ void* cliente(void* socket_ptr) {
         return NULL;
     }
 
-    while (1) {
-        ret = read(sock_conn, peticion, sizeof(peticion)-1);
-        if (ret <= 0) {
+    while (1)
+    {
+        ret = read(sock_conn, peticion, sizeof(peticion) - 1);
+        if (ret <= 0)
+        {
             // Cliente desconectado
-            if (strlen(usuario) > 0) {
+            if (strlen(usuario) > 0)
+            {
                 // Actualizar estado como desconectado
                 actualizarEstado(conn, usuario, 0);
-                
+
                 // Enviar lista actualizada a todos
                 char buffer[1024] = {0};
                 listarConectados(conn, buffer, sizeof(buffer));
                 broadcast_to_all(buffer);
-                
+
                 // Eliminar de la lista de clientes
                 remove_client(sock_conn);
             }
@@ -115,60 +155,159 @@ void* cliente(void* socket_ptr) {
         char *p = strtok(peticion, "/");
         int codigo = atoi(p);
         p = strtok(NULL, "/");
-        if (p != NULL) {
-            strncpy(usuario, p, sizeof(usuario)-1);
-            usuario[sizeof(usuario)-1] = '\0';
+        if (p != NULL)
+        {
+            strncpy(usuario, p, sizeof(usuario) - 1);
+            usuario[sizeof(usuario) - 1] = '\0';
         }
         p = strtok(NULL, "/");
         char contrasena[72] = {0};
-        if (p != NULL) {
-            strncpy(contrasena, p, sizeof(contrasena)-1);
-            contrasena[sizeof(contrasena)-1] = '\0';
+        if (p != NULL)
+        {
+            strncpy(contrasena, p, sizeof(contrasena) - 1);
+            contrasena[sizeof(contrasena) - 1] = '\0';
+        }
+        char mensaje[900] = {0};
+        if (p != NULL)
+        {
+            p = strtok(NULL, "/");
+            if (p != NULL)
+            {
+                strncpy(mensaje, p, sizeof(mensaje) - 1);
+                mensaje[sizeof(mensaje) - 1] = '\0';
+            }
+        }
+        else
+        {
+            p = NULL;
+            mensaje[0] = '\0';
         }
 
         memset(respuesta, 0, sizeof(respuesta));
 
-        if (codigo == 0) {
+        if (codigo == 0)
+        {
             int reg_result = registrarUsuario(conn, usuario, contrasena);
             snprintf(respuesta, sizeof(respuesta), "%d", reg_result);
-        } 
-        else if (codigo == 1) {
+        }
+        else if (codigo == 1)
+        {
             int login_result = iniciarSesion(conn, usuario, contrasena);
-            if (login_result == 0) {
+            if (login_result == 0)
+            {
                 add_client(sock_conn, usuario); // Añadir a la lista de clientes
             }
             snprintf(respuesta, sizeof(respuesta), "%d", login_result);
-        } 
-        else if (codigo == 2) {
+        }
+        else if (codigo == 2)
+        {
             listarJugadores(conn, respuesta, sizeof(respuesta));
-        } 
-        else if (codigo == 3) {
+        }
+        else if (codigo == 3)
+        {
             listarPartidas(conn, respuesta, sizeof(respuesta));
-        } 
-        else if (codigo == 4) {
+        }
+        else if (codigo == 4)
+        {
             listarPartidasGanadas(conn, usuario, respuesta, sizeof(respuesta));
         }
-        else if (codigo == 5) {
+        else if (codigo == 5)
+        {
             listarConectados(conn, respuesta, sizeof(respuesta));
         }
-        else if (codigo == 6) {
+        else if (codigo == 6)
+        {
             int estado = atoi(contrasena);
             int update_result = actualizarEstado(conn, usuario, estado);
-            
-            if (update_result == 0) {
+
+            if (update_result == 0)
+            {
                 char buffer[1024] = {0};
                 listarConectados(conn, buffer, sizeof(buffer));
                 strcpy(respuesta, buffer);
-                
+
                 // Enviar la lista actualizada a todos los clientes
                 broadcast_to_all(buffer);
-            } else {
-                strcpy(respuesta, "Error al actualizar estado");
             }
+            else
+            {
+                strcpy(respuesta, "ERROR/Error al actualizar estado");
+            }
+        }
+        else if (codigo == 7)
+        {
+            // Formato esperado: 7/remitente/destinatario/mensaje
+            char destinatario[50] = {0};
+            char mensaje_completo[900] = {0};
+
+            // El destinatario estará en la variable 'contrasena'
+            strncpy(destinatario, contrasena, sizeof(destinatario) - 1);
+
+            if (mensaje != NULL)
+            {
+                strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
+
+                // Formato del mensaje que se enviará: "MSG/remitente/mensaje"
+                char mensaje_final[1024] = {0};
+                snprintf(mensaje_final, sizeof(mensaje_final), "INV/%s", usuario);
+
+                int result = send_to_user(destinatario, mensaje_final);
+
+                if (result == 1)
+                {
+                    strcpy(respuesta, "INV2/Invitacion enviada correctamente");
+                    Debug.WriteLine("Invitación enviada a: ", destinatario);
+                }
+                else
+                {
+                    strcpy(respuesta, "INV2/El usuario no está conectado o hubo un error");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        else if (codigo == 8)
+        {
+            // Formato esperado: 7/remitente/destinatario/mensaje
+            char destinatario[50] = {0};
+            char mensaje_completo[900] = {0};
+
+            // El destinatario estará en la variable 'contrasena'
+            strncpy(destinatario, contrasena, sizeof(destinatario) - 1);
+
+            if (mensaje != NULL)
+            {
+                strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
+
+                // Formato del mensaje que se enviará: "MSG/remitente/mensaje"
+                char mensaje_final[1024] = {0};
+                snprintf(mensaje_final, sizeof(mensaje_final), "INVR/%s/%s", usuario, mensaje_completo);
+
+                int result = send_to_user(destinatario, mensaje_final);
+                if (result == 1)
+                {
+                    printf("Invitacion respondida correctamente");
+                }
+                else
+                {
+                    printf("El usuario no está conectado o hubo un error");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/Comando desconocido");
         }
 
         printf("Resultado: %s\n", respuesta);
-        if (write(sock_conn, respuesta, strlen(respuesta)) < 0) {
+        if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
+        {
             perror("Error al escribir en socket");
             break;
         }
@@ -179,11 +318,13 @@ void* cliente(void* socket_ptr) {
     return NULL;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     int sock_conn, sock_listen;
     struct sockaddr_in serv_adr;
 
-    if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
         perror("Error creant socket");
         exit(1);
     }
@@ -193,13 +334,15 @@ int main(int argc, char *argv[]) {
     serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_adr.sin_port = htons(50756);
 
-    if (bind(sock_listen, (struct sockaddr *) &serv_adr, sizeof(serv_adr)) < 0) {
+    if (bind(sock_listen, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) < 0)
+    {
         perror("Error al bind");
         close(sock_listen);
         exit(1);
     }
 
-    if (listen(sock_listen, 10) < 0) {
+    if (listen(sock_listen, 10) < 0)
+    {
         perror("Error en el listen");
         close(sock_listen);
         exit(1);
@@ -207,23 +350,28 @@ int main(int argc, char *argv[]) {
 
     printf("Servidor escuchando en el puerto 50756...\n");
 
-    while (1) {
+    while (1)
+    {
         sock_conn = accept(sock_listen, NULL, NULL);
-        if (sock_conn < 0) {
+        if (sock_conn < 0)
+        {
             perror("Error en accept");
             continue;
         }
         printf("Nuevo cliente conectado.\n");
 
-        int* socket_ptr = malloc(sizeof(int));
+        int *socket_ptr = malloc(sizeof(int));
         *socket_ptr = sock_conn;
 
         pthread_t hilo;
-        if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0) {
+        if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0)
+        {
             perror("Error al crear hilo");
             close(sock_conn);
             free(socket_ptr);
-        } else {
+        }
+        else
+        {
             pthread_detach(hilo);
         }
     }
