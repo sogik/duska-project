@@ -10,6 +10,7 @@ typedef struct {
     int id_jugador;
     int socket;
     char nombre_usuario[50];
+    bool en_partida;
 } Conexion;
 
 // Variables globales con bloqueo mutex
