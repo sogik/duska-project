@@ -256,7 +256,7 @@ void *cliente(void *socket_ptr)
                 if (result == 1)
                 {
                     strcpy(respuesta, "INV2/Invitacion enviada correctamente");
-                    Debug.WriteLine("Invitación enviada a: ", destinatario);
+                    printf("Invitación enviada a:" + destinatario);
                 }
                 else
                 {
