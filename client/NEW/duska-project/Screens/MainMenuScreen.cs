@@ -466,27 +466,44 @@ namespace Duska.Screens
                 {
                     ConnectToServer(); // Conectar al servidor si no está conectado
                 }
+                // Verificar que no estés intentando enviarte una invitación a ti mismo
+                if (destinatarios == usuario)
+                {
+                    Debug.WriteLine("Error: No puedes enviarte una invitación a ti mismo");
+                    return;
+                }
+
+                // Eliminar saltos de línea y espacios no deseados
+                //destinatarios = destinatarios.Trim();
+                //mensaje = mensaje.Trim();
 
                 if (tipo == 1)
                 {
                     string mensaje2 = "7/" + usuario + "/" + destinatarios + "/" + mensaje;
+                    Debug.WriteLine($"Enviando invitación: {mensaje2}");
                     byte[] msg = Encoding.ASCII.GetBytes(mensaje2);
                     server.Send(msg);
-                    Debug.WriteLine("Invitación respondida enviada desde: " + usuario + " a: " + destinatarios);
+                    Debug.WriteLine($"Invitación enviada desde: {usuario} a: {destinatarios}");
                 }
                 else if (tipo == 2)
                 {
                     string mensaje2 = "8/" + usuario + "/" + destinatarios + "/" + mensaje;
+                    Debug.WriteLine($"Enviando respuesta: {mensaje2}");
                     byte[] msg = Encoding.ASCII.GetBytes(mensaje2);
                     server.Send(msg);
-                    Debug.WriteLine("Invitación respondida enviada desde: " + usuario + " a: " + destinatarios);
+                    Debug.WriteLine($"Respuesta de invitación enviada desde: {usuario} a: {destinatarios}");
                 }
+            }
+            catch (SocketException ex)
+            {
+                Debug.WriteLine("Error de socket al enviar invitación: " + ex.Message);
+                conectado = false;
+                ReconnectToServer(); // Intentar reconectar automáticamente
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("Error al enviar: " + ex.Message);
+                Debug.WriteLine("Error general al enviar invitación: " + ex.Message);
                 conectado = false;
-
             }
         }
 
@@ -516,7 +533,9 @@ namespace Duska.Screens
 
                     string respuesta = "Aceptada";
 
-                    Invitacion(2, mensaje2[0], respuesta); // Enviar invitación al servidor
+                    string remitente = mensaje2[0].Trim();
+
+                    Invitacion(2, remitente, respuesta); // Enviar invitación al servidor
 
                     panel.Visible = false;
                 };
@@ -529,7 +548,10 @@ namespace Duska.Screens
 
                     string respuesta = "Rechazada";
 
-                    Invitacion(2, mensaje2[0], respuesta); // Enviar invitación al servidor
+                    // Asegurarnos que el nombre del remitente no tenga caracteres extraños
+                    string remitente = mensaje2[0].Trim();
+
+                    Invitacion(2, remitente, respuesta); // Enviar respuesta al servidor
 
                     panel.Visible = false;
                 };
@@ -569,7 +591,7 @@ namespace Duska.Screens
             panel.AddChild(new HorizontalLine());
 
             // Crear la lista de amigos
-            SelectList list = new SelectList(new Vector2(0, 280)) { Identifier = "FriendsList" };
+            SelectList list = new SelectList(new Vector2(0, 220)) { Identifier = "FriendsList" };
             panel.AddChild(list);
 
             // Actualizar la lista de amigos
@@ -584,58 +606,29 @@ namespace Duska.Screens
                 }
             }
 
-            // Configurar el evento de clic derecho
-            friendsList.OnRightClick = (Entity entity) =>
-            {
-                Debug.WriteLine("Evento OnRightClick disparado");
-
-                if (friendsList.SelectedIndex >= 0)
-                {
-                    string selectedFriend = friendsList.SelectedValue;
-                    Debug.WriteLine($"Clic derecho en amigo: {selectedFriend}");
-
-                    // Usar la posición actual del mouse
-                    MouseState mouseState = Mouse.GetState();
-                    Vector2 mousePosition = new Vector2(mouseState.X, mouseState.Y);
-
-                    // Posición alternativa fija para pruebas
-                    // Vector2 centerPosition = new Vector2(GraphicsDevice.Viewport.Width / 2, GraphicsDevice.Viewport.Height / 2);
-
-                    FriendContextMenu(selectedFriend, true, mousePosition);
-                }
-            };
-
-            // Puedes mantener este evento también, pero no deberías usarlo para mostrar el menú contextual
-            friendsList.OnValueChange = (Entity entity) =>
+            // Agregar un botón para interactuar con el amigo seleccionado
+            Button interactBtn = new Button("Opciones del amigo", ButtonSkin.Default);
+            interactBtn.OnClick = (Entity btn) =>
             {
                 if (friendsList.SelectedIndex >= 0)
                 {
                     string selectedFriend = friendsList.SelectedValue;
-                    Debug.WriteLine($"Amigo seleccionado: {selectedFriend}");
-                    // Aquí podrías hacer otra cosa al seleccionar, pero no mostrar el menú contextual
-                }
-            };
+                    Debug.WriteLine($"Mostrando opciones para: {selectedFriend}");
 
-            // Añade este botón al panel FriendsListPanel, justo antes del botón "Back"
-            Button showMenuBtn = new Button("Mostrar menú", ButtonSkin.Alternative);
-            showMenuBtn.OnClick = (Entity btn) =>
-            {
-                if (friendsList != null && friendsList.SelectedIndex >= 0)
-                {
-                    string selectedFriend = friendsList.SelectedValue;
-                    // Usar una posición fija en el centro de la pantalla
-                    Vector2 centerPosition = new Vector2(
-                        GraphicsDevice.Viewport.Width / 2,
-                        GraphicsDevice.Viewport.Height / 2
-                    );
-                    FriendContextMenu(selectedFriend, true, centerPosition);
+                    // Calcular posición para el menú contextual
+                    Vector2 menuPosition = new Vector2(
+                        panel.GetActualDestRect().X - 160,  // Posición X a la izquierda del panel de amigos
+                        panel.GetActualDestRect().Y + 150); // Posición Y centrada
+
+                    panel.Visible = false;
+                    ShowFriendOptions(selectedFriend, menuPosition);
                 }
                 else
                 {
-                    Debug.WriteLine("Selecciona un amigo primero");
+                    Debug.WriteLine("Ningún amigo seleccionado");
                 }
             };
-            panel.AddChild(showMenuBtn);
+            panel.AddChild(interactBtn);
 
             // Agregar botón de regreso
             Button backBtn = new Button("Back", ButtonSkin.Default);
@@ -650,52 +643,77 @@ namespace Duska.Screens
             panel.Visible = visible;
         }
 
-        private void FriendContextMenu(string friendName, bool visible, Vector2 position)
+        // Nuevo método para mostrar opciones de amigo
+        private void ShowFriendOptions(string friendName, Vector2 position)
         {
+            Debug.WriteLine($"Intentando mostrar opciones para {friendName} en posición {position}");
+
+            // Verificar que no sea el propio usuario
+            if (friendName == usuario)
+            {
+                Debug.WriteLine("No puedes interactuar contigo mismo");
+                Menu(true); // Volver al menú principal
+                return;
+            }
+
             // Eliminar cualquier menú contextual existente
-            Entity existingMenu = UserInterface.Active.Root.Find("FriendContextMenu");
+            Entity existingMenu = UserInterface.Active.Root.Find("FriendOptionsMenu");
             if (existingMenu != null)
             {
+                Debug.WriteLine("Eliminando menú existente");
                 UserInterface.Active.RemoveEntity(existingMenu);
             }
 
-            // CAMBIO 1: Usar un panel con borde más visible
-            Panel contextMenu = new Panel(new Vector2(150, 80), PanelSkin.Default);
-            contextMenu.Identifier = "FriendContextMenu";
+            // Crear un panel con las opciones y asegurar que sea visible en pantalla
+            Panel optionsPanel = new Panel(new Vector2(200, 150), PanelSkin.Default, Anchor.Center);
+            optionsPanel.Identifier = "FriendOptionsMenu";
 
-            // CAMBIO 2: Aplicar un ajuste adicional para asegurar que el menú sea visible
-            // Obtener el viewport actual
-            int screenWidth = GraphicsDevice.Viewport.Width;
-            int screenHeight = GraphicsDevice.Viewport.Height;
+            // No es necesario establecer Offset cuando usamos Anchor.Center
+            // El panel se centrará automáticamente
 
-            // Limitar la posición para que siempre esté en pantalla
-            position.X = Math.Clamp(position.X, 10, screenWidth - 160);
-            position.Y = Math.Clamp(position.Y, 10, screenHeight - 90);
+            // Asegurar que el panel sea visible
+            optionsPanel.Visible = true;
 
-            contextMenu.Offset = position;
-            contextMenu.Padding = new Vector2(10, 10);
-            contextMenu.Visible = true;  // Asegurarse de que sea visible
-            contextMenu.PriorityBonus = 9999;  // Prioridad muy alta
-
-            // CAMBIO 3: Añadir un encabezado para hacerlo más visible
-            contextMenu.AddChild(new Header(friendName));
-            contextMenu.AddChild(new HorizontalLine());
+            // Título
+            Header header = new Header(friendName);
+            optionsPanel.AddChild(header);
+            optionsPanel.AddChild(new HorizontalLine());
 
             // Botón para invitar al amigo
-            Button inviteBtn = new Button("Invitar", ButtonSkin.Alternative, Anchor.Auto, new Vector2(130, 30));
+            Button inviteBtn = new Button("Invitar a jugar", ButtonSkin.Default);
             inviteBtn.OnClick = (Entity btn) =>
             {
                 destinatario = friendName;
                 Debug.WriteLine($"Enviando invitación a {friendName}...");
-                Invitacion(1, destinatario, "Invitación de juego");
-                UserInterface.Active.RemoveEntity(contextMenu);
-            };
 
-            contextMenu.AddChild(inviteBtn);
+                try
+                {
+                    Invitacion(1, destinatario, "Invitacion de juego");
+                    UserInterface.Active.RemoveEntity(optionsPanel);
+                    Menu(true); // Regresar al menú principal
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error al enviar invitación: {ex.Message}");
+                    UserInterface.Active.RemoveEntity(optionsPanel);
+                    Menu(true); // Regresar al menú principal
+                }
+            };
+            optionsPanel.AddChild(inviteBtn);
+
+            // Botón para cerrar el menú
+            Button closeBtn = new Button("Cerrar", ButtonSkin.Default);
+            closeBtn.OnClick = (Entity btn) =>
+            {
+                Debug.WriteLine("Cerrando menú de opciones");
+                UserInterface.Active.RemoveEntity(optionsPanel);
+                Menu(true); // Regresar al menú principal
+            };
+            optionsPanel.AddChild(closeBtn);
 
             // Añadir al UI
-            UserInterface.Active.AddEntity(contextMenu);
-            Debug.WriteLine($"Menú contextual creado en posición: {position}");
+            UserInterface.Active.AddEntity(optionsPanel);
+            Debug.WriteLine($"Menú de opciones creado en posición centrada");
         }
 
         private int estado(string usuario, string estado)
@@ -983,35 +1001,6 @@ namespace Duska.Screens
 
             if (keyboardState.WasKeyReleased(Keys.Escape))
                 EscMenu(usuario, true);
-
-            // Cerrar el menú contextual si se hace clic fuera de él
-            if (_previousMouseState.HasValue &&
-                mouseState.LeftButton == ButtonState.Released &&
-                _previousMouseState.Value.LeftButton == ButtonState.Pressed)
-            {
-                Entity contextMenu = UserInterface.Active.Root.Find("FriendContextMenu");
-                if (contextMenu != null)
-                {
-                    Panel panel = contextMenu as Panel;
-                    if (panel != null)
-                    {
-                        // Verificar si el clic fue fuera del menú contextual
-                        Rectangle menuBounds = new Rectangle(
-                            (int)panel.GetActualDestRect().X,
-                            (int)panel.GetActualDestRect().Y,
-                            (int)panel.GetActualDestRect().Width,
-                            (int)panel.GetActualDestRect().Height);
-
-                        if (!menuBounds.Contains(mouseState.Position))
-                        {
-                            UserInterface.Active.RemoveEntity(contextMenu);
-                        }
-                    }
-                }
-            }
-
-            // Guardar el estado actual del mouse como el estado anterior
-            _previousMouseState = mouseState;
 
             // Actualizar la interfaz de usuario
             UserInterface.Active.Update(gameTime);

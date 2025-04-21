@@ -127,7 +127,7 @@ namespace GeonBit.UI.Entities
         /// Current font used.
         /// </summary>
         protected SpriteFont _currFont;
-        
+
         /// <summary>
         /// Calculated, final text scale.
         /// </summary>
@@ -145,7 +145,7 @@ namespace GeonBit.UI.Entities
 
         // should we break words too long if in wrap mode?
         private bool _breakWordsIfMust = true;
-        
+
         /// <summary>
         /// If WrapWords is true and there's a word that's too long (eg longer than max width), will break the word in the middle.
         /// If false, word wrap will only break lines in between words (eg spaces) and never break words.
@@ -184,8 +184,9 @@ namespace GeonBit.UI.Entities
         {
             Text = text;
             UpdateStyle(DefaultStyle);
-            if (scale.HasValue) { 
-                SetStyleProperty(StylePropertyIds.Scale, new StyleProperty((float)scale)); 
+            if (scale.HasValue)
+            {
+                SetStyleProperty(StylePropertyIds.Scale, new StyleProperty((float)scale));
             }
             UpdateFontPropertiesIfNeeded();
         }
@@ -203,8 +204,9 @@ namespace GeonBit.UI.Entities
             this(text, anchor, size, offset)
         {
             SetStyleProperty(StylePropertyIds.FillColor, new StyleProperty(color));
-            if (scale.HasValue) { 
-                SetStyleProperty(StylePropertyIds.Scale, new StyleProperty((float)scale)); 
+            if (scale.HasValue)
+            {
+                SetStyleProperty(StylePropertyIds.Scale, new StyleProperty((float)scale));
             }
             UpdateFontPropertiesIfNeeded();
         }
@@ -293,15 +295,19 @@ namespace GeonBit.UI.Entities
 
                 // get current word and its width
                 string word = words[i];
-                int wordWidth = (int)((font.MeasureString(word).X + SingleCharacterSize.X) * fontSize);
+
+                // SOLUCIÓN: Filtrar caracteres no soportados
+                string filteredWord = FilterUnsupportedCharacters(font, word);
+
+                int wordWidth = (int)((font.MeasureString(filteredWord).X + SingleCharacterSize.X) * fontSize);
 
                 // special case: word itself is longer than line width
-                if (BreakWordsIfMust && wordWidth >= maxLineWidth && word.Length >= 4)
+                if (BreakWordsIfMust && wordWidth >= maxLineWidth && filteredWord.Length >= 4)
                 {
                     // find breaking position
                     int breakPos = 0;
                     int currWordWidth = (int)(SingleCharacterSize.X * fontSize);
-                    foreach (char c in word)
+                    foreach (char c in filteredWord)
                     {
                         currWordWidth += (int)(font.MeasureString(c.ToString()).X * fontSize);
                         if (currWordWidth >= maxLineWidth)
@@ -311,13 +317,13 @@ namespace GeonBit.UI.Entities
                         breakPos++;
                     }
                     breakPos -= 3;
-                    if (breakPos >= word.Length - 1) { breakPos -= 2; }
+                    if (breakPos >= filteredWord.Length - 1) { breakPos -= 2; }
                     if (breakPos <= 0) { breakPos = 1; }
 
                     // break the word into two and add to the list of words after this position.
                     // we will process them in next loop iterations.
-                    string firstHalf = word.Substring(0, breakPos);
-                    string secondHalf = word.Substring(breakPos, word.Length - breakPos);
+                    string firstHalf = filteredWord.Substring(0, breakPos);
+                    string secondHalf = filteredWord.Substring(breakPos, filteredWord.Length - breakPos);
                     if (AddHyphenWhenBreakWord) { firstHalf += '-'; }
                     words.Insert(i + 1, firstHalf);
                     words.Insert(i + 2, secondHalf);
@@ -333,14 +339,14 @@ namespace GeonBit.UI.Entities
                 if (currWidth >= maxLineWidth)
                 {
                     ret.Append('\n');
-                    ret.Append(word);
+                    ret.Append(filteredWord);
                     if (!lastWord) ret.Append(' ');
                     currWidth = wordWidth;
                 }
                 // if didn't overflow just add the word as-is
                 else
                 {
-                    ret.Append(word);
+                    ret.Append(filteredWord);
                     if (!lastWord) ret.Append(' ');
                 }
             }
@@ -651,6 +657,33 @@ namespace GeonBit.UI.Entities
                 spriteBatch.DrawString(font, text, position - Vector2.UnitY * outlineWidth, outlineColor,
                     Rotation, origin, scale, SpriteEffects.None, 0.5f);
             }
+        }
+
+        /// <summary>
+        /// Método auxiliar para filtrar caracteres no soportados
+        /// </summary>
+        private string FilterUnsupportedCharacters(SpriteFont font, string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            StringBuilder sb = new StringBuilder(text.Length);
+            foreach (char c in text)
+            {
+                try
+                {
+                    // Intentamos medir el carácter. Si causa excepción, no lo añadimos
+                    font.MeasureString(c.ToString());
+                    sb.Append(c);
+                }
+                catch
+                {
+                    // Carácter no soportado, lo reemplazamos o ignoramos
+                    // Opcionalmente puedes reemplazarlo con un '?' o espacio
+                    sb.Append('?');
+                }
+            }
+            return sb.ToString();
         }
     }
 }
