@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SourceFileCollection xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Profile>Reach</Profile>
+  <Platform>DesktopGL</Platform>
+  <Config />
+  <SourceFiles>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/ballGrey.png</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/bg.png</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/court.png</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/kenney-rocket-square_0.png</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/kenney-rocket-square.fnt</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/paddleBlue.png</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/paddleRed.png</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/pip.wav</File>
+    <File>D:/Proyectos/duska-project/client/NEW/duska-project/Content/title-screen.png</File>
+  </SourceFiles>
+  <DestFiles>
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+    <File xsi:nil="true" />
+  </DestFiles>
+</SourceFileCollection>
