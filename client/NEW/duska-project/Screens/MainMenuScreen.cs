@@ -104,7 +104,21 @@ namespace Duska.Screens
             topPanel.Visible = visible;
 
             Button playBtn = new Button("Play", ButtonSkin.Default, Anchor.Auto, new Vector2(300, topPanelHeight));
-            playBtn.OnClick = (Entity btn) => { topPanel.Visible = false; UserInterface.Active.Clear(); ScreenManager.LoadScreen(new PongGameScreen(Game, usuario), new FadeTransition(GraphicsDevice, Color.Black, 0.5f)); };
+            playBtn.OnClick = (Entity btn) =>
+            {
+                topPanel.Visible = false;
+                UserInterface.Active.Clear();
+
+                Socket socketParaGame = server;
+                server = null; // Evitar que se cierre en finally
+
+                // Cambiar a la pantalla principal
+                GameCardScreen gameCardScreen = new GameCardScreen(Game, usuario);
+                gameCardScreen.SetExistingSocket(socketParaGame);
+
+                UserInterface.Active.Clear();
+                ScreenManager.LoadScreen(gameCardScreen, new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
+            };
             topPanel.AddChild(playBtn);
 
             Button listfriendsBtn = new Button("Friends", ButtonSkin.Default, Anchor.TopRight, new Vector2(300, topPanelHeight));

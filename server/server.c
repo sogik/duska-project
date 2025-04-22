@@ -11,6 +11,7 @@
 #include <errno.h>
 #include "basedatos.h"
 #include "auth.h"
+#include "generarcartas.h"
 
 // Estructura para mantener los clientes conectados
 typedef struct ClientNode
@@ -294,6 +295,26 @@ void *cliente(void *socket_ptr)
                 {
                     printf("El usuario no está conectado o hubo un error");
                 }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        else if (codigo == 9)
+        {
+            char mensaje_completo[900] = {0};
+
+            if (mensaje != NULL)
+            {
+                strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
+
+                // Formato del mensaje que se enviará: "MSG/remitente/mensaje"
+                char mensaje_final[1024] = {0};
+
+                mensaje_final[] = generar_cartas_aleatorias();
+
+                sstrcpy(respuesta, mensaje_final);
             }
             else
             {
