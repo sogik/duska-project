@@ -556,12 +556,12 @@ void *cliente(void *socket_ptr)
             {
                 // Formato del mensaje que se enviará: "GRUPO_MSG/remitente/mensaje"
                 char mensaje_final[1024] = {0};
-                snprintf(mensaje_final, sizeof(mensaje_final), "GRUPO_MSG/%s/%s", usuario, mensaje_grupo);
+                snprintf(mensaje_final, sizeof(mensaje_final), "CHAT/%s/%s", usuario, mensaje_grupo);
                 
                 // Broadcast al grupo
                 broadcast_to_group(grupo_id, mensaje_final);
                 
-                strcpy(respuesta, "GRUPO_MSG/OK");
+                strcpy(respuesta, "MSG/OK");
                 printf("Mensaje de grupo enviado por %s al grupo %d\n", usuario, grupo_id);
             }
             else
