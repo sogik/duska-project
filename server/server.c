@@ -1,4 +1,18 @@
-// Modificación a la estructura ClientNode para incluir ID de grupo
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <mysql.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <errno.h>
+#include "basedatos.h"
+#include "auth.h"
+#include "generarcartas.h"
+
 typedef struct ClientNode
 {
     int socket;
