@@ -13,6 +13,7 @@
 #include "auth.h"
 #include "generarcartas.h"
 
+// Estructura para mantener los clientes conectados
 typedef struct ClientNode
 {
     int socket;
@@ -169,7 +170,7 @@ void broadcast_to_group(int grupo_id, const char *message)
     pthread_mutex_unlock(&client_list_mutex);
 }
 
-// Función para enviar datos a todos los clientes (mantenida para compatibilidad)
+// Función para enviar datos a todos los clientes
 void broadcast_to_all(const char *message)
 {
     pthread_mutex_lock(&client_list_mutex);
@@ -192,7 +193,6 @@ void broadcast_to_all(const char *message)
     pthread_mutex_unlock(&client_list_mutex);
 }
 
-// Modificación del método para enviar a un usuario específico
 int send_to_user(const char *destinatario, const char *mensaje)
 {
     int enviado = 0;
@@ -220,7 +220,7 @@ int send_to_user(const char *destinatario, const char *mensaje)
     return enviado;
 }
 
-// Función adicional para obtener la lista de usuarios en un grupo
+// Función para obtener la lista de usuarios en un grupo
 void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
 {
     if (grupo_id <= 0)
@@ -261,7 +261,6 @@ void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
     }
 }
 
-// Modificación del método cliente para incluir los nuevos comandos de grupo
 void *cliente(void *socket_ptr)
 {
     int sock_conn = *((int *)socket_ptr);
@@ -636,4 +635,66 @@ void *cliente(void *socket_ptr)
     mysql_close(conn);
     close(sock_conn);
     return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    int sock_conn, sock_listen;
+    struct sockaddr_in serv_adr;
+
+    if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        perror("Error creant socket");
+        exit(1);
+    }
+
+    memset(&serv_adr, 0, sizeof(serv_adr));
+    serv_adr.sin_family = AF_INET;
+    serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_adr.sin_port = htons(50756);
+
+    if (bind(sock_listen, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) < 0)
+    {
+        perror("Error al bind");
+        close(sock_listen);
+        exit(1);
+    }
+
+    if (listen(sock_listen, 10) < 0)
+    {
+        perror("Error en el listen");
+        close(sock_listen);
+        exit(1);
+    }
+
+    printf("Servidor escuchando en el puerto 50756...\n");
+
+    while (1)
+    {
+        sock_conn = accept(sock_listen, NULL, NULL);
+        if (sock_conn < 0)
+        {
+            perror("Error en accept");
+            continue;
+        }
+        printf("Nuevo cliente conectado.\n");
+
+        int *socket_ptr = malloc(sizeof(int));
+        *socket_ptr = sock_conn;
+
+        pthread_t hilo;
+        if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0)
+        {
+            perror("Error al crear hilo");
+            close(sock_conn);
+            free(socket_ptr);
+        }
+        else
+        {
+            pthread_detach(hilo);
+        }
+    }
+
+    close(sock_listen);
+    return 0;
 }
