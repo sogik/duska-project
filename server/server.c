@@ -257,7 +257,7 @@ void *cliente(void *socket_ptr)
                 if (result == 1)
                 {
                     strcpy(respuesta, "INV2/Invitacion enviada correctamente");
-                    printf("Invitación enviada a " + destinatario);
+                    printf("Invitación enviada a %s\n", destinatario);
                 }
                 else
                 {
@@ -309,12 +309,43 @@ void *cliente(void *socket_ptr)
             {
                 strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
 
+                char *cartas = generar_cartas_aleatorias();
+
+                snprintf(respuesta, sizeof(respuesta), "%s", cartas);
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        else if (codigo == 10)
+        {
+            // Formato esperado: 7/remitente/destinatario/mensaje
+            char destinatario[50] = {0};
+            char mensaje_completo[900] = {0};
+
+            // El destinatario estará en la variable 'contrasena'
+            strncpy(destinatario, contrasena, sizeof(destinatario) - 1);
+
+            if (mensaje != NULL)
+            {
+                strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
+
                 // Formato del mensaje que se enviará: "MSG/remitente/mensaje"
                 char mensaje_final[1024] = {0};
+                snprintf(mensaje_final, sizeof(mensaje_final), "CHAT/%s", usuario);
 
-                mensaje_final[] = generar_cartas_aleatorias();
+                int result = send_to_user(destinatario, mensaje_final);
 
-                sstrcpy(respuesta, mensaje_final);
+                if (result == 1)
+                {
+                    strcpy(respuesta, "CHAT/Mensaje enviado correctamente");
+                    printf("Mensaje enviado a %s\n", destinatario);
+                }
+                else
+                {
+                    strcpy(respuesta, "CHAT/El usuario no está conectado o hubo un error");
+                }
             }
             else
             {

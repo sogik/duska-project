@@ -14,6 +14,18 @@
 
 #---------------------------------- Content ---------------------------------#
 
+#begin ace.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:ace.png
+
 #begin ballGrey.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -50,6 +62,18 @@
 /processorParam:TextureFormat=Color
 /build:court.png
 
+#begin jack.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:jack.png
+
 #begin kenney-rocket-square_0.png
 /importer:TextureImporter
 /processor:TextureProcessor
@@ -66,6 +90,18 @@
 /importer:BitmapFontImporter
 /processor:BitmapFontProcessor
 /build:kenney-rocket-square.fnt
+
+#begin king.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:king.png
 
 #begin paddleBlue.png
 /importer:TextureImporter
@@ -96,6 +132,18 @@
 /processor:SoundEffectProcessor
 /processorParam:Quality=Best
 /build:pip.wav
+
+#begin queen.png
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyColor=255,0,255,255
+/processorParam:ColorKeyEnabled=True
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/processorParam:TextureFormat=Color
+/build:queen.png
 
 #begin title-screen.png
 /importer:TextureImporter

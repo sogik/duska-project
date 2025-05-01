@@ -64,7 +64,7 @@ namespace Duska.Screens
             // Solo iniciar conexión si no hay socket
             if (server == null || !conectado)
             {
-                int estado = this.estado(usuario, "1");
+                int estado1 = this.estado(usuario, "1");
                 ConnectToServer();
                 StartMessageListener();
             }
@@ -106,18 +106,15 @@ namespace Duska.Screens
             Button playBtn = new Button("Play", ButtonSkin.Default, Anchor.Auto, new Vector2(300, topPanelHeight));
             playBtn.OnClick = (Entity btn) =>
             {
-                topPanel.Visible = false;
-                UserInterface.Active.Clear();
+                // 1) Señalar al listener que pare
+                stopMessageListener = true;
 
-                Socket socketParaGame = server;
-                server = null; // Evitar que se cierre en finally
+                // 2) Crear y cargar GameCardScreen reutilizando el socket vivo
+                var gameScreen = new GameCardScreen(Game, usuario);
+                //var gamescreee2n = new gamecardScreen(Game, usuario);
 
-                // Cambiar a la pantalla principal
-                GameCardScreen gameCardScreen = new GameCardScreen(Game, usuario);
-                gameCardScreen.SetExistingSocket(socketParaGame);
-
-                UserInterface.Active.Clear();
-                ScreenManager.LoadScreen(gameCardScreen, new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
+                gameScreen.SetExistingSocket(server);
+                ScreenManager.LoadScreen(gameScreen, new FadeTransition(GraphicsDevice, Color.Black));
             };
             topPanel.AddChild(playBtn);
 
@@ -848,91 +845,83 @@ namespace Duska.Screens
 
         private void ProcessServerMessage(string message)
         {
-            try
+            // 1) Ignorar mensajes de cartas (los maneja GameCardScreen)
+            if (message.StartsWith("CARDS/")) return;
+
+            if (message.StartsWith("LIST/"))
             {
-                // Verificar si el mensaje no está vacío
-                if (string.IsNullOrEmpty(message))
-                {
-                    Debug.WriteLine("Mensaje vacío recibido del servidor.");
-                    return;
-                }
+                // Mensaje de lista de amigos
+                string friends = message.Substring(5);
+                Debug.WriteLine("Lista de amigos recibida: " + friends);
 
-                Debug.WriteLine($"Mensaje recibido: '{message}'");
+                // Actualizar la lista de amigos
+                FriendsListPanel(true, friends);
 
-                // Analizar el tipo de mensaje
-                if (message.StartsWith("LIST/"))
-                {
-                    // Mensaje de lista de amigos
-                    string friends = message.Substring(5);
-                    Debug.WriteLine("Lista de amigos recibida: " + friends);
-
-                    // Actualizar la lista de amigos
-                    FriendsListPanel(true, friends);
-
-                }
-                else if (message.StartsWith("LISTU/"))
-                {
-                    // Mensaje de lista de usuarios
-                    string usuarios = message.Substring(6);
-                    Debug.WriteLine("Lista de usuarios recibida: " + usuarios);
-
-                    // Actualizar la lista de usuarios
-                    ListaUsuariosPanel(true, usuarios);
-                }
-                else if (message.StartsWith("LISTP/"))
-                {
-                    // Mensaje de lista de partidas
-                    string partidas = message.Substring(6);
-                    Debug.WriteLine("Lista de partidas recibida: " + partidas);
-
-                    // Actualizar la lista de partidas
-                    ListaPartidasPanel(true, partidas);
-                }
-                else if (message.StartsWith("LISTPG/"))
-                {
-                    // Mensaje de lista de partidas ganadas
-                    string partidasGanadas = message.Substring(8);
-                    Debug.WriteLine("Lista de partidas ganadas recibida: " + partidasGanadas);
-
-                    // Actualizar la lista de partidas ganadas
-                    ListaPartidasGanadasPanel(true, partidasGanadas);
-                }
-                else if (message.StartsWith("INV/"))
-                {
-                    string Message = message.Substring(4);
-                    Debug.WriteLine("Mensaje recibido del servidor: " + Message);
-
-                    InvitacionPanel(1, true, Message); // Llamar a la función para enviar la invitación
-                }
-                else if (message.StartsWith("INVR/"))
-                {
-                    string Message = message.Substring(5);
-                    Debug.WriteLine("Mensaje recibido del servidor: " + Message);
-
-                    InvitacionPanel(2, true, Message);
-                }
-                else if (message.StartsWith("INV2/"))
-                {
-                    string Message = message.Substring(5);
-                    Debug.WriteLine("Mensaje recibido del servidor: " + Message);
-
-                    InvitacionPanel(2, true, Message); // Llamar a la función para enviar la invitación
-                }
-                else if (message.StartsWith("ERROR/"))
-                {
-                    // Mensaje de error
-                    string errorMessage = message.Substring(6);
-                    Debug.WriteLine("Error recibido del servidor: " + errorMessage);
-                }
-                else
-                {
-                    // Mensaje desconocido
-                    Debug.WriteLine("Mensaje desconocido recibido: " + message);
-                }
             }
-            catch (Exception ex)
+            else if (message.StartsWith("LISTU/"))
             {
-                Debug.WriteLine("Error al procesar el mensaje del servidor: " + ex.Message);
+                // Mensaje de lista de usuarios
+                string usuarios = message.Substring(6);
+                Debug.WriteLine("Lista de usuarios recibida: " + usuarios);
+
+                // Actualizar la lista de usuarios
+                ListaUsuariosPanel(true, usuarios);
+            }
+            else if (message.StartsWith("LISTP/"))
+            {
+                // Mensaje de lista de partidas
+                string partidas = message.Substring(6);
+                Debug.WriteLine("Lista de partidas recibida: " + partidas);
+
+                // Actualizar la lista de partidas
+                ListaPartidasPanel(true, partidas);
+            }
+            else if (message.StartsWith("LISTPG/"))
+            {
+                // Mensaje de lista de partidas ganadas
+                string partidasGanadas = message.Substring(8);
+                Debug.WriteLine("Lista de partidas ganadas recibida: " + partidasGanadas);
+
+                // Actualizar la lista de partidas ganadas
+                ListaPartidasGanadasPanel(true, partidasGanadas);
+            }
+            else if (message.StartsWith("INV/"))
+            {
+                string Message = message.Substring(4);
+                Debug.WriteLine("Mensaje recibido del servidor: " + Message);
+
+                InvitacionPanel(1, true, Message); // Llamar a la función para enviar la invitación
+            }
+            else if (message.StartsWith("INVR/"))
+            {
+                string Message = message.Substring(5);
+                Debug.WriteLine("Mensaje recibido del servidor: " + Message);
+
+                InvitacionPanel(2, true, Message);
+            }
+            else if (message.StartsWith("INV2/"))
+            {
+                string Message = message.Substring(5);
+                Debug.WriteLine("Mensaje recibido del servidor: " + Message);
+
+                InvitacionPanel(2, true, Message); // Llamar a la función para enviar la invitación
+            }
+            else if (message.StartsWith("FAIL/"))
+            {
+                // Mensaje de error
+                string failMessage = message.Substring(5);
+                Debug.WriteLine("Error recibido del servidor: " + failMessage);
+            }
+            else if (message.StartsWith("ERROR/"))
+            {
+                // Mensaje de error
+                string errorMessage = message.Substring(6);
+                Debug.WriteLine("Error recibido del servidor: " + errorMessage);
+            }
+            else
+            {
+                // Mensaje desconocido
+                Debug.WriteLine("Mensaje desconocido recibido: " + message);
             }
         }
 
