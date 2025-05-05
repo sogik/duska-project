@@ -19,6 +19,7 @@ typedef struct ClientNode
     int socket;
     char usuario[50];
     int grupo_id;           // ID del grupo al que pertenece el cliente, 0 significa sin grupo
+    char lider_grupo[50];  // Nombre del líder del grupo
     struct ClientNode *next;
 } ClientNode;
 
@@ -47,6 +48,7 @@ void add_client(int sock, const char *usuario)
     strncpy(new_node->usuario, usuario, sizeof(new_node->usuario) - 1);
     new_node->usuario[sizeof(new_node->usuario) - 1] = '\0';
     new_node->grupo_id = 0;  // Inicialmente sin grupo
+    new_node->lider_grupo[0] = '\0';  // Sin líder de grupo
     new_node->next = client_list;
     client_list = new_node;
 
@@ -88,7 +90,14 @@ int crear_grupo(const char *usuario1, const char *usuario2)
         if (strcmp(current->usuario, usuario1) == 0 || strcmp(current->usuario, usuario2) == 0)
         {
             current->grupo_id = grupo_id;
+            // Usuario2 será el líder del grupo
+            strcpy(current->lider_grupo, usuario2);
             usuarios_encontrados++;
+        }
+
+        if (usuarios_encontrados == 2)
+        {
+            break; // dos usuarios encontrados
         }
         current = current->next;
     }
@@ -99,7 +108,7 @@ int crear_grupo(const char *usuario1, const char *usuario2)
 }
 
 // Función para añadir un usuario a un grupo existente
-int agregar_a_grupo(const char *usuario, int grupo_id)
+int agregar_a_grupo(const char *usuario1, const char *usuario2, int grupo_id)
 {
     int exito = 0;
     
@@ -108,9 +117,10 @@ int agregar_a_grupo(const char *usuario, int grupo_id)
     ClientNode *current = client_list;
     while (current != NULL)
     {
-        if (strcmp(current->usuario, usuario) == 0)
+        if (strcmp(current->usuario, usuario1) == 0)
         {
             current->grupo_id = grupo_id;
+            strcpy(current->lider_grupo, usuario2);
             exito = 1;
             break;
         }
@@ -231,11 +241,26 @@ void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
     
     pthread_mutex_lock(&client_list_mutex);
     
+    char lider[50] = {0}; // Para almacenar el nombre del líder
     char temp_buffer[1024] = {0};
-    snprintf(temp_buffer, sizeof(temp_buffer), "GRUPO/%d", grupo_id);
+    
+    // Primero encontrar el líder
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            strncpy(lider, current->lider_grupo, sizeof(lider) - 1);
+            break;
+        }
+        current = current->next;
+    }
+    
+    // Ahora construir la respuesta con formato: GRUPO/id_grupo/lider/usuario1/usuario2/...
+    snprintf(temp_buffer, sizeof(temp_buffer), "GRUPO/%d/%s", grupo_id, lider);
     
     int count = 0;
-    ClientNode *current = client_list;
+    current = client_list;
     while (current != NULL)
     {
         if (current->grupo_id == grupo_id)
@@ -453,26 +478,74 @@ void *cliente(void *socket_ptr)
                 // Si la respuesta es "ACEPTADA", crear un grupo
                 if (result == 1 && strcmp(respuesta_inv, "ACEPTADA") == 0)
                 {
-                    int grupo_id = crear_grupo(usuario, destinatario);
-                    if (grupo_id > 0)
+                    pthread_mutex_lock(&client_list_mutex);
+
+                    ClientNode *lider = NULL;
+                    ClientNode *current = client_list;
+                    while (current != NULL)
                     {
-                        // Notificar a ambos usuarios sobre la creación del grupo
+                        if (strcmp(current->usuario, destinatario) == 0)
+                        {
+                            lider = current;
+                            break;  // usuario encontrado
+                        }
+                        current = current->next;
+                    }
+        
+                    if (lider != NULL && lider->grupo_id != 0)
+                    {
+                    // El destinatario ya tiene un grupo, añadir al remitente a ese grupo
+                    int resultado = agregar_a_grupo(usuario, destinatario, lider->grupo_id);
+                    if (resultado > 0)
+                    {
+                        // Notificar a ambos usuarios sobre la unión al grupo
                         char grupo_msg[256];
-                        snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d", grupo_id);
+                        snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d/%s", lider->grupo_id, destinatario);
                         send_to_user(usuario, grupo_msg);
-                        send_to_user(destinatario, grupo_msg);
                         
-                        // Enviar la lista de usuarios en el grupo
+                        // Actualizar lista de usuarios en el grupo
                         char lista_grupo[1024];
-                        listar_usuarios_grupo(grupo_id, lista_grupo, sizeof(lista_grupo));
-                        broadcast_to_group(grupo_id, lista_grupo);
+                        listar_usuarios_grupo(lider->grupo_id, lista_grupo, sizeof(lista_grupo));
+                        broadcast_to_group(lider->grupo_id, lista_grupo);
                         
-                        printf("Grupo %d creado para %s y %s\n", grupo_id, usuario, destinatario);
+                        printf("Usuario %s unido al grupo %d liderado por %s\n", usuario, lider->grupo_id, destinatario);
+                    }
                     }
                     else
                     {
-                        printf("Error al crear grupo para %s y %s\n", usuario, destinatario);
+                        // Crear un nuevo grupo donde destinatario es el líder
+                        int nuevo_grupo_id = get_new_grupo_id();
+                        agregar_a_grupo(usuario, destinatario, nuevo_grupo_id);
+                        agregar_a_grupo(destinatario, destinatario, nuevo_grupo_id);
+                        
+                        // Notificar a ambos usuarios sobre la creación del grupo
+                        char grupo_msg[256];
+                        snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d/%s", nuevo_grupo_id, destinatario);
+                        send_to_user(usuario, grupo_msg);
+                        send_to_user(destinatario, grupo_msg);
+                        
+                        // Actualizar lista de usuarios en el grupo
+                        char lista_grupo[1024];
+                        listar_usuarios_grupo(nuevo_grupo_id, lista_grupo, sizeof(lista_grupo));
+                        broadcast_to_group(nuevo_grupo_id, lista_grupo);
+                        
+                        printf("Grupo %d creado para %s y %s (líder: %s)\n", nuevo_grupo_id, usuario, destinatario, destinatario);
                     }
+
+                    pthread_mutex_unlock(&client_list_mutex);
+
+                    char mensaje_acepto[256];
+                    snprintf(mensaje_acepto, sizeof(mensaje_acepto), "INV2/%s", usuario);
+                    send_to_user(destinatario, mensaje_acepto);
+                    printf("Invitación aceptada por %s\n", destinatario);
+                }
+                else if (result == 1 && strcmp(respuesta_inv, "RECHAZADA") == 0)
+                {
+                    // Notificar al usuario que rechazó la invitación
+                    char mensaje_rechazo[256];
+                    snprintf(mensaje_rechazo, sizeof(mensaje_rechazo), "INV2/%s", usuario);
+                    send_to_user(destinatario, mensaje_rechazo);
+                    printf("Invitación rechazada por %s\n", destinatario);
                 }
                 
                 if (result == 1)
@@ -498,9 +571,29 @@ void *cliente(void *socket_ptr)
             {
                 strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
 
-                char *cartas = generar_cartas_aleatorias();
+                int grupo_id = obtener_grupo_id(usuario);
+            
+                if (grupo_id > 0)
+                {
+                    char mensaje_final[1024] = {0};
+                    
+                    Mazo* mazo = inicializar_mazo();
 
-                snprintf(respuesta, sizeof(respuesta), "%s", cartas);
+                    char *cartas = generar_cartas_aleatorias(mazo, 5);
+
+                    snprintf(mensaje_final, sizeof(mensaje_final), "%s", cartas);
+                    
+                    // Broadcast al grupo
+                    broadcast_to_group(grupo_id, mensaje_final);
+                    
+                    strcpy(respuesta, "MSG/OK");
+                    printf("Cartas enviadas al grupo %d\n", grupo_id);
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/Si no estás en ningún grupo no se puede empezar una partida");
+                }
+
             }
             else
             {
