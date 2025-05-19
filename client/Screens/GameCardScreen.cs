@@ -106,7 +106,7 @@ namespace Duska.Screens
                 _cartasDisponibles.Add(_cartas[3]); // queen
                 Debug.WriteLine($"[INIT] Cartas de muestra añadidas: {_cartasDisponibles.Count}");
 
-                // Conectar al servidor y solicitar cartas
+                // Conectar al servidor y solicitar cartas (solo una vez)
                 if (conectado || ConnectToServerIfNeeded())
                 {
                     GetCards(usuario);
@@ -684,18 +684,16 @@ namespace Duska.Screens
         {
             try
             {
-                // Actualizar tiempo para solicitud periódica de cartas
-                tiempoDesdeUltimaSolicitud += gameTime.ElapsedGameTime;
-
-                // Solicitar cartas periódicamente
-                if (tiempoDesdeUltimaSolicitud >= intervaloSolicitudCartas)
-                {
-                    if (conectado || ConnectToServerIfNeeded())
-                    {
-                        GetCards(usuario);
-                        tiempoDesdeUltimaSolicitud = TimeSpan.Zero;
-                    }
-                }
+                // Eliminar la solicitud periódica de cartas
+                // tiempoDesdeUltimaSolicitud += gameTime.ElapsedGameTime;
+                // if (tiempoDesdeUltimaSolicitud >= intervaloSolicitudCartas)
+                // {
+                //     if (conectado || ConnectToServerIfNeeded())
+                //     {
+                //         GetCards(usuario);
+                //         tiempoDesdeUltimaSolicitud = TimeSpan.Zero;
+                //     }
+                // }
 
                 // Procesar mensajes pendientes primero
                 List<string> mensajesAhora = null;
