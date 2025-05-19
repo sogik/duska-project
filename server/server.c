@@ -578,8 +578,10 @@ void *cliente(void *socket_ptr)
                     char mensaje_final[1024] = {0};
                     
                     Mazo* mazo = inicializar_mazo();
+                    printf("Inicializando mazo del grupo: %d\n", grupo_id);
 
                     char *cartas = generar_cartas_aleatorias(mazo, 5);
+                    printf("Generando cartas para cada usuario del grupo: %d\n", grupo_id);
 
                     snprintf(mensaje_final, sizeof(mensaje_final), "%s", cartas);
                     
