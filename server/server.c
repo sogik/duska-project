@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -19,7 +18,7 @@ typedef struct ClientNode
 {
     int socket;
     char usuario[50];
-    int grupo_id;           // ID del grupo al que pertenece el cliente, 0 significa sin grupo
+    int grupo_id; // ID del grupo al que pertenece el cliente, 0 significa sin grupo
     struct ClientNode *next;
 } ClientNode;
 
@@ -31,7 +30,8 @@ int next_grupo_id = 1;
 pthread_mutex_t grupo_id_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Función para obtener un nuevo ID de grupo
-int get_new_grupo_id() {
+int get_new_grupo_id()
+{
     pthread_mutex_lock(&grupo_id_mutex);
     int id = next_grupo_id++;
     pthread_mutex_unlock(&grupo_id_mutex);
@@ -47,7 +47,7 @@ void add_client(int sock, const char *usuario)
     new_node->socket = sock;
     strncpy(new_node->usuario, usuario, sizeof(new_node->usuario) - 1);
     new_node->usuario[sizeof(new_node->usuario) - 1] = '\0';
-    new_node->grupo_id = 0;  // Inicialmente sin grupo
+    new_node->grupo_id = 0; // Inicialmente sin grupo
     new_node->next = client_list;
     client_list = new_node;
 
@@ -80,9 +80,9 @@ int crear_grupo(const char *usuario1, const char *usuario2)
 {
     int grupo_id = get_new_grupo_id();
     int usuarios_encontrados = 0;
-    
+
     pthread_mutex_lock(&client_list_mutex);
-    
+
     ClientNode *current = client_list;
     while (current != NULL)
     {
@@ -93,9 +93,9 @@ int crear_grupo(const char *usuario1, const char *usuario2)
         }
         current = current->next;
     }
-    
+
     pthread_mutex_unlock(&client_list_mutex);
-    
+
     return (usuarios_encontrados == 2) ? grupo_id : 0;
 }
 
@@ -103,9 +103,9 @@ int crear_grupo(const char *usuario1, const char *usuario2)
 int agregar_a_grupo(const char *usuario, int grupo_id)
 {
     int exito = 0;
-    
+
     pthread_mutex_lock(&client_list_mutex);
-    
+
     ClientNode *current = client_list;
     while (current != NULL)
     {
@@ -117,9 +117,9 @@ int agregar_a_grupo(const char *usuario, int grupo_id)
         }
         current = current->next;
     }
-    
+
     pthread_mutex_unlock(&client_list_mutex);
-    
+
     return exito;
 }
 
@@ -127,9 +127,9 @@ int agregar_a_grupo(const char *usuario, int grupo_id)
 int obtener_grupo_id(const char *usuario)
 {
     int grupo_id = 0;
-    
+
     pthread_mutex_lock(&client_list_mutex);
-    
+
     ClientNode *current = client_list;
     while (current != NULL)
     {
@@ -140,17 +140,18 @@ int obtener_grupo_id(const char *usuario)
         }
         current = current->next;
     }
-    
+
     pthread_mutex_unlock(&client_list_mutex);
-    
+
     return grupo_id;
 }
 
 // Función para enviar datos a todos los clientes de un grupo específico
 void broadcast_to_group(int grupo_id, const char *message)
 {
-    if (grupo_id <= 0) return;  // Grupo inválido
-    
+    if (grupo_id <= 0)
+        return; // Grupo inválido
+
     pthread_mutex_lock(&client_list_mutex);
 
     ClientNode *current = client_list;
@@ -229,12 +230,12 @@ void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
         snprintf(buffer, buffer_size, "ERROR/Grupo inválido");
         return;
     }
-    
+
     pthread_mutex_lock(&client_list_mutex);
-    
+
     char temp_buffer[1024] = {0};
     snprintf(temp_buffer, sizeof(temp_buffer), "GRUPO/%d", grupo_id);
-    
+
     int count = 0;
     ClientNode *current = client_list;
     while (current != NULL)
@@ -248,9 +249,9 @@ void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
         }
         current = current->next;
     }
-    
+
     pthread_mutex_unlock(&client_list_mutex);
-    
+
     if (count > 0)
     {
         strncpy(buffer, temp_buffer, buffer_size - 1);
@@ -291,15 +292,15 @@ void *cliente(void *socket_ptr)
             {
                 // Obtener el grupo del usuario antes de eliminarlo
                 int grupo_id = obtener_grupo_id(usuario);
-                
+
                 // Actualizar estado como desconectado
                 actualizarEstado(conn, usuario, 0);
-                
+
                 // Enviar lista actualizada a todos
                 char buffer[1024] = {0};
                 listarConectados(conn, buffer, sizeof(buffer));
                 broadcast_to_all(buffer);
-                
+
                 // Si estaba en un grupo, notificar a los demás miembros
                 if (grupo_id > 0)
                 {
@@ -307,7 +308,7 @@ void *cliente(void *socket_ptr)
                     snprintf(notify_message, sizeof(notify_message), "GRUPO_SALIDA/%s", usuario);
                     broadcast_to_group(grupo_id, notify_message);
                 }
-                
+
                 // Eliminar de la lista de clientes
                 remove_client(sock_conn);
             }
@@ -450,7 +451,7 @@ void *cliente(void *socket_ptr)
                 snprintf(mensaje_final, sizeof(mensaje_final), "INVR/%s/%s", usuario, respuesta_inv);
 
                 int result = send_to_user(destinatario, mensaje_final);
-                
+
                 // Si la respuesta es "ACEPTADA", crear un grupo
                 if (result == 1 && strcmp(respuesta_inv, "ACEPTADA") == 0)
                 {
@@ -462,12 +463,12 @@ void *cliente(void *socket_ptr)
                         snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d", grupo_id);
                         send_to_user(usuario, grupo_msg);
                         send_to_user(destinatario, grupo_msg);
-                        
+
                         // Enviar la lista de usuarios en el grupo
                         char lista_grupo[1024];
                         listar_usuarios_grupo(grupo_id, lista_grupo, sizeof(lista_grupo));
                         broadcast_to_group(grupo_id, lista_grupo);
-                        
+
                         printf("Grupo %d creado para %s y %s\n", grupo_id, usuario, destinatario);
                     }
                     else
@@ -475,7 +476,7 @@ void *cliente(void *socket_ptr)
                         printf("Error al crear grupo para %s y %s\n", usuario, destinatario);
                     }
                 }
-                
+
                 if (result == 1)
                 {
                     strcpy(respuesta, "INVR2/Respuesta enviada correctamente");
@@ -549,19 +550,19 @@ void *cliente(void *socket_ptr)
             // Usamos el campo contrasena para indicar el mensaje
             char mensaje_grupo[900] = {0};
             strncpy(mensaje_grupo, contrasena, sizeof(mensaje_grupo) - 1);
-            
+
             // Obtener el grupo del usuario
             int grupo_id = obtener_grupo_id(usuario);
-            
+
             if (grupo_id > 0)
             {
                 // Formato del mensaje que se enviará: "GRUPO_MSG/remitente/mensaje"
                 char mensaje_final[1024] = {0};
                 snprintf(mensaje_final, sizeof(mensaje_final), "CHAT/%s/%s", usuario, mensaje_grupo);
-                
+
                 // Broadcast al grupo
                 broadcast_to_group(grupo_id, mensaje_final);
-                
+
                 strcpy(respuesta, "MSG/OK");
                 printf("Mensaje de grupo enviado por %s al grupo %d\n", usuario, grupo_id);
             }
@@ -575,7 +576,7 @@ void *cliente(void *socket_ptr)
         {
             // Obtener el grupo del usuario
             int grupo_id = obtener_grupo_id(usuario);
-            
+
             if (grupo_id > 0)
             {
                 listar_usuarios_grupo(grupo_id, respuesta, sizeof(respuesta));
@@ -590,14 +591,14 @@ void *cliente(void *socket_ptr)
         {
             // Obtener el grupo del usuario
             int grupo_id = obtener_grupo_id(usuario);
-            
+
             if (grupo_id > 0)
             {
                 // Notificar a los demás miembros del grupo
                 char mensaje_salida[256];
                 snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
                 broadcast_to_group(grupo_id, mensaje_salida);
-                
+
                 // Eliminar al usuario del grupo
                 pthread_mutex_lock(&client_list_mutex);
                 ClientNode *current = client_list;
@@ -611,7 +612,7 @@ void *cliente(void *socket_ptr)
                     current = current->next;
                 }
                 pthread_mutex_unlock(&client_list_mutex);
-                
+
                 strcpy(respuesta, "GRUPO_SALIDA/OK");
                 printf("Usuario %s salió del grupo %d\n", usuario, grupo_id);
             }
