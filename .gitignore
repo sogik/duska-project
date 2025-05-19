@@ -1,0 +1,13 @@
+# Archivos y carpetas de configuración de Visual Studio
+.vscode/
+.vs/
+*.user
+*.suo
+
+# Binarios y resultados de compilación
+**/bin/
+**/obj/
+
+# Archivos temporales del sistema operativo
+*.log
+*.tmp
