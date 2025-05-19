@@ -254,7 +254,7 @@ namespace Duska.Screens
             panel.AddChild(ExitBtn);
         }
 
-        // En el método ProcessServerMessage, solo añade los mensajes a la cola
+        // Reemplaza el método ProcessServerMessage por este código:
         private void ProcessServerMessage(string message)
         {
             try
@@ -263,30 +263,14 @@ namespace Duska.Screens
 
                 if (message.StartsWith("CARDS/"))
                 {
-                    string[] partes = message.Split('/');
-                    if (partes.Length >= 5)
+                    // En lugar de procesar las cartas directamente,
+                    // añadamos el mensaje a la cola pendiente para que
+                    // sea procesado en el hilo principal (Update)
+                    lock (mensajesLock)
                     {
-                        // Crear una lista nueva para las cartas del servidor
-                        List<Texture2D> nuevasCartas = new List<Texture2D>();
-
-                        // Procesar cada tipo de carta
-                        for (int i = 0; i < 4; i++)
-                        {
-                            if (int.TryParse(partes[i + 1], out int cantidad))
-                            {
-                                for (int j = 0; j < cantidad; j++)
-                                {
-                                    nuevasCartas.Add(_cartas[i]);
-                                }
-                            }
-                        }
-
-                        // Actualizar la lista principal si hay cartas del servidor
-                        if (nuevasCartas.Count > 0)
-                        {
-                            _cartasDisponibles = nuevasCartas;
-                            Debug.WriteLine($"[SERVER] Cartas actualizadas: {_cartasDisponibles.Count}");
-                        }
+                        mensajesPendientes.Add(message);
+                        hayNuevosMensajes = true;
+                        Debug.WriteLine($"[SERVER] Mensaje de cartas añadido a la cola: {message}");
                     }
                 }
                 else if (message.StartsWith("CHAT/"))
@@ -518,6 +502,35 @@ namespace Duska.Screens
                 };
                 botonesPanel.AddChild(enviarBtn);
 
+                // Botón para solicitar nuevas cartas
+                Button cartasBtn = new Button("Pedir Cartas", ButtonSkin.Default);
+                cartasBtn.Size = new Vector2(150, 35);
+                cartasBtn.OnClick = (Entity btn) =>
+                {
+                    try
+                    {
+                        if (conectado || ConnectToServerIfNeeded())
+                        {
+                            GetCards(usuario);
+                            historialChat.Add("Sistema/Solicitando nuevas cartas...");
+                            ChatPanel(true, null);
+                            Debug.WriteLine("[CARTAS] Solicitud manual de cartas enviada");
+                        }
+                        else
+                        {
+                            historialChat.Add("Sistema/ERROR: No hay conexión al servidor");
+                            ChatPanel(true, null);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] Error al solicitar cartas: {ex.Message}");
+                        historialChat.Add("Sistema/ERROR: " + ex.Message);
+                        ChatPanel(true, null);
+                    }
+                };
+                botonesPanel.AddChild(cartasBtn);
+
                 Debug.WriteLine("[CHAT] Panel de chat inicializado con " + historialChat.Count + " mensajes");
             }
             catch (Exception ex)
@@ -704,6 +717,7 @@ namespace Duska.Screens
                         mensajesAhora = new List<string>(mensajesPendientes);
                         mensajesPendientes.Clear();
                         hayNuevosMensajes = false;
+                        Debug.WriteLine($"[UPDATE] Procesando {mensajesAhora.Count} mensajes pendientes");
                     }
                 }
 
@@ -715,6 +729,8 @@ namespace Duska.Screens
                         if (msg.StartsWith("CARDS/"))
                         {
                             ProcesarCartasDelServidor(msg);
+                            // Forzar la actualización de la UI después de procesar las cartas
+                            _mostrarTodas = true;
                         }
                     }
                 }
