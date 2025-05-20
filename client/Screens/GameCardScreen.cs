@@ -20,28 +20,23 @@ namespace Duska.Screens
 {
     public class GameCardScreen : GameScreen
     {
-        private Texture2D[] _cartas = new Texture2D[4];
+        private Texture2D[] _cartas = new Texture2D[5];
         private Texture2D _cartaSeleccionada;
         private bool _mostrarTodas = true;
         private Random _random = new Random();
         private SpriteBatch _spriteBatch;
-        private BitmapFont _fuente;
         private MonoGame.Extended.Input.KeyboardStateExtended _estadoTecladoAnterior;
         private List<Texture2D> _cartasDisponibles = new List<Texture2D>();
-        private Texture2D _background;
         private BuiltinThemes _currTheme;
         private Socket server;
-        private Thread atender;
+        private Thread messageListenerThread;
         private bool isReconnecting = false;
         private volatile bool stopMessageListener = false;
         private bool conectado = false;
-        private Thread messageListenerThread;
 
         public string usuario;
 
         private RichParagraph panelmensajes = new RichParagraph(@"");
-        private string mensajeCartasPendiente = null;
-        private object mensajeLock = new object();
 
         // Añade estas variables para manejar mensajes pendientes
         private List<string> mensajesPendientes = new List<string>();
@@ -51,17 +46,24 @@ namespace Duska.Screens
         // Variable para controlar la frecuencia de los mensajes de depuración
         private int _drawCounter = 0;
 
-        private TimeSpan tiempoDesdeUltimaSolicitud = TimeSpan.Zero;
-        private TimeSpan intervaloSolicitudCartas = TimeSpan.FromSeconds(30); // 30 segundos
-
         // Añade esta variable de clase para mantener el historial de mensajes
         private List<string> historialChat = new List<string>();
+
+        // Añade estas variables a la clase GameCardScreen
+        private bool _cartasAcercadas = false;
+        private float _escalaCartasNormal = 0.6f;  // Escala reducida para las cartas normales
+        private float _escalaCartasAcercadas = 1.0f;  // Escala completa para cuando se acercan
+        private Vector2 _posicionCartasNormal;  // Se calculará en LoadContent
+        private Vector2 _posicionCartasAcercadas;  // Se calculará en LoadContent
+        private int _cartaSeleccionadaIndex = -1;  // Índice de la carta seleccionada con las flechas
+        private List<bool> _cartasConFiltro = new List<bool>(); // Estado del filtro por carta
+        private Color _colorFiltro = new Color(0, 0, 0, 128); // Color de filtro semitransparente (puedes ajustar los valores)
 
         public GameCardScreen(Game game, string usuario) : base(game)
         {
             this.usuario = usuario;
             _cartasDisponibles = new List<Texture2D>();
-            _cartas = new Texture2D[4];
+            _cartas = new Texture2D[5];
             _random = new Random();
             _mostrarTodas = true;
         }
@@ -78,7 +80,7 @@ namespace Duska.Screens
                 _spriteBatch = new SpriteBatch(GraphicsDevice);
 
                 // Cargar texturas de cartas
-                string[] cartasNombres = new string[] { "ace", "jack", "king", "queen" };
+                string[] cartasNombres = new string[] { "ace", "jack", "king", "queen", "cardback" };
                 for (int i = 0; i < cartasNombres.Length; i++)
                 {
                     try
@@ -96,20 +98,21 @@ namespace Duska.Screens
                             data[p] = Color.White;
                         _cartas[i].SetData(data);
                     }
+                    // Añade esta línea después de cargar cada textura para verificar si es nula
+                    Debug.WriteLine($"Carta {cartasNombres[i]} estado: {(_cartas[i] != null ? "OK" : "NULA")}");
                 }
 
                 // Inicializar con cartas de muestra
                 _cartasDisponibles.Clear();
-                _cartasDisponibles.Add(_cartas[0]); // ace
-                _cartasDisponibles.Add(_cartas[1]); // jack
-                _cartasDisponibles.Add(_cartas[2]); // king
-                _cartasDisponibles.Add(_cartas[3]); // queen
+                _cartasDisponibles.Add(_cartas[4]);
+                _cartasDisponibles.Add(_cartas[4]);
+                _cartasDisponibles.Add(_cartas[4]);
+                _cartasDisponibles.Add(_cartas[4]);
                 Debug.WriteLine($"[INIT] Cartas de muestra añadidas: {_cartasDisponibles.Count}");
 
                 // Conectar al servidor y solicitar cartas (solo una vez)
                 if (conectado || ConnectToServerIfNeeded())
                 {
-                    GetCards(usuario);
                     StartMessageListener();
                     ChatPanel(true, "Bienvenido al juego, " + usuario);
                 }
@@ -118,6 +121,16 @@ namespace Duska.Screens
             {
                 Debug.WriteLine($"Error general en LoadContent: {ex.Message}");
             }
+
+            _posicionCartasNormal = new Vector2(
+                GraphicsDevice.Viewport.Width / 2 - (_cartasDisponibles.Count * 60),
+                GraphicsDevice.Viewport.Height - 150);
+
+            _posicionCartasAcercadas = new Vector2(
+                GraphicsDevice.Viewport.Width / 2 - (_cartasDisponibles.Count * 90),
+                GraphicsDevice.Viewport.Height / 2 - 112);
+
+            Debug.WriteLine($"[INIT] Posición normal cartas: {_posicionCartasNormal}, Posición acercada: {_posicionCartasAcercadas}");
         }
 
         // Método auxiliar para verificar y establecer conexión
@@ -257,20 +270,34 @@ namespace Duska.Screens
         // Reemplaza el método ProcessServerMessage por este código:
         private void ProcessServerMessage(string message)
         {
+            if (string.IsNullOrEmpty(message))
+                return;
+
             try
             {
                 Debug.WriteLine($"[SERVER] Procesando mensaje: {message}");
 
                 if (message.StartsWith("CARDS/"))
                 {
-                    // En lugar de procesar las cartas directamente,
-                    // añadamos el mensaje a la cola pendiente para que
-                    // sea procesado en el hilo principal (Update)
-                    lock (mensajesLock)
+                    Debug.WriteLine($"[SERVER] *** MENSAJE DE CARTAS RECIBIDO *** : {message}");
+
+                    // Solo procesa o encola, pero no ambos
+                    if (System.Threading.Thread.CurrentThread.IsBackground)
                     {
-                        mensajesPendientes.Add(message);
-                        hayNuevosMensajes = true;
-                        Debug.WriteLine($"[SERVER] Mensaje de cartas añadido a la cola: {message}");
+                        // Si estamos en un hilo background, encola para procesamiento en hilo principal
+                        lock (mensajesLock)
+                        {
+                            mensajesPendientes.Add(message);
+                            hayNuevosMensajes = true;
+                            Debug.WriteLine("[SERVER] Mensaje añadido a la cola para procesamiento");
+                        }
+                    }
+                    else
+                    {
+                        // Si estamos en el hilo principal, procesa directamente
+                        ProcesarCartasDelServidor(message);
+                        // Forzar actualización inmediata
+                        _mostrarTodas = true;
                     }
                 }
                 else if (message.StartsWith("CHAT/"))
@@ -279,7 +306,21 @@ namespace Duska.Screens
                     string chatMessage = message.Substring(5);
                     Debug.WriteLine("Mensaje de chat recibido: " + chatMessage);
 
-                    ChatPanel(true, chatMessage);
+                    // Usar Invoke para actualizar UI desde cualquier hilo
+                    if (System.Threading.Thread.CurrentThread.IsBackground)
+                    {
+                        // Llamada segura a método de UI
+                        // En MonoGame normalmente necesitarías una forma de ejecutar esto en el hilo principal
+                        lock (mensajesLock)
+                        {
+                            mensajesPendientes.Add(message);
+                            hayNuevosMensajes = true;
+                        }
+                    }
+                    else
+                    {
+                        ChatPanel(true, chatMessage);
+                    }
                 }
             }
             catch (Exception ex)
@@ -288,9 +329,10 @@ namespace Duska.Screens
             }
         }
 
+        // En LoadContent o cuando se reciben nuevas cartas:
         private void ProcesarCartasDelServidor(string cartasString)
         {
-            Debug.WriteLine($"[CARTAS] Procesando: {cartasString}");
+            Debug.WriteLine($"[CARTAS] *** PROCESANDO CARTAS ***: {cartasString}");
 
             try
             {
@@ -303,47 +345,144 @@ namespace Duska.Screens
                     return;
                 }
 
-                // IMPORTANTE: Crear una nueva lista temporal
+                // Crear una nueva lista temporal
                 List<Texture2D> cartasTemp = new List<Texture2D>();
 
-                // Procesar cada tipo de carta
-                for (int i = 0; i < 4; i++)
+                // Procesar cada tipo de carta con más depuración
+                int totalCartas = 0;
+                for (int i = 0; i < 4; i++) // 4 tipos de cartas: as, jack, king, queen
                 {
                     if (int.TryParse(partes[i + 1], out int cantidad))
                     {
-                        Debug.WriteLine($"[CARTAS] Tipo {i}: {cantidad} cartas");
-
-                        for (int j = 0; j < cantidad; j++)
+                        // Verificar índice dentro de rango
+                        if (i < _cartas.Length)
                         {
-                            if (_cartas[i] != null)
+                            Debug.WriteLine($"[CARTAS] Tipo {i} ({GetNombreCarta(i)}): {cantidad} cartas");
+
+                            // Verificar textura no nula
+                            if (_cartas[i] == null)
+                            {
+                                Debug.WriteLine($"[CARTAS] ¡ERROR! La textura para {GetNombreCarta(i)} es nula");
+                                continue;
+                            }
+
+                            for (int j = 0; j < cantidad; j++)
                             {
                                 cartasTemp.Add(_cartas[i]);
-                                Debug.WriteLine($"[CARTAS] Añadida carta tipo {i} (total: {cartasTemp.Count})");
+                                totalCartas++;
+                                Debug.WriteLine($"[CARTAS] Añadida carta {GetNombreCarta(i)} #{j + 1}");
                             }
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[CARTAS] ¡ERROR! Índice {i} fuera de rango para _cartas[]");
                         }
                     }
                 }
 
-                // Si llegamos hasta aquí, actualizar la lista real
-                _cartasDisponibles = cartasTemp;
-                Debug.WriteLine($"[CARTAS] Proceso completo. Total cartas: {_cartasDisponibles.Count}");
+                // Validar que tenemos cartas para mostrar y añadir las 4 cartas si no hay
+                if (totalCartas == 0)
+                {
+                    Debug.WriteLine("[CARTAS] ¡ADVERTENCIA! No se añadieron cartas. Usando respaldo.");
+                    for (int i = 0; i < 4; i++)
+                    {
+                        if (_cartas[4] != null)
+                        {
+                            cartasTemp.Add(_cartas[4]);
+                            Debug.WriteLine($"[CARTAS] Añadida carta de respaldo #{i + 1}");
+                        }
+                        else
+                        {
+                            Debug.WriteLine("[CARTAS] ¡ERROR! La carta de respaldo es nula");
+                        }
+                    }
+                }
+
+                // Mostrar detalles de las cartas antes de actualizar
+                Debug.WriteLine($"[CARTAS] Cartas a añadir: {cartasTemp.Count}");
+                for (int i = 0; i < cartasTemp.Count; i++)
+                {
+                    string nombreCarta = GetNombreCartaPorTextura(cartasTemp[i]);
+                    Debug.WriteLine($"[CARTAS] Carta {i}: {nombreCarta}");
+                }
+
+                // Actualizar la lista real de forma segura
+                _cartasDisponibles = new List<Texture2D>(cartasTemp);
+
+                // Asegurarse de actualizar los filtros
+                _cartasConFiltro = new List<bool>(_cartasDisponibles.Count);
+                for (int i = 0; i < _cartasDisponibles.Count; i++)
+                    _cartasConFiltro.Add(false);
+
+                Debug.WriteLine($"[CARTAS] *** ACTUALIZACIÓN COMPLETA ***. Total cartas: {_cartasDisponibles.Count}");
+
+                // Actualizar posiciones
+                ActualizarPosicionesCartas();
+
+                // Forzar redibujado
+                _mostrarTodas = true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[CARTAS] Error: {ex.Message}");
+                Debug.WriteLine($"[CARTAS] Error crítico: {ex.Message}\n{ex.StackTrace}");
             }
+        }
+
+        // Añade este método para obtener el nombre de una carta por su índice
+        private string GetNombreCarta(int i)
+        {
+            switch (i)
+            {
+                case 0: return "ace";
+                case 1: return "jack";
+                case 2: return "king";
+                case 3: return "queen";
+                case 4: return "cardback";
+                default: return "desconocida";
+            }
+        }
+
+        // Añade este método para obtener el nombre de una carta por su textura
+        private string GetNombreCartaPorTextura(Texture2D textura)
+        {
+            if (textura == _cartas[0]) return "ace";
+            if (textura == _cartas[1]) return "jack";
+            if (textura == _cartas[2]) return "king";
+            if (textura == _cartas[3]) return "queen";
+            if (textura == _cartas[4]) return "cardback";
+            return "desconocida";
+        }
+
+        // Añade este método para actualizar las posiciones cuando cambia el número de cartas
+        private void ActualizarPosicionesCartas()
+        {
+            _posicionCartasNormal = new Vector2(
+                GraphicsDevice.Viewport.Width / 2 - (_cartasDisponibles.Count * 60),
+                GraphicsDevice.Viewport.Height - 150);
+
+            _posicionCartasAcercadas = new Vector2(
+                GraphicsDevice.Viewport.Width / 2 - (_cartasDisponibles.Count * 90),
+                GraphicsDevice.Viewport.Height / 2 - 112);
+
+            Debug.WriteLine($"[CARTAS] Posiciones actualizadas - Normal: {_posicionCartasNormal}, Acercada: {_posicionCartasAcercadas}");
         }
 
         private void GetCards(string usuario)
         {
             try
             {
-                ConnectToServer();
+                // Verificar si el hilo de escucha está activo
+                if (messageListenerThread == null || !messageListenerThread.IsAlive)
+                {
+                    Debug.WriteLine("[CARTAS] Reiniciando hilo de escucha...");
+                    StartMessageListener();
+                }
+
+                // Enviar solicitud
                 string mensaje = "9/" + usuario + "/";
                 byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                 server.Send(msg);
-                Debug.WriteLine("[SERVER] Solicitud de cartas enviada: " + mensaje);
-                return;
+                Debug.WriteLine("[CARTAS] Solicitud enviada: " + mensaje);
             }
             catch (Exception ex)
             {
@@ -541,23 +680,24 @@ namespace Duska.Screens
 
         private void ConnectToServer()
         {
-            if (server == null || !server.Connected)
+            if (server != null && server.Connected)
+                return;
+
+            try
             {
-                try
-                {
-                    IPAddress direc = IPAddress.Parse("84.235.233.248");
-                    IPEndPoint ipep = new IPEndPoint(direc, 50756);
-                    server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                    server.Connect(ipep);
-                    conectado = true;
-                    Debug.WriteLine("Conexión al servidor establecida.");
-                }
-                catch (SocketException ex)
-                {
-                    Debug.WriteLine("Error al conectar al servidor: " + ex.Message);
-                    conectado = false;
-                    throw new Exception("No se pudo conectar al servidor.");
-                }
+                IPAddress direc = IPAddress.Parse("84.235.233.248");
+                IPEndPoint ipep = new IPEndPoint(direc, 50756);
+                server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                server.Connect(ipep);
+                conectado = true;
+                Debug.WriteLine("Conexión al servidor establecida.");
+            }
+            catch (Exception ex) // Capturar cualquier excepción, no solo SocketException
+            {
+                Debug.WriteLine("Error al conectar al servidor: " + ex.Message);
+                conectado = false;
+                server = null; // Asegurarse de que server sea null si hay error
+                throw new Exception("No se pudo conectar al servidor.");
             }
         }
 
@@ -566,14 +706,29 @@ namespace Duska.Screens
             try
             {
                 Debug.WriteLine("Desconectando del servidor...");
-                if (server != null && server.Connected)
+                stopMessageListener = true; // Detener el hilo primero
+
+                if (server != null)
                 {
-                    int estado = this.estado(usuario, "0");
-                    server.Shutdown(SocketShutdown.Send);
-                    server.Close();
+                    if (server.Connected)
+                    {
+                        try
+                        {
+                            int estado = this.estado(usuario, "0");
+                            server.Shutdown(SocketShutdown.Send);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Error al cerrar socket: {ex.Message}");
+                        }
+                        finally
+                        {
+                            server.Close();
+                        }
+                    }
+                    server = null;
                 }
                 conectado = false;
-                stopMessageListener = true;
                 Debug.WriteLine("Desconexión del servidor completada.");
             }
             catch (Exception ex)
@@ -630,16 +785,18 @@ namespace Duska.Screens
             isReconnecting = false;
         }
 
+        // Reemplaza el método StartMessageListener con esta versión mejorada
         private void StartMessageListener()
         {
             stopMessageListener = false;
-            Debug.WriteLine($"Iniciando hilo de escucha. Conectado: {conectado}, Socket válido: {(server != null && server.Connected)}");
+            Debug.WriteLine("Iniciando hilo de escucha de mensajes...");
 
             messageListenerThread = new Thread(() =>
             {
                 try
                 {
-                    while (conectado && !stopMessageListener)
+                    Debug.WriteLine("[RED] Hilo de escucha iniciado correctamente");
+                    while (!stopMessageListener)
                     {
                         try
                         {
@@ -651,14 +808,17 @@ namespace Duska.Screens
                                 try
                                 {
                                     bytesReceived = server.Receive(buffer);
+                                    // ¡AQUÍ ESTÁ EL PROBLEMA! No debemos salir después de recibir un mensaje
                                 }
                                 catch (SocketException se)
                                 {
                                     if (se.SocketErrorCode == SocketError.TimedOut)
                                     {
-                                        continue; // Continuar si hay timeout
+                                        continue;
                                     }
-                                    throw;
+                                    Debug.WriteLine($"[RED] Error de socket: {se.Message}");
+                                    Thread.Sleep(500);
+                                    continue; // Seguir intentando en vez de salir
                                 }
 
                                 if (bytesReceived > 0)
@@ -666,26 +826,52 @@ namespace Duska.Screens
                                     string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
                                     Debug.WriteLine($"[RED] Mensaje recibido: {message}");
 
-                                    // Invocar en el hilo principal
-                                    // Directly process the message; ensure thread safety if accessing UI/game state
+                                    // Procesar el mensaje de forma segura
                                     ProcessServerMessage(message);
+
+                                    // IMPORTANTE: NO hacer break o return aquí
+                                    // El hilo debe seguir ejecutándose para recibir más mensajes
                                 }
                             }
                             else
                             {
-                                Thread.Sleep(1000); // Evitar CPU al 100%
+                                // No salir del bucle, solo esperar
+                                Debug.WriteLine("[RED] Socket no conectado, esperando...");
+                                Thread.Sleep(1000);
                             }
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"[ERROR] Error en hilo de mensajes: {ex.Message}");
+                            // Capturar cualquier excepción pero NO salir del bucle
+                            Debug.WriteLine($"[RED] Error en hilo de escucha: {ex.Message}");
                             Thread.Sleep(1000);
                         }
                     }
                 }
+                catch (ThreadAbortException)
+                {
+                    Debug.WriteLine("[RED] Hilo de escucha abortado");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[RED] Error fatal en hilo de escucha: {ex.Message}");
+                }
                 finally
                 {
-                    Debug.WriteLine("[RED] Hilo de mensajes finalizado");
+                    Debug.WriteLine("[RED] Hilo de escucha finalizado. Reconexión automática iniciada...");
+
+                    // Reiniciar el hilo automáticamente si no fue una detención intencional
+                    if (!stopMessageListener)
+                    {
+                        // Usar un timer para reiniciar desde el hilo principal
+                        System.Threading.Timer restartTimer = null;
+                        restartTimer = new System.Threading.Timer((state) =>
+                        {
+                            Debug.WriteLine("[RED] Intentando reiniciar hilo de escucha...");
+                            StartMessageListener();
+                            restartTimer?.Dispose();
+                        }, null, 2000, Timeout.Infinite);
+                    }
                 }
             });
 
@@ -697,27 +883,16 @@ namespace Duska.Screens
         {
             try
             {
-                // Eliminar la solicitud periódica de cartas
-                // tiempoDesdeUltimaSolicitud += gameTime.ElapsedGameTime;
-                // if (tiempoDesdeUltimaSolicitud >= intervaloSolicitudCartas)
-                // {
-                //     if (conectado || ConnectToServerIfNeeded())
-                //     {
-                //         GetCards(usuario);
-                //         tiempoDesdeUltimaSolicitud = TimeSpan.Zero;
-                //     }
-                // }
-
                 // Procesar mensajes pendientes primero
                 List<string> mensajesAhora = null;
                 lock (mensajesLock)
                 {
                     if (hayNuevosMensajes && mensajesPendientes.Count > 0)
                     {
+                        Debug.WriteLine($"[UPDATE] Encontrados {mensajesPendientes.Count} mensajes pendientes");
                         mensajesAhora = new List<string>(mensajesPendientes);
                         mensajesPendientes.Clear();
                         hayNuevosMensajes = false;
-                        Debug.WriteLine($"[UPDATE] Procesando {mensajesAhora.Count} mensajes pendientes");
                     }
                 }
 
@@ -725,52 +900,120 @@ namespace Duska.Screens
                 {
                     foreach (string msg in mensajesAhora)
                     {
-                        Debug.WriteLine($"[UPDATE] Procesando mensaje: {msg}");
+                        Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {msg}");
+
                         if (msg.StartsWith("CARDS/"))
                         {
+                            // Procesar mensaje de cartas
                             ProcesarCartasDelServidor(msg);
-                            // Forzar la actualización de la UI después de procesar las cartas
-                            _mostrarTodas = true;
+                            Debug.WriteLine($"[UPDATE] Cartas procesadas, disponibles ahora: {_cartasDisponibles.Count}");
                         }
-                    }
-                }
-
-                // Procesar input
-                KeyboardState estadoTeclado = Keyboard.GetState();
-
-                if (estadoTeclado.IsKeyDown(Keys.Space) && _estadoTecladoAnterior.IsKeyUp(Keys.Space))
-                {
-                    if (_mostrarTodas)
-                    {
-                        if (_cartasDisponibles.Count > 0)
+                        else if (msg.StartsWith("CHAT/"))
                         {
-                            int randomIndex = _random.Next(0, _cartasDisponibles.Count);
-                            _cartaSeleccionada = _cartasDisponibles[randomIndex];
-                            _mostrarTodas = false;
-                            Debug.WriteLine($"Carta seleccionada: índice {randomIndex}");
+                            // Procesar mensaje de chat
+                            string chatMessage = msg.Substring(5);
+                            ChatPanel(true, chatMessage);
                         }
                     }
-                    else
-                    {
-                        _mostrarTodas = true;
-                        Debug.WriteLine("Volviendo a mostrar todas las cartas");
-                    }
                 }
+
+                // Obtener estados de entrada actuales
+                KeyboardState estadoTeclado = Keyboard.GetState();
                 var keyboardState = KeyboardExtended.GetState();
+                var mouseState = MouseExtended.GetState();
 
-                // Detectar pulsación de Escape
-                if (keyboardState.WasKeyReleased(Keys.Escape))
-                {
-                    Debug.WriteLine("Mostrando menú Escape");
-                    EscMenu(usuario, true);
-                }
-
-                // Actualizar la interfaz de usuario
+                // Permitir que UserInterface procese la entrada
                 if (UserInterface.Active != null)
                 {
+                    // Esto es importante para que los controles de UI respondan al ratón
                     UserInterface.Active.Update(gameTime);
                 }
 
+                // Verifica si el ratón está sobre un control de UI antes de procesar teclas de juego
+                bool ratónSobreUI = false;
+                if (UserInterface.Active != null)
+                {
+                    // Comprueba si el ratón está sobre alguna entidad de UI
+                    // GeonBit.UI no tiene IsMouseOverAnyEntity, pero puedes comprobar si el mouse está sobre alguna entidad así:
+                    ratónSobreUI = UserInterface.Active.TargetEntity != null && UserInterface.Active.TargetEntity.IsMouseOver;
+                }
+
+                // Solo procesar teclas de juego si el ratón no está sobre la UI
+                if (!ratónSobreUI)
+                {
+                    // Detectar tecla Q para acercar/alejar las cartas
+                    if (keyboardState.WasKeyReleased(Keys.Q))
+                    {
+                        _cartasAcercadas = !_cartasAcercadas;
+
+                        // Si se alejan las cartas, resetear la selección y el filtro
+                        if (!_cartasAcercadas)
+                        {
+                            _cartaSeleccionadaIndex = -1;
+                            _cartasConFiltro = new List<bool>();  // Resetear los filtros
+                        }
+
+                        Debug.WriteLine($"[INPUT] Cartas acercadas: {_cartasAcercadas}");
+                    }
+
+                    // La navegación con flechas y aplicación de filtros SOLO funciona cuando las cartas están acercadas
+                    if (_cartasAcercadas)
+                    {
+                        // Navegación con flechas entre cartas
+                        if (keyboardState.WasKeyReleased(Keys.Left))
+                        {
+                            if (_cartasDisponibles.Count > 0)
+                            {
+                                _cartaSeleccionadaIndex--;
+                                if (_cartaSeleccionadaIndex < 0)
+                                    _cartaSeleccionadaIndex = _cartasDisponibles.Count - 1;
+
+                                // ELIMINAR: _filtroAplicado = false; 
+                                // El filtro ahora permanece activo al cambiar de carta
+                                Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
+                            }
+                        }
+                        else if (keyboardState.WasKeyReleased(Keys.Right))
+                        {
+                            if (_cartasDisponibles.Count > 0)
+                            {
+                                _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
+
+                                // ELIMINAR: _filtroAplicado = false; 
+                                // El filtro ahora permanece activo al cambiar de carta
+                                Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
+                            }
+                        }
+
+                        // Espacio ahora alterna el filtro en la carta seleccionada
+                        if (keyboardState.WasKeyReleased(Keys.Space))
+                        {
+                            // Solo aplicar filtro si hay una carta seleccionada
+                            if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
+                            {
+                                // Asegurarse de que la lista de filtros tiene suficientes elementos
+                                while (_cartasConFiltro.Count < _cartasDisponibles.Count)
+                                    _cartasConFiltro.Add(false);
+
+                                // Alternar el filtro solo para la carta seleccionada
+                                _cartasConFiltro[_cartaSeleccionadaIndex] = !_cartasConFiltro[_cartaSeleccionadaIndex];
+
+                                Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
+                                    $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
+                                    $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
+                            }
+                        }
+                    }
+
+                    // Añadir en el método Update, dentro del bloque if (!ratónSobreUI)
+                    if (keyboardState.WasKeyReleased(Keys.Escape))
+                    {
+                        Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
+                        EscMenu(usuario, true);
+                    }
+                }
+
+                // IMPORTANTE: Actualizar el estado anterior del teclado al final
                 _estadoTecladoAnterior = keyboardState;
             }
             catch (Exception ex)
@@ -798,17 +1041,55 @@ namespace Duska.Screens
                 // Dibujar cartas
                 if (_mostrarTodas && _cartasDisponibles != null)
                 {
+                    float escalaActual = _cartasAcercadas ? _escalaCartasAcercadas : _escalaCartasNormal;
+                    Vector2 posicionBase = _cartasAcercadas ? _posicionCartasAcercadas : _posicionCartasNormal;
+
+                    // Recalcular posición base para centrar basado en la cantidad de cartas
+                    float anchoTotal = _cartasDisponibles.Count * (150 * escalaActual * 0.8f); // 0.8 para espaciado
+                    float posX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
+
                     for (int i = 0; i < _cartasDisponibles.Count; i++)
                     {
                         if (_cartasDisponibles[i] != null)
                         {
-                            int x = 50 + (i * 180);
-                            int y = 100;
+                            int x = (int)(posX + (i * 150 * escalaActual * 0.8f));
+                            int y = _cartasAcercadas ? GraphicsDevice.Viewport.Height / 2 - 112
+                                                     : GraphicsDevice.Viewport.Height - 150;
 
+                            int ancho = (int)(150 * escalaActual);
+                            int alto = (int)(225 * escalaActual);
+
+                            // Determinar el color a aplicar
+                            Color colorTextura = Color.White;
+
+                            // Si esta carta tiene filtro aplicado
+                            if (_cartasConFiltro.Count > i && _cartasConFiltro[i])
+                            {
+                                colorTextura = _colorFiltro;
+                            }
+
+                            // Si esta es la carta seleccionada (para el borde amarillo)
+                            if (i == _cartaSeleccionadaIndex && _cartasAcercadas)
+                            {
+                                // Dibujar un borde alrededor de la carta seleccionada
+                                Texture2D bordeTextura = GetOrCreatePlainTexture(Color.Yellow);
+                                int bordeGrosor = 3;
+
+                                // Borde superior
+                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
+                                // Borde inferior
+                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y + alto, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
+                                // Borde izquierdo
+                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
+                                // Borde derecho
+                                _spriteBatch.Draw(bordeTextura, new Rectangle(x + ancho, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
+                            }
+
+                            // Dibujar la carta con el color apropiado (filtrado o no)
                             _spriteBatch.Draw(
                                 _cartasDisponibles[i],
-                                new Rectangle(x, y, 150, 225),
-                                Color.White
+                                new Rectangle(x, y, ancho, alto),
+                                colorTextura
                             );
                         }
                     }
