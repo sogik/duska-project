@@ -621,6 +621,74 @@ void *cliente(void *socket_ptr)
                 strcpy(respuesta, "ERROR/No estás en ningún grupo");
             }
         }
+        // Códigos para funciones de mesas y gamelogic
+        else if (codigo == 14)
+        {
+            // Crear mesa para un grupo
+            int grupo_id = atoi(contrasena);
+            crear_mesa_para_grupo(grupo_id);
+
+            // Notificar tipo de mesa al grupo
+            notificar_mesa_a_grupo(grupo_id);
+
+            strcpy(respuesta, "MESA_CREADA/OK");
+        }
+        else if (codigo == 15)
+        {
+            // Realizar jugada
+            // Formato: 15/usuario/grupo_id/jugador_id/tipo_carta/valor_carta
+            int grupo_id = atoi(contrasena);
+            char *p_jugador = strtok(mensaje, "/");
+            int jugador_id = atoi(p_jugador);
+            char *p_tipo = strtok(NULL, "/");
+            int tipo_carta = atoi(p_tipo);
+            char *p_valor = strtok(NULL, "/");
+            int valor_carta = atoi(p_valor);
+
+            Carta carta_jugada = {tipo_carta, valor_carta};
+            manejar_jugada(grupo_id, jugador_id, carta_jugada);
+
+            // Notificar jugada al grupo
+            char notif[256];
+            snprintf(notif, sizeof(notif), "JUGADA/%d/%d/%d/%d", jugador_id, grupo_id, tipo_carta, valor_carta);
+            broadcast_to_group(grupo_id, notif);
+
+            strcpy(respuesta, "JUGADA/OK");
+        }
+        else if (codigo == 16)
+        {
+            // Código 16: Buscar grupo de un usuario
+            // Formato de entrada: 16/usuario_solicitante/usuario_a_buscar
+            char usuario_a_buscar[20];
+
+            // El parámetro mensaje contiene el nombre del usuario a buscar
+            strcpy(usuario_a_buscar, mensaje);
+            printf("[SERVIDOR] Buscando grupo del usuario: %s\n", usuario_a_buscar);
+
+            // Buscar el usuario en la lista de conectados
+            int grupo_encontrado = -1;
+            pthread_mutex_lock(&mutex);
+            for (int i = 0; i < num_conectados; i++)
+            {
+                if (strcmp(conectados[i].nombre, usuario_a_buscar) == 0)
+                {
+                    grupo_encontrado = conectados[i].grupo_id;
+                    break;
+                }
+            }
+            pthread_mutex_unlock(&mutex);
+
+            if (grupo_encontrado != -1)
+            {
+                printf("[SERVIDOR] Usuario %s encontrado en grupo %d\n", usuario_a_buscar, grupo_encontrado);
+                sprintf(respuesta, "GRUPO/%d", grupo_encontrado);
+            }
+            else
+            {
+                printf("[SERVIDOR] Usuario %s no encontrado o no está en un grupo\n", usuario_a_buscar);
+                strcpy(respuesta, "GRUPO/NINGUNO");
+            }
+        }
         else
         {
             strcpy(respuesta, "ERROR/Comando desconocido");

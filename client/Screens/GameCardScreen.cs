@@ -59,13 +59,24 @@ namespace Duska.Screens
         private List<bool> _cartasConFiltro = new List<bool>(); // Estado del filtro por carta
         private Color _colorFiltro = new Color(0, 0, 0, 128); // Color de filtro semitransparente (puedes ajustar los valores)
 
-        public GameCardScreen(Game game, string usuario) : base(game)
+        private int grupoId;
+
+        // Variables para la animación de cartas jugadas
+        private List<int> _cartasJugando = new List<int>();
+        private List<Vector2> _posicionesIniciales = new List<Vector2>();
+        private Vector2 _posicionCentroMesa;
+        private float _tiempoAnimacion = 0f;
+        private bool _animacionEnCurso = false;
+        private const float DURACION_ANIMACION = 1.5f; // Duración en segundos
+
+        public GameCardScreen(Game game, string usuario, int grupo) : base(game)
         {
             this.usuario = usuario;
             _cartasDisponibles = new List<Texture2D>();
             _cartas = new Texture2D[5];
             _random = new Random();
             _mostrarTodas = true;
+            grupoId = grupo;
         }
 
         public override void LoadContent()
@@ -321,6 +332,41 @@ namespace Duska.Screens
                     {
                         ChatPanel(true, chatMessage);
                     }
+                }
+                else if (message.StartsWith("MESA/"))
+                {
+                    string tipoMesa = message.Substring(5);
+                    Debug.WriteLine($"[MESA] Recibido tipo de mesa: {tipoMesa}");
+                    // Actualizar interfaz según tipo de mesa
+                }
+                else if (message.StartsWith("JUGADA/"))
+                {
+                    // Parse jugada data
+                    string[] parts = message.Substring(7).Split('/');
+                    int jugadorId = int.Parse(parts[0]);
+                    int grupoId = int.Parse(parts[1]);
+                    int tipoCarta = int.Parse(parts[2]);
+                    int valorCarta = int.Parse(parts[3]);
+
+                    Debug.WriteLine($"[JUEGO] Jugador {jugadorId} jugó carta tipo {tipoCarta} valor {valorCarta}");
+                    // Actualizar interfaz con la nueva jugada
+                }
+                else if (message.StartsWith("RETO/"))
+                {
+                    // Parse reto data
+                    string[] parts = message.Substring(5).Split('/');
+                    int retador = int.Parse(parts[0]);
+                    int retado = int.Parse(parts[1]);
+                    int eliminado = int.Parse(parts[2]);
+
+                    Debug.WriteLine($"[JUEGO] Reto: {retador} retó a {retado}, eliminado: {eliminado}");
+                    // Actualizar interfaz con el resultado del reto
+                }
+                else if (message.StartsWith("GANADOR/"))
+                {
+                    int ganador = int.Parse(message.Substring(8));
+                    Debug.WriteLine($"[JUEGO] ¡El ganador es el jugador {ganador}!");
+                    // Mostrar pantalla de ganador
                 }
             }
             catch (Exception ex)
@@ -914,6 +960,41 @@ namespace Duska.Screens
                             string chatMessage = msg.Substring(5);
                             ChatPanel(true, chatMessage);
                         }
+                        else if (msg.StartsWith("MESA/"))
+                        {
+                            string tipoMesa = msg.Substring(5);
+                            Debug.WriteLine($"[MESA] Recibido tipo de mesa: {tipoMesa}");
+                            // Actualizar interfaz según tipo de mesa
+                        }
+                        else if (msg.StartsWith("JUGADA/"))
+                        {
+                            // Parse jugada data
+                            string[] parts = msg.Substring(7).Split('/');
+                            int jugadorId = int.Parse(parts[0]);
+                            int grupoId = int.Parse(parts[1]);
+                            int tipoCarta = int.Parse(parts[2]);
+                            int valorCarta = int.Parse(parts[3]);
+
+                            Debug.WriteLine($"[JUEGO] Jugador {jugadorId} jugó carta tipo {tipoCarta} valor {valorCarta}");
+                            // Actualizar interfaz con la nueva jugada
+                        }
+                        else if (msg.StartsWith("RETO/"))
+                        {
+                            // Parse reto data
+                            string[] parts = msg.Substring(5).Split('/');
+                            int retador = int.Parse(parts[0]);
+                            int retado = int.Parse(parts[1]);
+                            int eliminado = int.Parse(parts[2]);
+
+                            Debug.WriteLine($"[JUEGO] Reto: {retador} retó a {retado}, eliminado: {eliminado}");
+                            // Actualizar interfaz con el resultado del reto
+                        }
+                        else if (msg.StartsWith("GANADOR/"))
+                        {
+                            int ganador = int.Parse(msg.Substring(8));
+                            Debug.WriteLine($"[JUEGO] ¡El ganador es el jugador {ganador}!");
+                            // Mostrar pantalla de ganador
+                        }
                     }
                 }
 
@@ -1011,6 +1092,40 @@ namespace Duska.Screens
                         Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
                         EscMenu(usuario, true);
                     }
+
+                    // Añade esto dentro del método Update
+                    if (keyboardState.WasKeyReleased(Keys.E) && !_animacionEnCurso)
+                    {
+                        // Verificar si hay cartas con filtro
+                        List<int> cartasSeleccionadas = new List<int>();
+                        for (int i = 0; i < _cartasConFiltro.Count; i++)
+                        {
+                            if (_cartasConFiltro[i])
+                            {
+                                cartasSeleccionadas.Add(i);
+                            }
+                        }
+
+                        // Si hay cartas seleccionadas, enviarlas como jugada
+                        if (cartasSeleccionadas.Count > 0)
+                        {
+                            Debug.WriteLine($"[JUGADA] Enviando {cartasSeleccionadas.Count} cartas como jugada");
+                            EnviarCartasComoJugada(cartasSeleccionadas);
+
+                            // Iniciar animación
+                            IniciarAnimacionJugada(cartasSeleccionadas);
+                        }
+                        else
+                        {
+                            Debug.WriteLine("[JUGADA] No hay cartas seleccionadas para jugar");
+                        }
+                    }
+
+                    // Si hay una animación en curso, actualizarla
+                    if (_animacionEnCurso)
+                    {
+                        ActualizarAnimacionJugada(gameTime);
+                    }
                 }
 
                 // IMPORTANTE: Actualizar el estado anterior del teclado al final
@@ -1106,6 +1221,45 @@ namespace Duska.Screens
                     );
                 }
 
+                // Dibujar las cartas que están siendo animadas (en juego)
+                if (_animacionEnCurso)
+                {
+                    // Factor de progreso de la animación (0.0 a 1.0)
+                    float progreso = _tiempoAnimacion / DURACION_ANIMACION;
+
+                    // Aplicar curva de animación suave (ease-in-out)
+                    progreso = (float)(Math.Sin(progreso * Math.PI - Math.PI / 2) * 0.5f + 0.5f);
+
+                    for (int i = 0; i < _cartasJugando.Count; i++)
+                    {
+                        int indiceCarta = _cartasJugando[i];
+
+                        if (indiceCarta >= 0 && indiceCarta < _cartasDisponibles.Count)
+                        {
+                            // Calcular posición interpolada hacia el centro de la mesa
+                            Vector2 posInicial = _posicionesIniciales[i];
+                            Vector2 posObjetivo = _posicionCentroMesa;
+                            Vector2 nuevaPosicion = Vector2.Lerp(posInicial, posObjetivo, progreso);
+
+                            // Calcular escala interpolada
+                            float escalaActual = MathHelper.Lerp(_escalaCartasNormal, _escalaCartasAcercadas, progreso);
+
+                            // Dibujar carta en nueva posición y escala
+                            _spriteBatch.Draw(
+                                _cartasDisponibles[indiceCarta],
+                                nuevaPosicion,
+                                null,
+                                Color.White,
+                                0f,
+                                new Vector2(75, 112.5f),
+                                escalaActual,
+                                SpriteEffects.None,
+                                0f
+                            );
+                        }
+                    }
+                }
+
                 _spriteBatch.End();
 
                 // Dibujar la interfaz de usuario
@@ -1132,6 +1286,178 @@ namespace Duska.Screens
         {
             this.server = existingSocket;
             this.conectado = true;
+        }
+
+        private void CrearMesa()
+        {
+            if (server != null && server.Connected)
+            {
+                string mensaje = "14/" + usuario + "/" + grupoId.ToString();
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+            }
+        }
+
+        private void RealizarJugada(int jugadorId, int tipoCarta, int valorCarta)
+        {
+            if (server != null && server.Connected)
+            {
+                string mensaje = "15/" + usuario + "/" + grupoId.ToString() + "/" +
+                                 jugadorId.ToString() + "/" + tipoCarta.ToString() + "/" + valorCarta.ToString();
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+            }
+        }
+
+        private void RetarJugador(int jugadorReta, int jugadorRetado)
+        {
+            if (server != null && server.Connected)
+            {
+                string mensaje = "16/" + usuario + "/" + grupoId.ToString() + "/" +
+                                 jugadorReta.ToString() + "/" + jugadorRetado.ToString();
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+            }
+        }
+
+        private void EnviarCartasComoJugada(List<int> cartasSeleccionadas)
+        {
+            try
+            {
+                // Verificar conectividad
+                if (!conectado || server == null || !server.Connected)
+                {
+                    Debug.WriteLine("[JUGADA] Error: No hay conexión disponible");
+                    return;
+                }
+
+                // Para cada carta seleccionada, enviar una jugada
+                foreach (int indice in cartasSeleccionadas)
+                {
+                    if (indice >= 0 && indice < _cartasDisponibles.Count)
+                    {
+                        // Determinar tipo y valor de carta basado en la textura
+                        int tipoCarta = DeterminarTipoCarta(_cartasDisponibles[indice]);
+                        int valorCarta = 1; // Por defecto
+
+                        // Formato mensaje: 15/usuario/grupo_id/jugador_id/tipo_carta/valor_carta
+                        string mensaje = $"15/{usuario}/{grupoId}/0/{tipoCarta}/{valorCarta}";
+                        byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                        server.Send(msg);
+
+                        Debug.WriteLine($"[JUGADA] Enviada carta tipo {tipoCarta} valor {valorCarta}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al enviar jugada: {ex.Message}");
+            }
+        }
+
+        private int DeterminarTipoCarta(Texture2D textura)
+        {
+            // Determinar tipo basado en la textura
+            if (textura == _cartas[0]) return 0; // CARD_AS
+            if (textura == _cartas[1]) return 1; // CARD_JACK
+            if (textura == _cartas[2]) return 2; // CARD_REY
+            if (textura == _cartas[3]) return 3; // CARD_REINA
+            return 0; // Default
+        }
+
+        private void IniciarAnimacionJugada(List<int> cartasSeleccionadas)
+        {
+            // Limpiar listas de animación previas
+            _cartasJugando.Clear();
+            _posicionesIniciales.Clear();
+
+            // Definir el centro de la mesa
+            _posicionCentroMesa = new Vector2(
+                GraphicsDevice.Viewport.Width / 2,
+                GraphicsDevice.Viewport.Height / 2);
+
+            // Guardar las posiciones iniciales y las cartas seleccionadas
+            foreach (int indice in cartasSeleccionadas)
+            {
+                _cartasJugando.Add(indice);
+
+                // Calcular posición actual basada en la vista actual (acercada o normal)
+                Vector2 posInicial = _cartasAcercadas ?
+                    CalcularPosicionCartaAcercada(indice) :
+                    CalcularPosicionCartaNormal(indice);
+
+                _posicionesIniciales.Add(posInicial);
+            }
+
+            // Inicializar parámetros de animación
+            _tiempoAnimacion = 0f;
+            _animacionEnCurso = true;
+
+            Debug.WriteLine("[ANIMACIÓN] Iniciando animación de jugada con " + cartasSeleccionadas.Count + " cartas");
+        }
+
+        private Vector2 CalcularPosicionCartaNormal(int indice)
+        {
+            // Calcula la posición de una carta en vista normal
+            int espacioEntreCartas = 150;
+            float x = _posicionCartasNormal.X + indice * espacioEntreCartas;
+            float y = _posicionCartasNormal.Y;
+            return new Vector2(x, y);
+        }
+
+        private Vector2 CalcularPosicionCartaAcercada(int indice)
+        {
+            // Calcula la posición de una carta en vista acercada
+            int espacioEntreCartas = 180;
+            float x = _posicionCartasAcercadas.X + indice * espacioEntreCartas;
+            float y = _posicionCartasAcercadas.Y;
+            return new Vector2(x, y);
+        }
+
+        private void ActualizarAnimacionJugada(GameTime gameTime)
+        {
+            // Actualizar tiempo de animación
+            _tiempoAnimacion += (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            // Verificar si la animación ha terminado
+            if (_tiempoAnimacion >= DURACION_ANIMACION)
+            {
+                // Animación completa, eliminar las cartas de la mano
+                EliminarCartasJugadas();
+                _animacionEnCurso = false;
+                Debug.WriteLine("[ANIMACIÓN] Animación de jugada completada");
+                return;
+            }
+
+            // La animación sigue en curso
+            // Se renderizará en el método Draw
+        }
+
+        private void EliminarCartasJugadas()
+        {
+            // Primero, ordenar los índices de mayor a menor para evitar problemas al eliminar
+            _cartasJugando.Sort((a, b) => b.CompareTo(a));
+
+            // Eliminar las cartas y sus filtros
+            foreach (int indice in _cartasJugando)
+            {
+                if (indice >= 0 && indice < _cartasDisponibles.Count)
+                {
+                    _cartasDisponibles.RemoveAt(indice);
+
+                    // Eliminar también el filtro correspondiente
+                    if (indice < _cartasConFiltro.Count)
+                        _cartasConFiltro.RemoveAt(indice);
+                }
+            }
+
+            // Reiniciar la selección
+            _cartaSeleccionadaIndex = -1;
+
+            // Actualizar posiciones de las cartas
+            ActualizarPosicionesCartas();
+
+            Debug.WriteLine($"[JUGADA] Cartas jugadas eliminadas. Quedan {_cartasDisponibles.Count} cartas");
         }
     }
 }
