@@ -12,6 +12,11 @@
 #include "basedatos.h"
 #include "auth.h"
 #include "generarcartas.h"
+#include "gamelogic.h"
+#include "cartas.h"
+#include "mesas.h"
+#include "conexiones.h"
+#include "server.h"
 
 // Estructura para mantener los clientes conectados
 typedef struct ClientNode
@@ -658,30 +663,31 @@ void *cliente(void *socket_ptr)
         else if (codigo == 16)
         {
             // Código 16: Buscar grupo de un usuario
-            // Formato de entrada: 16/usuario_solicitante/usuario_a_buscar
             char usuario_a_buscar[20];
-
-            // El parámetro mensaje contiene el nombre del usuario a buscar
             strcpy(usuario_a_buscar, mensaje);
             printf("[SERVIDOR] Buscando grupo del usuario: %s\n", usuario_a_buscar);
 
             // Buscar el usuario en la lista de conectados
             int grupo_encontrado = -1;
-            pthread_mutex_lock(&mutex);
-            for (int i = 0; i < num_conectados; i++)
+            pthread_mutex_lock(&client_list_mutex); // Usar client_list_mutex en lugar de mutex
+
+            ClientNode *current = client_list;
+            while (current != NULL)
             {
-                if (strcmp(conectados[i].nombre, usuario_a_buscar) == 0)
+                if (strcmp(current->usuario, usuario_a_buscar) == 0)
                 {
-                    grupo_encontrado = conectados[i].grupo_id;
+                    grupo_encontrado = current->grupo_id;
                     break;
                 }
+                current = current->next;
             }
-            pthread_mutex_unlock(&mutex);
+
+            pthread_mutex_unlock(&client_list_mutex);
 
             if (grupo_encontrado != -1)
             {
                 printf("[SERVIDOR] Usuario %s encontrado en grupo %d\n", usuario_a_buscar, grupo_encontrado);
-                sprintf(respuesta, "GRUPO/%d", grupo_encontrado);
+                sprintf(respuesta, "GRUPO/%s/%d", usuario_a_buscar, grupo_encontrado);
             }
             else
             {

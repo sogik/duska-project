@@ -1,17 +1,25 @@
 #ifndef MESAS_H
 #define MESAS_H
 
+#include "cartas.h"
 #include <pthread.h>
 
-typedef enum {
+#define MAX_JUGADORES_MESA 4
+
+typedef enum
+{
     MESA_ASES,
     MESA_REINAS,
     MESA_REYES
 } TipoMesa;
 
-typedef struct {
+typedef struct
+{
     int grupo_id;
     TipoMesa tipo;
+    Carta ultima_jugada;                      // Última carta jugada
+    int jugador_ultimo;                       // Último jugador que hizo una jugada
+    bool jugadores_vivos[MAX_JUGADORES_MESA]; // Estado de los jugadores
 } Mesa;
 
 #define MAX_MESAS 50
