@@ -5,10 +5,6 @@
 #include <stdio.h>
 #include "server.h"
 
-Mesa mesas[MAX_MESAS];
-int num_mesas = 0;
-pthread_mutex_t mutex_mesas = PTHREAD_MUTEX_INITIALIZER;
-
 /*void iniciar_partida(Jugador jugadores[MAX_JUGADORES]) {
     for(int i = 0; i < MAX_JUGADORES; i++) {
         for(int j = 0; j < CARTAS_POR_JUGADOR; j++) {
