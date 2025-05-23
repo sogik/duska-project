@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "server.h"
 
 Mesa mesas[MAX_MESAS];
 int num_mesas = 0;

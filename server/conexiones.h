@@ -3,6 +3,7 @@
 
 #include <mysql.h>
 #include <pthread.h>
+#include "server.h"
 
 #define MAX_CONEXIONES 100
 
@@ -23,6 +24,7 @@ void agregar_conexion(int id_jugador, int socket, const char *usuario);
 void eliminar_conexion(int socket);
 void broadcast_usuarios_conectados();
 char *obtener_lista_usuarios();
+
 // Funciones de comunicación
 void broadcast_to_group(int grupo_id, const char *message);
 int send_to_user(const char *destinatario, const char *mensaje);
