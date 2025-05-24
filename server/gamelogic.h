@@ -16,5 +16,9 @@ int obtener_ganador(int grupo_id);
 int comprobar_verdad(int grupo_id, int jugador_reta, int jugador_retado);
 void notificar_estado_grupo(int grupo_id);
 void expulsar_jugador(int grupo_id, int jugador_id);
+int registrar_jugada_multiple(int grupo_id, int jugador_id, int tipos_cartas[], int cantidad);
+int comprobar_mentira_ultima_jugada(int grupo_id, int jugador_acusador);
+int existe_mesa_para_grupo(int grupo_id);
+int obtener_id_jugador_en_grupo(const char *usuario, int grupo_id);
 
 #endif
