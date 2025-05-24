@@ -85,6 +85,23 @@ namespace Duska.Screens
         private bool _mostrandoRevelacion = false;
         private float _tiempoRevelacion = 0f;
 
+        // Variable para el último conteo de cartas (para depuración)
+        private int _ultimoConteoCartas = -1;
+
+        private DateTime _ultimaReconexion = DateTime.MinValue;
+        private readonly TimeSpan _intervaloReconexion = TimeSpan.FromSeconds(5);
+
+        // Variable para el último mensaje recibido y su tiempo
+        private string _ultimoMensajeRecibido = "";
+        private DateTime _ultimoMensajeTiempo = DateTime.MinValue;
+
+        // Variables para manejar errores de conexión
+        private bool _mostrandoErroresConexion = true;
+        private int _erroresConsecutivos = 0;
+
+        // Añadir al inicio de la clase
+        private bool _necesitaRedibujado = true;
+
         public GameCardScreen(Game game, string usuario, int grupo) : base(game)
         {
             this.usuario = usuario;
@@ -1021,7 +1038,6 @@ namespace Duska.Screens
                                 if (bytesReceived > 0)
                                 {
                                     string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
-                                    Debug.WriteLine($"[RED] Mensaje recibido: {message}");
 
                                     // Procesar el mensaje de forma segura
                                     ProcessServerMessage(message);
@@ -1218,14 +1234,7 @@ namespace Duska.Screens
                     if (keyboardState.WasKeyReleased(Keys.Q))
                     {
                         _cartasAcercadas = !_cartasAcercadas;
-
-                        // Si se alejan las cartas, resetear la selección y el filtro
-                        if (!_cartasAcercadas)
-                        {
-                            _cartaSeleccionadaIndex = -1;
-                            _cartasConFiltro = new List<bool>();  // Resetear los filtros
-                        }
-
+                        MarcarParaRedibujado(); // Añadir esta línea
                         Debug.WriteLine($"[INPUT] Cartas acercadas: {_cartasAcercadas}");
                     }
 
@@ -1370,160 +1379,155 @@ namespace Duska.Screens
 
         public override void Draw(GameTime gameTime)
         {
-            try
+            // Solo redibujar si es necesario
+            if (!_necesitaRedibujado)
+                return;
+
+            _graphics.GraphicsDevice.Clear(Color.CornflowerBlue);
+            _spriteBatch.Begin();
+
+            // Mostrar información de depuración
+            // Debug.WriteLine($"[Draw] Cartas disponibles: {_cartasDisponibles.Count}");
+
+            // Solo mostrar cuando hay cambios:
+            if (_cartasDisponibles.Count != _ultimoConteoCartas)
             {
-                GraphicsDevice.Clear(Color.CornflowerBlue); // Color claro para ver mejor
+                Debug.WriteLine($"[Draw] Cartas disponibles cambiaron: {_cartasDisponibles.Count}");
+                _ultimoConteoCartas = _cartasDisponibles.Count;
+            }
 
-                if (_spriteBatch == null)
+            // Dibujar cartas
+            if (_mostrarTodas && _cartasDisponibles != null)
+            {
+                float escalaActual = _cartasAcercadas ? _escalaCartasAcercadas : _escalaCartasNormal;
+                Vector2 posicionBase = _cartasAcercadas ? _posicionCartasAcercadas : _posicionCartasNormal;
+
+                // Recalcular posición base para centrar basado en la cantidad de cartas
+                float anchoTotal = _cartasDisponibles.Count * (150 * escalaActual * 0.8f); // 0.8 para espaciado
+                float posX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
+
+                for (int i = 0; i < _cartasDisponibles.Count; i++)
                 {
-                    _spriteBatch = new SpriteBatch(GraphicsDevice);
-                }
-
-                _spriteBatch.Begin();
-
-                // Mostrar información de depuración
-                Debug.WriteLine($"[Draw] Cartas disponibles: {_cartasDisponibles.Count}");
-
-                // Dibujar cartas
-                if (_mostrarTodas && _cartasDisponibles != null)
-                {
-                    float escalaActual = _cartasAcercadas ? _escalaCartasAcercadas : _escalaCartasNormal;
-                    Vector2 posicionBase = _cartasAcercadas ? _posicionCartasAcercadas : _posicionCartasNormal;
-
-                    // Recalcular posición base para centrar basado en la cantidad de cartas
-                    float anchoTotal = _cartasDisponibles.Count * (150 * escalaActual * 0.8f); // 0.8 para espaciado
-                    float posX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
-
-                    for (int i = 0; i < _cartasDisponibles.Count; i++)
+                    if (_cartasDisponibles[i] != null)
                     {
-                        if (_cartasDisponibles[i] != null)
+                        int x = (int)(posX + (i * 150 * escalaActual * 0.8f));
+                        int y = _cartasAcercadas ? GraphicsDevice.Viewport.Height / 2 - 112
+                                                 : GraphicsDevice.Viewport.Height - 150;
+
+                        int ancho = (int)(150 * escalaActual);
+                        int alto = (int)(225 * escalaActual);
+
+                        // Determinar el color a aplicar
+                        Color colorTextura = Color.White;
+
+                        // Si esta carta tiene filtro aplicado
+                        if (_cartasConFiltro.Count > i && _cartasConFiltro[i])
                         {
-                            int x = (int)(posX + (i * 150 * escalaActual * 0.8f));
-                            int y = _cartasAcercadas ? GraphicsDevice.Viewport.Height / 2 - 112
-                                                     : GraphicsDevice.Viewport.Height - 150;
-
-                            int ancho = (int)(150 * escalaActual);
-                            int alto = (int)(225 * escalaActual);
-
-                            // Determinar el color a aplicar
-                            Color colorTextura = Color.White;
-
-                            // Si esta carta tiene filtro aplicado
-                            if (_cartasConFiltro.Count > i && _cartasConFiltro[i])
-                            {
-                                colorTextura = _colorFiltro;
-                            }
-
-                            // Si esta es la carta seleccionada (para el borde amarillo)
-                            if (i == _cartaSeleccionadaIndex && _cartasAcercadas)
-                            {
-                                // Dibujar un borde alrededor de la carta seleccionada
-                                Texture2D bordeTextura = GetOrCreatePlainTexture(Color.Yellow);
-                                int bordeGrosor = 3;
-
-                                // Borde superior
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
-                                // Borde inferior
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y + alto, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
-                                // Borde izquierdo
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
-                                // Borde derecho
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x + ancho, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
-                            }
-
-                            // Dibujar la carta con el color apropiado (filtrado o no)
-                            _spriteBatch.Draw(
-                                _cartasDisponibles[i],
-                                new Rectangle(x, y, ancho, alto),
-                                colorTextura
-                            );
+                            colorTextura = _colorFiltro;
                         }
+
+                        // Si esta es la carta seleccionada (para el borde amarillo)
+                        if (i == _cartaSeleccionadaIndex && _cartasAcercadas)
+                        {
+                            // Dibujar un borde alrededor de la carta seleccionada
+                            Texture2D bordeTextura = GetOrCreatePlainTexture(Color.Yellow);
+                            int bordeGrosor = 3;
+
+                            // Borde superior
+                            _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
+                            // Borde inferior
+                            _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y + alto, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
+                            // Borde izquierdo
+                            _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
+                            // Borde derecho
+                            _spriteBatch.Draw(bordeTextura, new Rectangle(x + ancho, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
+                        }
+
+                        // Dibujar la carta con el color apropiado (filtrado o no)
+                        _spriteBatch.Draw(
+                            _cartasDisponibles[i],
+                            new Rectangle(x, y, ancho, alto),
+                            colorTextura
+                        );
                     }
                 }
-                else if (_cartaSeleccionada != null)
+            }
+            else if (_cartaSeleccionada != null)
+            {
+                int centerX = GraphicsDevice.Viewport.Width / 2 - 75;
+                int centerY = GraphicsDevice.Viewport.Height / 2 - 112;
+
+                _spriteBatch.Draw(
+                    _cartaSeleccionada,
+                    new Rectangle(centerX, centerY, 150, 225),
+                    Color.White
+                );
+            }
+
+            // Dibujar las cartas que están siendo animadas (en juego)
+            if (_animacionEnCurso)
+            {
+                // Factor de progreso de la animación (0.0 a 1.0)
+                float progreso = _tiempoAnimacion / DURACION_ANIMACION;
+
+                // Aplicar curva de animación suave (ease-in-out)
+                progreso = (float)(Math.Sin(progreso * Math.PI - Math.PI / 2) * 0.5f + 0.5f);
+
+                for (int i = 0; i < _cartasJugando.Count; i++)
                 {
-                    int centerX = GraphicsDevice.Viewport.Width / 2 - 75;
-                    int centerY = GraphicsDevice.Viewport.Height / 2 - 112;
+                    int indiceCarta = _cartasJugando[i];
 
-                    _spriteBatch.Draw(
-                        _cartaSeleccionada,
-                        new Rectangle(centerX, centerY, 150, 225),
-                        Color.White
-                    );
-                }
-
-                // Dibujar las cartas que están siendo animadas (en juego)
-                if (_animacionEnCurso)
-                {
-                    // Factor de progreso de la animación (0.0 a 1.0)
-                    float progreso = _tiempoAnimacion / DURACION_ANIMACION;
-
-                    // Aplicar curva de animación suave (ease-in-out)
-                    progreso = (float)(Math.Sin(progreso * Math.PI - Math.PI / 2) * 0.5f + 0.5f);
-
-                    for (int i = 0; i < _cartasJugando.Count; i++)
+                    if (indiceCarta >= 0 && indiceCarta < _cartasDisponibles.Count)
                     {
-                        int indiceCarta = _cartasJugando[i];
+                        // Calcular posición interpolada hacia el centro de la mesa
+                        Vector2 posInicial = _posicionesIniciales[i];
+                        Vector2 posObjetivo = _posicionCentroMesa;
+                        Vector2 nuevaPosicion = Vector2.Lerp(posInicial, posObjetivo, progreso);
 
-                        if (indiceCarta >= 0 && indiceCarta < _cartasDisponibles.Count)
-                        {
-                            // Calcular posición interpolada hacia el centro de la mesa
-                            Vector2 posInicial = _posicionesIniciales[i];
-                            Vector2 posObjetivo = _posicionCentroMesa;
-                            Vector2 nuevaPosicion = Vector2.Lerp(posInicial, posObjetivo, progreso);
+                        // Calcular escala interpolada
+                        float escalaActual = MathHelper.Lerp(_escalaCartasNormal, _escalaCartasAcercadas, progreso);
 
-                            // Calcular escala interpolada
-                            float escalaActual = MathHelper.Lerp(_escalaCartasNormal, _escalaCartasAcercadas, progreso);
-
-                            // Dibujar carta en nueva posición y escala
-                            _spriteBatch.Draw(
-                                _cartasDisponibles[indiceCarta],
-                                nuevaPosicion,
-                                null,
-                                Color.White,
-                                0f,
-                                new Vector2(75, 112.5f),
-                                escalaActual,
-                                SpriteEffects.None,
-                                0f
-                            );
-                        }
+                        // Dibujar carta en nueva posición y escala
+                        _spriteBatch.Draw(
+                            _cartasDisponibles[indiceCarta],
+                            nuevaPosicion,
+                            null,
+                            Color.White,
+                            0f,
+                            new Vector2(75, 112.5f),
+                            escalaActual,
+                            SpriteEffects.None,
+                            0f
+                        );
                     }
                 }
-
-                // Dibujar las cartas en el centro de la mesa
-                for (int i = 0; i < _cartasEnCentro.Count; i++)
-                {
-                    // Calcular posición para distribuir las cartas en el centro
-                    float offsetX = (i - (_cantidadCartasCentro - 1) / 2.0f) * 60;
-                    Vector2 posicion = new Vector2(_posicionCentroMesa.X + offsetX, _posicionCentroMesa.Y);
-
-                    // Dibujar la carta con su filtro correspondiente
-                    _spriteBatch.Draw(
-                        _cartasEnCentro[i],
-                        posicion,
-                        null,
-                        _filtrosCartasCentro[i],
-                        0f, // Sin rotación
-                        new Vector2(_cartasEnCentro[i].Width / 2, _cartasEnCentro[i].Height / 2), // Origen centro
-                        _escalaCentroMesa, // Escala más pequeña para el centro
-                        SpriteEffects.None,
-                        0
-                    );
-                }
-
-                _spriteBatch.End();
-
-                // Dibujar la interfaz de usuario
-                if (UserInterface.Active != null)
-                {
-                    UserInterface.Active.Draw(_spriteBatch);
-                }
             }
-            catch (Exception ex)
+
+            // Dibujar las cartas en el centro de la mesa
+            for (int i = 0; i < _cartasEnCentro.Count; i++)
             {
-                Debug.WriteLine($"[Draw] Error: {ex.Message}");
+                // Calcular posición para distribuir las cartas en el centro
+                float offsetX = (i - (_cantidadCartasCentro - 1) / 2.0f) * 60;
+                Vector2 posicion = new Vector2(_posicionCentroMesa.X + offsetX, _posicionCentroMesa.Y);
+
+                // Dibujar la carta con su filtro correspondiente
+                _spriteBatch.Draw(
+                    _cartasEnCentro[i],
+                    posicion,
+                    null,
+                    _filtrosCartasCentro[i],
+                    0f, // Sin rotación
+                    new Vector2(_cartasEnCentro[i].Width / 2, _cartasEnCentro[i].Height / 2), // Origen centro
+                    _escalaCentroMesa, // Escala más pequeña para el centro
+                    SpriteEffects.None,
+                    0
+                );
             }
+
+            _spriteBatch.End();
+            base.Draw(gameTime);
+
+            _necesitaRedibujado = false; // Marcar como dibujado
         }
 
         // Método auxiliar para crear una textura plana
@@ -1822,13 +1826,9 @@ REGLAS:
             Color filtro = sonVerdaderas ?
                 new Color(0, 255, 0, 180) :    // Verde para verdaderas
                 new Color(255, 0, 0, 180);     // Rojo para falsas
+        }
 
-            for (int i = 0; i < _filtrosCartasCentro.Count; i++)
-            {
-                _filtrosCartasCentro[i] = filtro;
-            }
-
-            _mostrandoRevelacion = true;
+        _mostrandoRevelacion = true;
             _tiempoRevelacion = 0f;
 
             Debug.WriteLine($"[REVELACIÓN] Cartas reveladas: {(sonVerdaderas ? "VERDADERAS (Verde)" : "FALSAS (Rojo)")}");
@@ -1847,6 +1847,62 @@ REGLAS:
             }
 
             return cartasSeleccionadas;
+        }
+
+        private void IntentarReconectar()
+        {
+            if (DateTime.Now - _ultimaReconexion < _intervaloReconexion)
+            {
+                Debug.WriteLine("[RED] Esperando antes de reconectar...");
+                return;
+            }
+
+            _ultimaReconexion = DateTime.Now;
+
+            if (isReconnecting)
+            {
+                Debug.WriteLine("Ya se está intentando reconectar. Ignorando llamada.");
+                return;
+            }
+
+            isReconnecting = true;
+            Debug.WriteLine("Intentando reconectar al servidor...");
+            try
+            {
+                DisconnectFromServer();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Error al desconectar del servidor durante la reconexión: " + ex.Message);
+            }
+
+            int intentos = 5;
+            for (int i = 0; i < intentos; i++)
+            {
+                try
+                {
+                    Debug.WriteLine($"Intentando reconectar (intento {i + 1}/{intentos})...");
+                    ConnectToServer();
+                    conectado = true;
+                    Debug.WriteLine("Reconexión exitosa.");
+
+                    stopMessageListener = false;
+                    StartMessageListener();
+                    isReconnecting = false;
+
+                    int estado = this.estado(usuario, "1");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error al intentar reconectar (intento {i + 1}/{intentos}): {ex.Message}");
+                    Thread.Sleep(2000);
+                }
+            }
+
+            Debug.WriteLine("No se pudo reconectar al servidor después de varios intentos.");
+            conectado = false;
+            isReconnecting = false;
         }
     }
 }
