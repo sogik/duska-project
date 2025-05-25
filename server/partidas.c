@@ -93,7 +93,7 @@ int iniciar_partida(int partida_id)
     broadcast_to_group(partida->grupo_id, mensaje);
 
     // Esperar un momento para asegurar que el mensaje llegue por separado
-    usleep(200000); // 200ms de pausa
+    usleep(1000000); // 1000ms de pausa
 
     // Notificar el primer turno como un mensaje separado
     char mensaje_turno[100];
