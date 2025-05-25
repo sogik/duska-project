@@ -60,6 +60,11 @@ namespace Duska.Screens
         private List<bool> _cartasConFiltro = new List<bool>(); // Estado del filtro por carta
         private Color _colorFiltro = new Color(0, 0, 0, 128); // Color de filtro semitransparente (puedes ajustar los valores)
 
+        private string jugadorConTurnoActual = "";
+        private bool esMiTurno = false;
+        private bool _permitirAccionesJuego = false;
+        private Panel panelTurno;
+
         public GameCardScreen(Game game, string usuario) : base(game)
         {
             this.usuario = usuario;
@@ -269,6 +274,88 @@ namespace Duska.Screens
             panel.AddChild(ExitBtn);
         }
 
+        private void ControlarAccionesPorTurno(bool permitir)
+        {
+            _permitirAccionesJuego = permitir;
+
+            Debug.WriteLine($"[TURNOS] Acciones de juego {(permitir ? "HABILITADAS" : "BLOQUEADAS")}");
+
+            // Actualizar interfaz visual si es necesario
+            ActualizarInterfazTurno();
+        }
+        private void ActualizarInterfazTurno()
+        {
+            if (panelTurno == null) return;
+
+            // Limpiar panel
+            panelTurno.ClearChildren();
+
+            // Título
+            Header header = new Header("Estado del Turno");
+            panelTurno.AddChild(header);
+
+            // Mostrar jugador con turno actual
+            if (!string.IsNullOrEmpty(jugadorConTurnoActual))
+            {
+                Paragraph turnoMsg = new Paragraph($"Turno de: {jugadorConTurnoActual}");
+
+                // Destacar visualmente si es mi turno
+                if (esMiTurno)
+                {
+                    turnoMsg.FillColor = Color.Green;
+                    turnoMsg.Scale = 1.1f;
+                }
+                panelTurno.AddChild(turnoMsg);
+
+                // Estado de controles
+                Paragraph estadoMsg = new Paragraph(_permitirAccionesJuego ?
+                    "Controles activos" : "Controles bloqueados");
+
+                estadoMsg.FillColor = _permitirAccionesJuego ? Color.Green : Color.Red;
+                panelTurno.AddChild(estadoMsg);
+            }
+            else
+            {
+                Paragraph esperandoMsg = new Paragraph("Esperando inicio de turno...");
+                esperandoMsg.FillColor = Color.Yellow;
+                panelTurno.AddChild(esperandoMsg);
+            }
+        }
+        private string GetTipoCartaPorTextura(Texture2D textura)
+        {
+            // Compara directamente con las texturas cargadas en _cartas[]
+            if (textura == _cartas[0]) // ace
+                return "1";
+            else if (textura == _cartas[1]) // jack
+                return "2";
+            else if (textura == _cartas[2]) // king
+                return "3";
+            else if (textura == _cartas[3]) // queen
+                return "4";
+            else if (textura == _cartas[4]) // cardback
+                return "0";
+            else
+                return "0"; // Desconocido
+        }
+
+        private void CrearPanelTurnos()
+        {
+            // Eliminar panel existente si lo hay
+            if (panelTurno != null && UserInterface.Active.Root != null)
+            {
+                UserInterface.Active.RemoveEntity(panelTurno);
+            }
+
+            // Crear nuevo panel
+            panelTurno = new Panel(new Vector2(250, 80), PanelSkin.Simple, Anchor.TopLeft);
+            panelTurno.Identifier = "panel-turno";
+            panelTurno.Padding = new Vector2(10, 10);
+            UserInterface.Active.AddEntity(panelTurno);
+
+            // Actualizar contenido
+            ActualizarInterfazTurno();
+        }
+
         // Reemplaza el método ProcessServerMessage por este código:
         private void ProcessServerMessage(string message)
         {
@@ -324,11 +411,88 @@ namespace Duska.Screens
                         ChatPanel(true, chatMessage);
                     }
                 }
+                else if (message.StartsWith("TURN/"))
+                {
+                    // TURN/jugadorNombre - Indica de quién es el turno
+                    string jugadorTurno = message.Substring(5);
+
+                    // Actualizar variables de estado
+                    jugadorConTurnoActual = jugadorTurno;
+                    esMiTurno = (jugadorTurno == usuario);
+
+                    // Controlar si se permiten acciones
+                    _permitirAccionesJuego = esMiTurno;
+
+                    // Actualizar interfaz
+                    ActualizarInterfazTurno();
+
+                    // Mensaje en el chat
+                    if (esMiTurno)
+                        ChatPanel(true, "Sistema/¡ES TU TURNO! Selecciona cartas con [ESPACIO] y envíalas con [E]");
+                    else
+                        ChatPanel(true, $"Sistema/Turno de {jugadorConTurnoActual}. Esperando...");
+
+                    Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
+                }
+                else if (message.StartsWith("ACTION/"))
+                {
+                    // Formato esperado: ACTION/jugador/accion/datos
+                    string[] parts = message.Substring(7).Split('/');
+
+                    if (parts.Length >= 3)
+                    {
+                        string jugador = parts[0];
+                        string accion = parts[1];
+                        string datos = parts.Length > 2 ? parts[2] : "";
+
+                        // Mostrar la acción en el chat
+                        if (accion.ToUpper() == "PLAY")
+                        {
+                            // Parsear el formato especial para cartas: cantidad,tipo1,tipo2,...
+                            string[] cartasInfo = datos.Split(',');
+                            if (cartasInfo.Length > 0)
+                            {
+                                int cantidad = int.Parse(cartasInfo[0]);
+                                ChatPanel(true, $"Sistema/{jugador} ha jugado {cantidad} carta(s)");
+
+                                // Mostrar los tipos de cartas si hay datos disponibles
+                                if (cartasInfo.Length > 1)
+                                {
+                                    string tiposMsg = "Tipos: ";
+                                    for (int i = 1; i < cartasInfo.Length; i++)
+                                    {
+                                        tiposMsg += cartasInfo[i];
+                                        if (i < cartasInfo.Length - 1)
+                                            tiposMsg += ", ";
+                                    }
+                                    ChatPanel(true, $"Sistema/{tiposMsg}");
+                                }
+                            }
+                            else
+                            {
+                                // Mensaje genérico si no hay detalles
+                                ChatPanel(true, $"Sistema/{jugador} ha jugado cartas: {datos}");
+                            }
+                        }
+                        else
+                        {
+                            // Para otras acciones, mensaje genérico
+                            ChatPanel(true, $"Sistema/{jugador} ha realizado: {accion} {datos}");
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SERVER] Error procesando mensaje: {ex.Message}");
             }
+        }
+
+        private void ProcesarAccionJugador(string jugador, string accion, string datos)
+        {
+            // Simplemente mostrar un mensaje en el chat
+            ChatPanel(true, $"Sistema/{jugador} ha realizado: {accion} {datos}");
+            Debug.WriteLine($"[JUEGO] Acción: {jugador} realizó {accion} con datos: {datos}");
         }
 
         // En LoadContent o cuando se reciben nuevas cartas:
@@ -962,6 +1126,100 @@ namespace Duska.Screens
             messageListenerThread.Start();
         }
 
+        private void EnviarCartasSeleccionadas()
+        {
+            if (!esMiTurno)
+            {
+                ChatPanel(true, "Sistema/No puedes jugar cartas fuera de tu turno");
+                return;
+            }
+
+            try
+            {
+                // Contar cuántas cartas tienen filtro aplicado
+                int cartasConFiltroCount = 0;
+                List<string> tiposCartas = new List<string>();
+
+                // Verificar que la lista de filtros esté inicializada
+                if (_cartasConFiltro == null || _cartasConFiltro.Count < _cartasDisponibles.Count)
+                {
+                    // Inicializar la lista de filtros si es necesario
+                    _cartasConFiltro = new List<bool>();
+                    while (_cartasConFiltro.Count < _cartasDisponibles.Count)
+                    {
+                        _cartasConFiltro.Add(false);
+                    }
+                }
+
+                // Recorrer todas las cartas y verificar cuáles tienen filtro
+                for (int i = 0; i < _cartasDisponibles.Count; i++)
+                {
+                    if (_cartasConFiltro[i])
+                    {
+                        cartasConFiltroCount++;
+                        // Obtener el tipo de cada carta (del 1 al 4)
+                        string tipoCarta = GetTipoCartaPorTextura(_cartasDisponibles[i]);
+                        tiposCartas.Add(tipoCarta);
+                    }
+                }
+
+                // Verificar si hay cartas seleccionadas
+                if (cartasConFiltroCount == 0)
+                {
+                    ChatPanel(true, "Sistema/No has seleccionado ninguna carta para enviar");
+                    return;
+                }
+
+                // Construir el mensaje con la cantidad de cartas y sus tipos
+                string datosCartas = $"{cartasConFiltroCount},{string.Join(",", tiposCartas)}";
+
+                // Enviar acción al servidor
+                string mensaje = $"21/{usuario}/PLAY/{datosCartas}";
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+
+                Debug.WriteLine($"[ACCIÓN] Enviadas {cartasConFiltroCount} cartas: {datosCartas}");
+                ChatPanel(true, $"Sistema/Has enviado {cartasConFiltroCount} carta(s)");
+
+                // Opcional: Limpiar las cartas enviadas de tu mano
+                LimpiarCartasEnviadas();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al enviar cartas: {ex.Message}");
+                ChatPanel(true, $"Sistema/ERROR: {ex.Message}");
+            }
+        }
+
+        private void LimpiarCartasEnviadas()
+        {
+            // Crear una nueva lista para las cartas que se mantienen
+            List<Texture2D> nuevasCartasDisponibles = new List<Texture2D>();
+            List<bool> nuevosFiltros = new List<bool>();
+
+            // Guardar solo las cartas que no tienen filtro (no fueron enviadas)
+            for (int i = 0; i < _cartasDisponibles.Count; i++)
+            {
+                if (!_cartasConFiltro[i])
+                {
+                    nuevasCartasDisponibles.Add(_cartasDisponibles[i]);
+                    nuevosFiltros.Add(false);
+                }
+            }
+
+            // Actualizar las listas
+            _cartasDisponibles = nuevasCartasDisponibles;
+            _cartasConFiltro = nuevosFiltros;
+
+            // Resetear el índice de carta seleccionada
+            if (_cartasDisponibles.Count > 0)
+                _cartaSeleccionadaIndex = 0;
+            else
+                _cartaSeleccionadaIndex = -1;
+
+            Debug.WriteLine($"[CARTAS] Cartas restantes después de enviar: {_cartasDisponibles.Count}");
+        }
+
         public override void Update(GameTime gameTime)
         {
             try
@@ -1024,7 +1282,14 @@ namespace Duska.Screens
                 // Solo procesar teclas de juego si el ratón no está sobre la UI
                 if (!ratónSobreUI)
                 {
-                    // Detectar tecla Q para acercar/alejar las cartas
+                    // Tecla ESC para el menú siempre disponible
+                    if (keyboardState.WasKeyReleased(Keys.Escape))
+                    {
+                        Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
+                        EscMenu(usuario, true);
+                    }
+
+                    // IMPORTANTE: La tecla Q para acercar/alejar siempre está disponible
                     if (keyboardState.WasKeyReleased(Keys.Q))
                     {
                         _cartasAcercadas = !_cartasAcercadas;
@@ -1039,60 +1304,64 @@ namespace Duska.Screens
                         Debug.WriteLine($"[INPUT] Cartas acercadas: {_cartasAcercadas}");
                     }
 
-                    // La navegación con flechas y aplicación de filtros SOLO funciona cuando las cartas están acercadas
-                    if (_cartasAcercadas)
+                    // Teclas que afectan al juego - SOLO activas si es tu turno
+                    if (esMiTurno && _permitirAccionesJuego)
                     {
-                        // Navegación con flechas entre cartas
-                        if (keyboardState.WasKeyReleased(Keys.Left))
+                        // La navegación con flechas y aplicación de filtros SOLO funciona cuando las cartas están acercadas
+                        if (_cartasAcercadas)
                         {
-                            if (_cartasDisponibles.Count > 0)
+                            // Navegación con flechas entre cartas
+                            if (keyboardState.WasKeyReleased(Keys.Left))
                             {
-                                _cartaSeleccionadaIndex--;
-                                if (_cartaSeleccionadaIndex < 0)
-                                    _cartaSeleccionadaIndex = _cartasDisponibles.Count - 1;
+                                if (_cartasDisponibles.Count > 0)
+                                {
+                                    _cartaSeleccionadaIndex--;
+                                    if (_cartaSeleccionadaIndex < 0)
+                                        _cartaSeleccionadaIndex = _cartasDisponibles.Count - 1;
 
-                                // ELIMINAR: _filtroAplicado = false; 
-                                // El filtro ahora permanece activo al cambiar de carta
-                                Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
+                                    Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
+                                }
                             }
-                        }
-                        else if (keyboardState.WasKeyReleased(Keys.Right))
-                        {
-                            if (_cartasDisponibles.Count > 0)
+                            else if (keyboardState.WasKeyReleased(Keys.Right))
                             {
-                                _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
+                                if (_cartasDisponibles.Count > 0)
+                                {
+                                    _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
 
-                                // ELIMINAR: _filtroAplicado = false; 
-                                // El filtro ahora permanece activo al cambiar de carta
-                                Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
+                                    Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
+                                }
                             }
-                        }
 
-                        // Espacio ahora alterna el filtro en la carta seleccionada
-                        if (keyboardState.WasKeyReleased(Keys.Space))
-                        {
-                            // Solo aplicar filtro si hay una carta seleccionada
-                            if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
+                            // Espacio ahora alterna el filtro en la carta seleccionada
+                            if (keyboardState.WasKeyReleased(Keys.Space))
                             {
-                                // Asegurarse de que la lista de filtros tiene suficientes elementos
-                                while (_cartasConFiltro.Count < _cartasDisponibles.Count)
-                                    _cartasConFiltro.Add(false);
+                                // Solo aplicar filtro si hay una carta seleccionada
+                                if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
+                                {
+                                    // Asegurarse de que la lista de filtros tiene suficientes elementos
+                                    while (_cartasConFiltro.Count < _cartasDisponibles.Count)
+                                        _cartasConFiltro.Add(false);
 
-                                // Alternar el filtro solo para la carta seleccionada
-                                _cartasConFiltro[_cartaSeleccionadaIndex] = !_cartasConFiltro[_cartaSeleccionadaIndex];
+                                    // Alternar el filtro solo para la carta seleccionada
+                                    _cartasConFiltro[_cartaSeleccionadaIndex] = !_cartasConFiltro[_cartaSeleccionadaIndex];
 
-                                Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
-                                    $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
-                                    $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
+                                    Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
+                                        $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
+                                        $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
+                                    //_cartasConFiltro[_cartaSeleccionadaIndex]
+                                }
+                            }
+
+                            if (keyboardState.WasKeyReleased(Keys.E))
+                            {
+                                EnviarCartasSeleccionadas();
                             }
                         }
                     }
-
-                    // Añadir en el método Update, dentro del bloque if (!ratónSobreUI)
-                    if (keyboardState.WasKeyReleased(Keys.Escape))
+                    else if (_cartasAcercadas && !esMiTurno && keyboardState.WasKeyReleased(Keys.Space))
                     {
-                        Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
-                        EscMenu(usuario, true);
+                        // Si no es tu turno pero intentas hacer una acción, mostrar mensaje
+                        ChatPanel(true, "Sistema/No es tu turno para realizar acciones");
                     }
                 }
 
@@ -1215,6 +1484,35 @@ namespace Duska.Screens
         {
             this.server = existingSocket;
             this.conectado = true;
+        }
+
+        // Método para enviar acciones al servidor
+        private void EnviarAccionJuego(string accion, string datos)
+        {
+            try
+            {
+                if (!esMiTurno)
+                {
+                    ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
+                    return;
+                }
+
+                // Formato correcto para el servidor: 21/usuario/accion/datos
+                string mensaje = $"21/{usuario}/{accion}/{datos}";
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+
+                Debug.WriteLine($"[ACCIÓN] Enviada: {accion} {datos}");
+
+                // Opcional: deshabilitar los controles inmediatamente mientras se procesa la acción
+                // para evitar acciones duplicadas
+                _permitirAccionesJuego = false;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al enviar acción: {ex.Message}");
+                ChatPanel(true, $"Sistema/ERROR: {ex.Message}");
+            }
         }
     }
 }

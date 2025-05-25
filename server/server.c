@@ -12,6 +12,7 @@
 #include "basedatos.h"
 #include "auth.h"
 #include "generarcartas.h"
+#include "partidas.h"
 
 // Estructura para mantener los clientes conectados
 typedef struct ClientNode
@@ -261,6 +262,51 @@ void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
     {
         snprintf(buffer, buffer_size, "ERROR/No hay usuarios en este grupo");
     }
+}
+
+// Función para verificar si un usuario es líder de un grupo
+// Esta es usada por partidas.c
+int es_lider_grupo(const char *usuario, int grupo_id)
+{
+    int es_lider = 0;
+    pthread_mutex_lock(&client_list_mutex);
+
+    // Buscar el primer cliente del grupo (el líder)
+    ClientNode *cliente = client_list;
+    while (cliente != NULL)
+    {
+        if (cliente->grupo_id == grupo_id)
+        {
+            // El primer cliente encontrado es el líder
+            es_lider = (strcmp(cliente->usuario, usuario) == 0);
+            break;
+        }
+        cliente = cliente->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return es_lider;
+}
+
+// Función para obtener la lista de jugadores de un grupo
+int listar_jugadores_grupo(int grupo_id, char jugadores[10][50])
+{
+    int num_jugadores = 0;
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *cliente = client_list;
+    while (cliente != NULL)
+    {
+        if (cliente->grupo_id == grupo_id && num_jugadores < 10)
+        {
+            strcpy(jugadores[num_jugadores], cliente->usuario);
+            num_jugadores++;
+        }
+        cliente = cliente->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return num_jugadores;
 }
 
 void *cliente(void *socket_ptr)
@@ -670,6 +716,8 @@ int main(int argc, char *argv[])
     }
 
     printf("Servidor escuchando en el puerto 50756...\n");
+
+    srand(time(NULL)); // Para la asignación aleatoria de turnos
 
     while (1)
     {
