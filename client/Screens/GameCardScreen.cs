@@ -15,6 +15,7 @@ using GeonBit.UI;
 using GeonBit.UI.Utils;
 using System.Diagnostics;
 using System.Net;
+using MonoGame.Extended.Particles.Profiles;
 
 namespace Duska.Screens
 {
@@ -113,6 +114,7 @@ namespace Duska.Screens
                 // Conectar al servidor y solicitar cartas (solo una vez)
                 if (conectado || ConnectToServerIfNeeded())
                 {
+                    MensajesPrueba();
                     StartMessageListener();
                     ChatPanel(true, "Bienvenido al juego, " + usuario);
                 }
@@ -531,146 +533,214 @@ namespace Duska.Screens
                 }
 
                 // Limpiar la interfaz anterior
-                UserInterface.Active.Clear();
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                }
+                else
+                {
+                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
+                    return;
+                }
 
-                // Crear el panel con altura fija para asegurar que todo sea visible
+                // Crear el panel principal con altura fija
                 Panel panel = new Panel(new Vector2(350, 500), PanelSkin.Simple, Anchor.CenterRight);
-                panel.Padding = new Vector2(20, 20);
+                if (panel == null)
+                {
+                    Debug.WriteLine("[ERROR] No se pudo crear el panel principal");
+                    return;
+                }
+
+                panel.Padding = new Vector2(15, 15);
                 panel.Visible = visible;
                 UserInterface.Active.AddEntity(panel);
 
-                // Agregar encabezado y línea horizontal
-                panel.AddChild(new Header("Chat"));
-                panel.AddChild(new HorizontalLine());
+                // ---- ESTRUCTURA VERTICAL CLARA ----
+                // 1. Encabezado + línea (altura ~40px)
+                // 2. Panel de mensajes (altura fija 340px)
+                // 3. Línea divisoria
+                // 4. Campo de texto (altura 40px)
+                // 5. Panel de botones (altura 60px)
 
-                // Panel con desplazamiento para mensajes
-                VerticalScrollbar scrollPanel = new VerticalScrollbar(0, 10);
-                panel.AddChild(scrollPanel);
+                // 1. ENCABEZADO
+                Header header = new Header("Chat");
+                if (header != null) panel.AddChild(header);
 
-                // Agregar todos los mensajes del historial al panel de desplazamiento
-                foreach (string msg in historialChat)
+                HorizontalLine lineTop = new HorizontalLine();
+                if (lineTop != null) panel.AddChild(lineTop);
+
+                // 2. PANEL DE MENSAJES - contenedor fijo
+                Panel mensajesPanel = new Panel(new Vector2(0, 340), PanelSkin.None, Anchor.TopCenter);
+                if (mensajesPanel == null)
                 {
-                    string[] partes = msg.Split('/');
-                    RichParagraph mensajeParagraph;
-
-                    if (partes.Length >= 2)
-                    {
-                        mensajeParagraph = new RichParagraph($"{partes[0]}: {partes[1]}");
-                    }
-                    else
-                    {
-                        mensajeParagraph = new RichParagraph(msg);
-                    }
-
-                    panel.AddChild(mensajeParagraph);
+                    Debug.WriteLine("[ERROR] No se pudo crear el panel de mensajes");
+                    return;
                 }
 
-                // Línea horizontal para separar
-                panel.AddChild(new HorizontalLine());
+                mensajesPanel.Padding = new Vector2(10, 10);
+                panel.AddChild(mensajesPanel);
 
-                // Campo de texto con altura definida
-                TextInput text = new TextInput(false);
-                text.PlaceholderText = "Escribe un mensaje...";
-                text.Size = new Vector2(0, 40);
-                panel.AddChild(text);
+                // Limitar historial y obtener los mensajes más recientes
+                int mensajesPorPantalla = 10; // Aproximadamente cuántos caben
 
-                // Espacio adicional
-                panel.AddChild(new LineSpace(10));
-
-                // Panel de botones
-                Panel botonesPanel = new Panel(new Vector2(0, 60), PanelSkin.None, Anchor.BottomCenter);
-                botonesPanel.Padding = new Vector2(10, 10);
-                panel.AddChild(botonesPanel);
-
-                // Botón enviar
-                Button enviarBtn = new Button("Enviar", ButtonSkin.Default);
-                enviarBtn.Size = new Vector2(150, 35);
-                enviarBtn.OnClick = (Entity btn) =>
+                if (historialChat == null)
                 {
-                    string mensajeEnviar = text.Value;
-                    if (!string.IsNullOrEmpty(mensajeEnviar))
+                    historialChat = new List<string>();
+                }
+
+                int totalMensajes = historialChat.Count;
+                int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
+
+                // Limitar historial para no acumular demasiados
+                int maxHistorialPermitido = 50;
+                if (historialChat.Count > maxHistorialPermitido)
+                {
+                    historialChat.RemoveRange(0, historialChat.Count - maxHistorialPermitido);
+                    indiceInicio = Math.Max(0, historialChat.Count - mensajesPorPantalla);
+                }
+
+                // Mostrar los mensajes más recientes
+                for (int i = indiceInicio; i < totalMensajes; i++)
+                {
+                    if (i >= 0 && i < historialChat.Count)
                     {
-                        try
+                        string msg = historialChat[i];
+                        if (msg == null) continue;
+
+                        string[] partes = msg.Split('/');
+                        Paragraph mensajeParagraph;
+
+                        if (partes.Length >= 2)
                         {
-                            // Verificar si hay conexión antes de enviar
-                            if (server != null && server.Connected && conectado)
+                            mensajeParagraph = new Paragraph($"{partes[0]}: {partes[1]}");
+                        }
+                        else
+                        {
+                            mensajeParagraph = new Paragraph(msg);
+                        }
+
+                        if (mensajeParagraph != null)
+                        {
+                            mensajeParagraph.Scale = 0.9f;
+                            mensajeParagraph.WrapWords = true;
+                            mensajesPanel.AddChild(mensajeParagraph);
+                        }
+                    }
+                }
+
+                // 3. LÍNEA DIVISORIA - clara separación visual
+                HorizontalLine lineMiddle = new HorizontalLine();
+                if (lineMiddle != null) panel.AddChild(lineMiddle);
+
+                // 4. CAMPO DE TEXTO - asegurando que esté disponible
+                TextInput text = new TextInput(false);
+                if (text != null)
+                {
+                    text.PlaceholderText = "Escribe un mensaje...";
+                    text.Size = new Vector2(0, 40);
+                    text.Anchor = Anchor.Auto; // Posición automática según el orden
+                    panel.AddChild(text);
+                }
+
+                // 5. PANEL DE BOTONES - anclado abajo explícitamente 
+                Panel botonesPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
+                if (botonesPanel != null)
+                {
+                    botonesPanel.Padding = new Vector2(10, 10);
+                    botonesPanel.Anchor = Anchor.BottomCenter; // Anclar explícitamente abajo
+                    panel.AddChild(botonesPanel);
+
+                    // Distribuir botones horizontalmente
+                    Button enviarBtn = new Button("Enviar");
+                    Button cartasBtn = new Button("Pedir Cartas");
+
+                    if (enviarBtn != null && cartasBtn != null)
+                    {
+                        // Distribuir los botones en el espacio disponible
+                        enviarBtn.Size = new Vector2(150, 35);
+                        enviarBtn.Anchor = Anchor.TopLeft;
+
+                        cartasBtn.Size = new Vector2(150, 35);
+                        cartasBtn.Anchor = Anchor.TopRight;
+
+                        // Añadir manejadores de eventos
+                        enviarBtn.OnClick = (Entity btn) =>
+                        {
+                            if (text == null || string.IsNullOrEmpty(text.Value)) return;
+
+                            string mensajeEnviar = text.Value;
+                            try
                             {
-                                string mensajeFormato = "11/" + usuario + "/" + mensajeEnviar;
-                                byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
-                                server.Send(msg);
-
-                                // Recargar el panel para mostrar el mensaje nuevo
-                                ChatPanel(true, null);
-
-                                Debug.WriteLine("[CHAT] Mensaje enviado: " + mensajeEnviar);
-                            }
-                            else
-                            {
-                                // No hay conexión, intentar reconectar
-                                Debug.WriteLine("[CHAT] No hay conexión. Intentando reconectar...");
-                                historialChat.Add("Sistema/Reconectando al servidor...");
-                                ChatPanel(true, null);
-
-                                // Intentar reconectar
-                                ConnectToServerIfNeeded();
-
-                                if (server != null && server.Connected)
+                                if (server != null && server.Connected && conectado)
                                 {
-                                    // Reintento después de reconexión
                                     string mensajeFormato = "11/" + usuario + "/" + mensajeEnviar;
                                     byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
                                     server.Send(msg);
                                     text.Value = "";
-                                    historialChat.Add("Sistema/Mensaje enviado después de reconectar");
                                     ChatPanel(true, null);
                                 }
                                 else
                                 {
-                                    historialChat.Add("Sistema/ERROR: No se pudo conectar al servidor");
+                                    Debug.WriteLine("[CHAT] No hay conexión. Intentando reconectar...");
+                                    historialChat.Add("Sistema/Reconectando al servidor...");
+                                    ChatPanel(true, null);
+                                    ConnectToServerIfNeeded();
+
+                                    if (server != null && server.Connected)
+                                    {
+                                        string mensajeFormato = "11/" + usuario + "/" + mensajeEnviar;
+                                        byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
+                                        server.Send(msg);
+                                        text.Value = "";
+                                        historialChat.Add("Sistema/Mensaje enviado después de reconectar");
+                                        ChatPanel(true, null);
+                                    }
+                                    else
+                                    {
+                                        historialChat.Add("Sistema/ERROR: No se pudo conectar al servidor");
+                                        ChatPanel(true, null);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine("[ERROR] Error al enviar mensaje: " + ex.Message);
+                                historialChat.Add("Sistema/ERROR: " + ex.Message);
+                                ChatPanel(true, null);
+                            }
+                        };
+
+                        cartasBtn.OnClick = (Entity btn) =>
+                        {
+                            try
+                            {
+                                if (conectado || ConnectToServerIfNeeded())
+                                {
+                                    GetCards(usuario);
+                                    historialChat.Add("Sistema/Solicitando nuevas cartas...");
+                                    ChatPanel(true, null);
+                                }
+                                else
+                                {
+                                    historialChat.Add("Sistema/ERROR: No hay conexión al servidor");
                                     ChatPanel(true, null);
                                 }
                             }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine("[ERROR] Error al enviar mensaje: " + ex.Message);
-                            historialChat.Add("Sistema/ERROR: " + ex.Message);
-                            ChatPanel(true, null);
-                        }
-                    }
-                };
-                botonesPanel.AddChild(enviarBtn);
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[ERROR] Error al solicitar cartas: {ex.Message}");
+                                historialChat.Add("Sistema/ERROR: " + ex.Message);
+                                ChatPanel(true, null);
+                            }
+                        };
 
-                // Botón para solicitar nuevas cartas
-                Button cartasBtn = new Button("Pedir Cartas", ButtonSkin.Default);
-                cartasBtn.Size = new Vector2(150, 35);
-                cartasBtn.OnClick = (Entity btn) =>
-                {
-                    try
-                    {
-                        if (conectado || ConnectToServerIfNeeded())
-                        {
-                            GetCards(usuario);
-                            historialChat.Add("Sistema/Solicitando nuevas cartas...");
-                            ChatPanel(true, null);
-                            Debug.WriteLine("[CARTAS] Solicitud manual de cartas enviada");
-                        }
-                        else
-                        {
-                            historialChat.Add("Sistema/ERROR: No hay conexión al servidor");
-                            ChatPanel(true, null);
-                        }
+                        // Añadir botones al panel
+                        botonesPanel.AddChild(enviarBtn);
+                        botonesPanel.AddChild(cartasBtn);
                     }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error al solicitar cartas: {ex.Message}");
-                        historialChat.Add("Sistema/ERROR: " + ex.Message);
-                        ChatPanel(true, null);
-                    }
-                };
-                botonesPanel.AddChild(cartasBtn);
+                }
 
-                Debug.WriteLine("[CHAT] Panel de chat inicializado con " + historialChat.Count + " mensajes");
+                Debug.WriteLine("[CHAT] Panel de chat inicializado correctamente");
             }
             catch (Exception ex)
             {
@@ -783,6 +853,19 @@ namespace Duska.Screens
             Debug.WriteLine("No se pudo reconectar al servidor después de varios intentos.");
             conectado = false;
             isReconnecting = false;
+        }
+
+        private void MensajesPrueba()
+        {
+            string mensajeFormato = "1000/" + usuario + "/" + "mensaje de prueba";
+            byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
+
+            for (int i = 0; i < 3; i++)
+            {
+                server.Send(msg);
+            }
+
+            Debug.WriteLine("[PRUEBA] Mensajes de prueba enviados.");
         }
 
         // Reemplaza el método StartMessageListener con esta versión mejorada
