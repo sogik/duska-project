@@ -36,8 +36,6 @@ namespace Duska.Screens
         public string usuario;
         public string destinatario;
 
-        public int grupo;
-
         private bool conectado = false; // Indica si el cliente está conectado al servidor
 
         public MainMenuScreen(Game game, string usuario)
@@ -112,7 +110,7 @@ namespace Duska.Screens
                 stopMessageListener = true;
 
                 // 2) Crear y cargar GameCardScreen reutilizando el socket vivo
-                var gameScreen = new GameCardScreen(Game, usuario, grupo);
+                var gameScreen = new GameCardScreen(Game, usuario);
                 //var gamescreee2n = new gamecardScreen(Game, usuario);
 
                 gameScreen.SetExistingSocket(server);
@@ -583,11 +581,7 @@ namespace Duska.Screens
                 Button acceptBtn = new Button("Ok", ButtonSkin.Default);
                 acceptBtn.OnClick = (Entity btn) =>
                 {
-                    if (mensaje2[1] == "ACEPTADA")
-                    {
-                        GetGrupoid(usuario);
-                    }
-                    UserInterface.Active.RemoveEntity(panel);
+                    panel.Visible = false;
                 };
                 panel.AddChild(acceptBtn);
 
@@ -757,30 +751,6 @@ namespace Duska.Screens
             }
         }
 
-        private int GetGrupoid(string usuario)
-        {
-            try
-            {
-                if (!conectado)
-                {
-                    ConnectToServer(); // Conectar al servidor si no está conectado
-                }
-
-                string mensaje = "16/" + usuario + "/brr";
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                server.Send(msg);
-
-                Debug.WriteLine("Petición de grupo enviada correctamente: " + mensaje);
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("Error al enviar la petición de grupo: " + ex.Message);
-                conectado = false;
-                return -1;
-            }
-        }
-
         private void ConnectToServer()
         {
             if (server == null || !server.Connected)
@@ -941,13 +911,6 @@ namespace Duska.Screens
                 // Mensaje de error
                 string failMessage = message.Substring(5);
                 Debug.WriteLine("Error recibido del servidor: " + failMessage);
-            }
-            else if (message.StartsWith("GRUPO/"))
-            {
-                string grupoMessage = message.Substring(6);
-                Debug.WriteLine("Mensaje de grupo recibido: " + grupoMessage);
-
-                grupo = int.Parse(grupoMessage);
             }
             else if (message.StartsWith("ERROR/"))
             {

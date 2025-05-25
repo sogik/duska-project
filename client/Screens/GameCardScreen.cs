@@ -15,15 +15,6 @@ using GeonBit.UI;
 using GeonBit.UI.Utils;
 using System.Diagnostics;
 using System.Net;
-using System.Linq;
-
-public enum TipoCarta
-{
-    Ace,
-    King,
-    Queen,
-    Jack  // Joker/Comodín
-}
 
 namespace Duska.Screens
 {
@@ -68,24 +59,6 @@ namespace Duska.Screens
         private List<bool> _cartasConFiltro = new List<bool>(); // Estado del filtro por carta
         private Color _colorFiltro = new Color(0, 0, 0, 128); // Color de filtro semitransparente (puedes ajustar los valores)
 
-        // Variables para el juego del mentiroso
-        private bool _miTurno = false;
-        private bool _puedoAcusar = false;
-        private TipoCarta _tipoRondaActual = TipoCarta.Ace; // Tipo de carta para la ronda actual
-        private string _jugadorActual = "";
-        private string _ultimoJugador = "";
-        private List<Color> _filtrosCartasCentro = new List<Color>(); // Para visualizar revelaciones
-        private List<Texture2D> _cartasEnCentro = new List<Texture2D>(); // Cartas en el centro
-        private bool _mostrandoRevelacion = false;
-        private float _tiempoRevelacion = 0f;
-        private const float TIEMPO_REVELACION_COMPLETO = 3f; // Tiempo en segundos para mostrar la revelación
-
-        private Texture2D _texturaAce;
-        private Texture2D _texturaKing;
-        private Texture2D _texturaQueen;
-        private Texture2D _texturaJack;
-        private Texture2D _texturaCardBack;
-
         public GameCardScreen(Game game, string usuario) : base(game)
         {
             this.usuario = usuario;
@@ -105,26 +78,6 @@ namespace Duska.Screens
                 InitializeThemeAndUI(BuiltinThemes.hd);
 
                 _spriteBatch = new SpriteBatch(GraphicsDevice);
-
-                try
-                {
-                    _texturaAce = Content.Load<Texture2D>("Cards/ace");
-                    _texturaKing = Content.Load<Texture2D>("Cards/king");
-                    _texturaQueen = Content.Load<Texture2D>("Cards/queen");
-                    _texturaJack = Content.Load<Texture2D>("Cards/jack");
-                    _texturaCardBack = Content.Load<Texture2D>("Cards/cardback");
-
-                    Debug.WriteLine("Cartas cargadas correctamente");
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Error cargando texturas de cartas: {ex.Message}");
-                }
-
-                // Inicializar listas
-                _cartasConFiltro = new List<bool>();
-                _cartasEnCentro = new List<Texture2D>();
-                _filtrosCartasCentro = new List<Color>();
 
                 // Cargar texturas de cartas
                 string[] cartasNombres = new string[] { "ace", "jack", "king", "queen", "cardback" };
@@ -368,11 +321,6 @@ namespace Duska.Screens
                     {
                         ChatPanel(true, chatMessage);
                     }
-                }
-                else
-                {
-                    // Procesar mensajes de juego
-                    ProcesarMensajeJuego(message);
                 }
             }
             catch (Exception ex)
@@ -1063,24 +1011,6 @@ namespace Duska.Screens
                         Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
                         EscMenu(usuario, true);
                     }
-
-                    // Jugar cartas seleccionadas con E
-                    if (keyboardState.WasKeyReleased(Keys.E) && _miTurno)
-                    {
-                        JugarCartasSeleccionadas();
-                    }
-
-                    // Acusar con A (solo cuando es tu turno y puedes acusar)
-                    if (keyboardState.WasKeyReleased(Keys.A) && _miTurno && _puedoAcusar)
-                    {
-                        AcusarJugadorAnterior();
-                    }
-
-                    // Pasar turno with P (if you prefer not to accuse)
-                    if (keyboardState.WasKeyReleased(Keys.P) && _miTurno && _puedoAcusar)
-                    {
-                        PasarTurno();
-                    }
                 }
 
                 // IMPORTANTE: Actualizar el estado anterior del teclado al final
@@ -1176,40 +1106,12 @@ namespace Duska.Screens
                     );
                 }
 
-                // Dibujar cartas en el centro
-                // Dibujar cartas del jugador
-                DibujarCartas();
-
-                // Dibujar cartas en el centro
-                DibujarCartasCentro();
-
-                // Mostrar información del turno actual
-                string infoTurno = $"Turno: {_jugadorActual} | Tipo: {_tipoRondaActual}";
-                if (_miTurno)
-                {
-                    infoTurno += _puedoAcusar ? " | ¡Puedes ACUSAR (A) o PASAR (P)!" : " | ¡Tu turno! (E para jugar)";
-                }
-
                 _spriteBatch.End();
 
                 // Dibujar la interfaz de usuario
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Draw(_spriteBatch);
-                }
-                // Actualizar revelación si está activa
-                if (_mostrandoRevelacion)
-                {
-                    _tiempoRevelacion += (float)gameTime.ElapsedGameTime.TotalSeconds;
-                    if (_tiempoRevelacion >= TIEMPO_REVELACION_COMPLETO)
-                    {
-                        _mostrandoRevelacion = false;
-                        // Resetear filtros
-                        for (int i = 0; i < _filtrosCartasCentro.Count; i++)
-                        {
-                            _filtrosCartasCentro[i] = Color.White;
-                        }
-                    }
                 }
             }
             catch (Exception ex)
@@ -1218,35 +1120,6 @@ namespace Duska.Screens
             }
         }
 
-        private void DibujarCartas()
-        {
-            // Verificar que el SpriteBatch existe
-            if (_spriteBatch == null)
-                return;
-
-            // Verificar que hay cartas para dibujar
-            if (_cartasDisponibles.Count == 0)
-                return;
-
-            // Determinar la posición de las cartas
-            Vector2 posBase = _cartasAcercadas ? _posicionCartasAcercadas : _posicionCartasNormal;
-            float espacioEntre = _cartasAcercadas ? 120f : 30f;
-
-            // Dibujar cada carta
-            for (int i = 0; i < _cartasDisponibles.Count; i++)
-            {
-                Vector2 posicion = posBase + new Vector2(i * espacioEntre, 0);
-
-                // Color de la carta (azul si está seleccionada)
-                Color colorCarta = Color.White;
-                if (_cartasAcercadas && i < _cartasConFiltro.Count && _cartasConFiltro[i])
-                {
-                    colorCarta = new Color(100, 149, 237); // Azul claro
-                }
-
-                _spriteBatch.Draw(_cartasDisponibles[i], posicion, null, colorCarta, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0f);
-            }
-        }
         // Método auxiliar para crear una textura plana
         private Texture2D GetOrCreatePlainTexture(Color color)
         {
@@ -1259,286 +1132,6 @@ namespace Duska.Screens
         {
             this.server = existingSocket;
             this.conectado = true;
-        }
-
-        private void JugarCartasSeleccionadas()
-        {
-            // Verificar que hay cartas seleccionadas
-            int cartasSeleccionadas = _cartasConFiltro.Count(filtro => filtro);
-            if (cartasSeleccionadas == 0)
-            {
-                Debug.WriteLine("[JUEGO] No hay cartas seleccionadas para jugar");
-                return;
-            }
-
-            // Construir mensaje con las cartas seleccionadas
-            string tiposCartas = string.Empty;
-            List<int> indicesSeleccionados = new List<int>();
-
-            for (int i = 0; i < _cartasConFiltro.Count; i++)
-            {
-                if (_cartasConFiltro[i])
-                {
-                    string tipoCarta = GetNombreCartaPorTextura(_cartasDisponibles[i]);
-                    tiposCartas += tipoCarta + ",";
-                    indicesSeleccionados.Add(i);
-                }
-            }
-
-            if (tiposCartas.EndsWith(","))
-                tiposCartas = tiposCartas.TrimEnd(',');
-
-            // Enviar mensaje al servidor
-            string mensaje = $"JUGAR_CARTAS/{usuario}/{tiposCartas}/{_tipoRondaActual}";
-
-            try
-            {
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                server.Send(msg);
-                Debug.WriteLine($"[JUEGO] Jugando cartas: {tiposCartas} como {_tipoRondaActual}");
-
-                // Quitar las cartas seleccionadas del mazo del jugador
-                for (int i = indicesSeleccionados.Count - 1; i >= 0; i--)
-                {
-                    int indice = indicesSeleccionados[i];
-                    _cartasDisponibles.RemoveAt(indice);
-                    _cartasConFiltro.RemoveAt(indice);
-                }
-
-                // Resetear selección
-                _cartasAcercadas = false;
-                _cartaSeleccionadaIndex = -1;
-
-                // Actualizar posiciones
-                ActualizarPosicionesCartas();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Al jugar cartas: {ex.Message}");
-            }
-        }
-
-        private void AcusarJugadorAnterior()
-        {
-            if (string.IsNullOrEmpty(_ultimoJugador))
-            {
-                Debug.WriteLine("[JUEGO] No hay jugador anterior para acusar");
-                return;
-            }
-
-            try
-            {
-                string mensaje = $"ACUSAR/{usuario}/{_ultimoJugador}";
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                server.Send(msg);
-                Debug.WriteLine($"[JUEGO] Acusando a {_ultimoJugador} de mentir");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Al acusar: {ex.Message}");
-            }
-        }
-
-        private void PasarTurno()
-        {
-            try
-            {
-                string mensaje = $"PASAR_TURNO/{usuario}";
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                server.Send(msg);
-                Debug.WriteLine("[JUEGO] Pasando turno sin acusar");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Al pasar turno: {ex.Message}");
-            }
-        }
-
-        private void DibujarCartasCentro()
-        {
-            if (_cartasEnCentro.Count == 0)
-                return;
-
-            float anchoTotal = _cartasEnCentro.Count * 120;
-            float posX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
-            float posY = GraphicsDevice.Viewport.Height / 2 - 225;
-
-            for (int i = 0; i < _cartasEnCentro.Count; i++)
-            {
-                Color colorCarta = Color.White;
-
-                // Si estamos mostrando revelación, aplicar el color del filtro
-                if (_mostrandoRevelacion && i < _filtrosCartasCentro.Count)
-                {
-                    colorCarta = _filtrosCartasCentro[i];
-                }
-
-                _spriteBatch.Draw(
-                    _cartasEnCentro[i],
-                    new Vector2(posX + i * 120, posY),
-                    null,
-                    colorCarta,
-                    0f,
-                    Vector2.Zero,
-                    1.0f,
-                    SpriteEffects.None,
-                    0f
-                );
-            }
-        }
-
-        // Añade esto al método Draw
-        private void RevelarCartasCentro(bool sonVerdaderas)
-        {
-            if (_cartasEnCentro.Count == 0)
-            {
-                Debug.WriteLine("[REVELACIÓN] No hay cartas en el centro para revelar");
-                return;
-            }
-
-            Color filtro = sonVerdaderas ?
-                new Color(0, 255, 0, 180) :    // Verde para verdaderas
-                new Color(255, 0, 0, 180);     // Rojo para falsas
-
-            for (int i = 0; i < _filtrosCartasCentro.Count; i++)
-            {
-                _filtrosCartasCentro[i] = filtro;
-            }
-
-            _mostrandoRevelacion = true;
-            _tiempoRevelacion = 0f;
-
-            Debug.WriteLine($"[REVELACIÓN] Cartas reveladas: {(sonVerdaderas ? "VERDADERAS (Verde)" : "FALSAS (Rojo)")}");
-        }
-
-        // Añade este método para procesar mensajes de juego
-        private void ProcesarMensajeJuego(string mensaje)
-        {
-            string[] partes = mensaje.Split('/');
-            if (partes.Length < 2) return;
-
-            string tipo = partes[0];
-
-            switch (tipo)
-            {
-                case "CARTAS_INICIALES":
-                    // Formato: CARTAS_INICIALES/ace,king,queen,...
-                    string[] cartasNombres = partes[1].Split(',');
-                    _cartasDisponibles.Clear();
-                    _cartasConFiltro.Clear();
-
-                    foreach (string nombre in cartasNombres)
-                    {
-                        Texture2D textura = null;
-                        if (nombre == "ace") textura = _texturaAce;
-                        else if (nombre == "king") textura = _texturaKing;
-                        else if (nombre == "queen") textura = _texturaQueen;
-                        else if (nombre == "jack") textura = _texturaJack;
-
-                        if (textura != null)
-                        {
-                            _cartasDisponibles.Add(textura);
-                            _cartasConFiltro.Add(false); // Inicialmente sin filtro azul
-                        }
-                    }
-
-                    Debug.WriteLine($"[JUEGO] Recibidas {_cartasDisponibles.Count} cartas iniciales");
-                    break;
-
-                case "TURNO":
-                    // Formato: TURNO/nombre_jugador/tipo_carta
-                    _jugadorActual = partes[1];
-                    _tipoRondaActual = (TipoCarta)Enum.Parse(typeof(TipoCarta), partes[2]);
-                    _miTurno = (_jugadorActual == usuario);
-                    _puedoAcusar = _miTurno && (_ultimoJugador != null && _ultimoJugador != usuario);
-
-                    Debug.WriteLine($"[JUEGO] Turno: {_jugadorActual}, Tipo: {_tipoRondaActual}, Mi turno: {_miTurno}");
-                    break;
-
-                case "JUGADA":
-                    // Formato: JUGADA/jugador/cantidad/tipo_declarado
-                    _ultimoJugador = partes[1];
-                    int cantidad = int.Parse(partes[2]);
-                    string tipoDeclarado = partes[3];
-
-                    // Actualizar el estado para saber si se puede acusar
-                    _puedoAcusar = _miTurno && (_ultimoJugador != usuario);
-
-                    Debug.WriteLine($"[JUEGO] {_ultimoJugador} jugó {cantidad} cartas de tipo {tipoDeclarado}");
-                    break;
-
-                case "REVELACION":
-                    // Formato: REVELACION/true_o_false/carta1,carta2,...
-                    bool sonVerdaderas = bool.Parse(partes[1]);
-                    string[] cartasReveladas = partes[2].Split(',');
-
-                    // Limpiar cartas en centro
-                    _cartasEnCentro.Clear();
-                    _filtrosCartasCentro.Clear();
-
-                    // Añadir las cartas reveladas al centro
-                    foreach (string nombre in cartasReveladas)
-                    {
-                        Texture2D textura = null;
-                        if (nombre == "ace") textura = _texturaAce;
-                        else if (nombre == "king") textura = _texturaKing;
-                        else if (nombre == "queen") textura = _texturaQueen;
-                        else if (nombre == "jack") textura = _texturaJack;
-
-                        if (textura != null)
-                        {
-                            _cartasEnCentro.Add(textura);
-                            _filtrosCartasCentro.Add(Color.White); // Inicialmente blanco
-                        }
-                    }
-
-                    // Revelar si son verdaderas o falsas
-                    RevelarCartasCentro(sonVerdaderas);
-
-                    Debug.WriteLine($"[JUEGO] Revelación: {(sonVerdaderas ? "VERDADERAS" : "FALSAS")}");
-                    break;
-
-                case "ELIMINADO":
-                    // Formato: ELIMINADO/jugador
-                    string eliminado = partes[1];
-
-                    if (eliminado == usuario)
-                    {
-                        Debug.WriteLine("[JUEGO] ¡Has sido eliminado!");
-                        // Mostrar mensaje de eliminación
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[JUEGO] {eliminado} ha sido eliminado");
-                    }
-                    break;
-
-                case "NUEVA_RONDA":
-                    // Formato: NUEVA_RONDA/tipo_carta
-                    _tipoRondaActual = (TipoCarta)Enum.Parse(typeof(TipoCarta), partes[1]);
-                    Debug.WriteLine($"[JUEGO] Nueva ronda iniciada. Tipo: {_tipoRondaActual}");
-                    break;
-
-                case "GANADOR":
-                    // Formato: GANADOR/nombre_jugador
-                    string ganador = partes[1];
-
-                    if (ganador == usuario)
-                    {
-                        Debug.WriteLine("[JUEGO] ¡Has ganado!");
-                        // Mostrar mensaje de victoria
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[JUEGO] {ganador} ha ganado la partida");
-                    }
-                    break;
-
-                case "ERROR":
-                    // Formato: ERROR/mensaje
-                    Debug.WriteLine($"[ERROR] {partes[1]}");
-                    break;
-            }
         }
     }
 }

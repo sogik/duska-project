@@ -222,12 +222,6 @@ int send_to_user(const char *destinatario, const char *mensaje)
     return enviado;
 }
 
-// Función equivalente con nombre en español para usar desde gamelogic.c
-int enviar_mensaje_a_usuario(const char *destinatario, const char *mensaje)
-{
-    return send_to_user(destinatario, mensaje);
-}
-
 // Función para obtener la lista de usuarios en un grupo
 void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
 {
@@ -625,82 +619,6 @@ void *cliente(void *socket_ptr)
             else
             {
                 strcpy(respuesta, "ERROR/No estás en ningún grupo");
-            }
-        }
-        else if (codigo == 20) // JUGAR_CARTAS
-        {
-            // Formato: 20/usuario/cartas/tipo_declarado
-            // Ejemplo: 20/jugador1/ace,king/king
-
-            char jugador[50] = {0};
-            strncpy(jugador, contrasena, sizeof(jugador) - 1);
-
-            char cartas[100] = {0};
-            strncpy(cartas, mensaje, sizeof(cartas) - 1);
-
-            // Obtener tipo declarado (siguiente token)
-            char tipo_declarado[20] = {0};
-            char *tipo_token = strtok(NULL, "/");
-            if (tipo_token != NULL)
-            {
-                strncpy(tipo_declarado, tipo_token, sizeof(tipo_declarado) - 1);
-            }
-
-            // Obtener grupo_id del jugador
-            int grupo_id = obtener_grupo_id(usuario);
-
-            if (grupo_id > 0)
-            {
-                // Procesar jugada (implementar en gamelogic.c)
-                procesar_jugada_mentiroso(grupo_id, usuario, cartas, tipo_declarado);
-
-                // Enviar confirmación al jugador
-                strcpy(respuesta, "JUGADA/OK");
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en un grupo");
-            }
-        }
-        else if (codigo == 21) // ACUSAR
-        {
-            // Formato: 21/acusador/acusado
-
-            char acusado[50] = {0};
-            strncpy(acusado, contrasena, sizeof(acusado) - 1);
-
-            int grupo_id = obtener_grupo_id(usuario);
-
-            if (grupo_id > 0)
-            {
-                // Procesar acusación
-                int resultado = procesar_acusacion(grupo_id, usuario, acusado);
-
-                // Enviar resultado al acusador
-                snprintf(respuesta, sizeof(respuesta), "ACUSACION/%d", resultado);
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en un grupo");
-            }
-        }
-        else if (codigo == 22) // PASAR_TURNO
-        {
-            int grupo_id = obtener_grupo_id(usuario);
-
-            if (grupo_id > 0)
-            {
-                // Actualizar el turno al siguiente jugador
-                avanzar_turno(grupo_id);
-
-                // Notificar a todos los jugadores
-                notificar_turno_actual(grupo_id);
-
-                strcpy(respuesta, "TURNO/OK");
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en un grupo");
             }
         }
         else
