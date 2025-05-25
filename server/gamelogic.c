@@ -52,11 +52,11 @@ void manejar_jugada(int grupo_id, int jugador_id, Carta cartas_jugadas[], int nu
         if (mesas[i].grupo_id == grupo_id)
         {
             mesas[i].jugador_ultimo = jugador_id;
-            mesas[i].num_cartas_jugadas = num_cartas;
+            mesas[i].num_cartas_jugadas = (num_cartas <= MAX_CARTAS_JUGADA) ? num_cartas : MAX_CARTAS_JUGADA;
             mesas[i].tipo_declarado = tipo_declarado;
 
             // Copiar todas las cartas jugadas
-            for (int j = 0; j < num_cartas && j < MAX_CARTAS_JUGADA; j++)
+            for (int j = 0; j < mesas[i].num_cartas_jugadas; j++)
             {
                 mesas[i].ultima_jugada[j] = cartas_jugadas[j];
             }
