@@ -25,18 +25,11 @@ void crear_mesa_para_grupo(int grupo_id)
 
         // Inicializar los nuevos campos
         mesas[num_mesas].jugador_ultimo = -1;
-        mesas[num_mesas].num_cartas_jugadas = 0;
-        mesas[num_mesas].tipo_declarado = CARD_AS; // Valor por defecto
-
-        // Inicializar el array de cartas
-        for (int i = 0; i < MAX_CARTAS_JUGADA; i++)
-        {
-            mesas[num_mesas].ultima_jugada[i].tipo = CARD_AS;
-            mesas[num_mesas].ultima_jugada[i].valor = 0;
-        }
+        mesas[num_mesas].ultima_jugada.tipo = CARD_AS; // Valor por defecto
+        mesas[num_mesas].ultima_jugada.valor = 0;
 
         // Inicializar todos los jugadores como vivos
-        for (int i = 0; i < MAX_JUGADORES; i++)
+        for (int i = 0; i < MAX_JUGADORES_MESA; i++)
         {
             mesas[num_mesas].jugadores_vivos[i] = true;
         }

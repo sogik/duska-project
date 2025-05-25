@@ -12,11 +12,6 @@
 #include "basedatos.h"
 #include "auth.h"
 #include "generarcartas.h"
-#include "gamelogic.h"
-#include "cartas.h"
-#include "mesas.h"
-#include "conexiones.h"
-#include "server.h"
 
 // Estructura para mantener los clientes conectados
 typedef struct ClientNode
@@ -626,148 +621,81 @@ void *cliente(void *socket_ptr)
                 strcpy(respuesta, "ERROR/No estás en ningún grupo");
             }
         }
-        // Códigos para funciones de mesas y gamelogic
-        else if (codigo == 14)
+        else if (codigo == 20) // JUGAR_CARTAS
         {
-            // Crear mesa para un grupo
-            int grupo_id = atoi(contrasena);
-            crear_mesa_para_grupo(grupo_id);
+            // Formato: 20/usuario/cartas/tipo_declarado
+            // Ejemplo: 20/jugador1/ace,king/king
 
-            // Notificar tipo de mesa al grupo
-            notificar_mesa_a_grupo(grupo_id);
+            char jugador[50] = {0};
+            strncpy(jugador, contrasena, sizeof(jugador) - 1);
 
-            strcpy(respuesta, "MESA_CREADA/OK");
-        }
-        else if (codigo == 15)
-        {
-            // Realizar jugada de múltiples cartas
-            // Formato: 15/usuario/grupo_id/jugador_id/tipo_declarado/num_cartas/tipo1/valor1/tipo2/valor2/...
-            int grupo_id = atoi(contrasena);
-            char *p_jugador = strtok(mensaje, "/");
-            int jugador_id = atoi(p_jugador);
-            char *p_tipo_declarado = strtok(NULL, "/");
-            int tipo_declarado = atoi(p_tipo_declarado);
-            char *p_num_cartas = strtok(NULL, "/");
-            int num_cartas = atoi(p_num_cartas);
+            char cartas[100] = {0};
+            strncpy(cartas, mensaje, sizeof(cartas) - 1);
 
-            Carta cartas_jugadas[MAX_CARTAS_JUGADA];
-            for (int i = 0; i < num_cartas && i < MAX_CARTAS_JUGADA; i++)
+            // Obtener tipo declarado (siguiente token)
+            char tipo_declarado[20] = {0};
+            char *tipo_token = strtok(NULL, "/");
+            if (tipo_token != NULL)
             {
-                char *p_tipo = strtok(NULL, "/");
-                char *p_valor = strtok(NULL, "/");
-                cartas_jugadas[i].tipo = atoi(p_tipo);
-                cartas_jugadas[i].valor = atoi(p_valor);
+                strncpy(tipo_declarado, tipo_token, sizeof(tipo_declarado) - 1);
             }
 
-            manejar_jugada(grupo_id, jugador_id, cartas_jugadas, num_cartas, tipo_declarado);
+            // Obtener grupo_id del jugador
+            int grupo_id = obtener_grupo_id(usuario);
 
-            // Crear mensaje para notificar jugada al grupo
-            char notif[512] = "";
-            snprintf(notif, sizeof(notif), "JUGADA/%d/%d/%d/%d",
-                     jugador_id, grupo_id, tipo_declarado, num_cartas);
-
-            // No enviamos las cartas reales, solo la cantidad y tipo declarado
-            broadcast_to_group(grupo_id, notif);
-
-            strcpy(respuesta, "JUGADA/OK");
-        }
-        else if (codigo == 16)
-        {
-            // Código 16: Buscar grupo de un usuario
-            char usuario_a_buscar[20];
-            strcpy(usuario_a_buscar, mensaje);
-            printf("[SERVIDOR] Buscando grupo del usuario: %s\n", usuario_a_buscar);
-
-            // Buscar el usuario en la lista de conectados
-            int grupo_encontrado = -1;
-            pthread_mutex_lock(&client_list_mutex); // Usar client_list_mutex en lugar de mutex
-
-            ClientNode *current = client_list;
-            while (current != NULL)
+            if (grupo_id > 0)
             {
-                if (strcmp(current->usuario, usuario_a_buscar) == 0)
-                {
-                    grupo_encontrado = current->grupo_id;
-                    break;
-                }
-                current = current->next;
-            }
+                // Procesar jugada (implementar en gamelogic.c)
+                procesar_jugada_mentiroso(grupo_id, usuario, cartas, tipo_declarado);
 
-            pthread_mutex_unlock(&client_list_mutex);
-
-            if (grupo_encontrado != -1)
-            {
-                printf("[SERVIDOR] Usuario %s encontrado en grupo %d\n", usuario_a_buscar, grupo_encontrado);
-                sprintf(respuesta, "GRUPO/%s/%d", usuario_a_buscar, grupo_encontrado);
+                // Enviar confirmación al jugador
+                strcpy(respuesta, "JUGADA/OK");
             }
             else
             {
-                printf("[SERVIDOR] Usuario %s no encontrado o no está en un grupo\n", usuario_a_buscar);
-                strcpy(respuesta, "GRUPO/NINGUNO");
+                strcpy(respuesta, "ERROR/No estás en un grupo");
             }
         }
-        else if (codigo == 17)
+        else if (codigo == 21) // ACUSAR
         {
-            // Acusar de mentiroso
-            // Formato: 17/usuario/grupo_id/jugador_acusador/jugador_acusado
-            int grupo_id = atoi(contrasena);
-            char *p_acusador = strtok(mensaje, "/");
-            int jugador_acusador = atoi(p_acusador);
-            char *p_acusado = strtok(NULL, "/");
-            int jugador_acusado = atoi(p_acusado);
+            // Formato: 21/acusador/acusado
 
-            int eliminado = comprobar_verdad(grupo_id, jugador_acusador, jugador_acusado);
+            char acusado[50] = {0};
+            strncpy(acusado, contrasena, sizeof(acusado) - 1);
 
-            // Notificar resultado al grupo con detalles de las cartas
-            char notif[512];
-            Mesa *mesaActual = NULL;
+            int grupo_id = obtener_grupo_id(usuario);
 
-            // Obtener la mesa actual
-            pthread_mutex_lock(&mutex_mesas);
-            for (int i = 0; i < num_mesas; i++)
+            if (grupo_id > 0)
             {
-                if (mesas[i].grupo_id == grupo_id)
-                {
-                    mesaActual = &mesas[i];
-                    break;
-                }
-            }
+                // Procesar acusación
+                int resultado = procesar_acusacion(grupo_id, usuario, acusado);
 
-            if (mesaActual != NULL)
-            {
-                // Formato: ACUSACION/acusador/acusado/eliminado/num_cartas/tipo_declarado/tipo1/.../tipoN
-                snprintf(notif, sizeof(notif), "ACUSACION/%d/%d/%d/%d/%d",
-                         jugador_acusador, jugador_acusado, eliminado,
-                         mesaActual->num_cartas_jugadas, mesaActual->tipo_declarado);
-
-                // Añadir información de cada carta jugada
-                for (int i = 0; i < mesaActual->num_cartas_jugadas && i < MAX_CARTAS_JUGADA; i++)
-                {
-                    char cartaInfo[32];
-                    snprintf(cartaInfo, sizeof(cartaInfo), "/%d", mesaActual->ultima_jugada[i].tipo);
-                    strcat(notif, cartaInfo);
-                }
+                // Enviar resultado al acusador
+                snprintf(respuesta, sizeof(respuesta), "ACUSACION/%d", resultado);
             }
             else
             {
-                // Formato básico si no se encuentra la mesa
-                snprintf(notif, sizeof(notif), "ACUSACION/%d/%d/%d/0/0",
-                         jugador_acusador, jugador_acusado, eliminado);
+                strcpy(respuesta, "ERROR/No estás en un grupo");
             }
-            pthread_mutex_unlock(&mutex_mesas);
+        }
+        else if (codigo == 22) // PASAR_TURNO
+        {
+            int grupo_id = obtener_grupo_id(usuario);
 
-            broadcast_to_group(grupo_id, notif);
-
-            // Verificar si hay un ganador después de la acusación
-            int ganador = obtener_ganador(grupo_id);
-            if (ganador >= 0)
+            if (grupo_id > 0)
             {
-                char ganador_msg[256];
-                snprintf(ganador_msg, sizeof(ganador_msg), "GANADOR/%d", ganador);
-                broadcast_to_group(grupo_id, ganador_msg);
-            }
+                // Actualizar el turno al siguiente jugador
+                avanzar_turno(grupo_id);
 
-            strcpy(respuesta, "ACUSACION/OK");
+                // Notificar a todos los jugadores
+                notificar_turno_actual(grupo_id);
+
+                strcpy(respuesta, "TURNO/OK");
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en un grupo");
+            }
         }
         else
         {
