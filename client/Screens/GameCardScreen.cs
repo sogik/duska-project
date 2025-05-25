@@ -1282,14 +1282,13 @@ namespace Duska.Screens
                 // Solo procesar teclas de juego si el ratón no está sobre la UI
                 if (!ratónSobreUI)
                 {
-                    // Tecla ESC para el menú siempre disponible
                     if (keyboardState.WasKeyReleased(Keys.Escape))
                     {
                         Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
                         EscMenu(usuario, true);
                     }
 
-                    // IMPORTANTE: La tecla Q para acercar/alejar siempre está disponible
+                    // Tecla Q para acercar/alejar SIEMPRE disponible
                     if (keyboardState.WasKeyReleased(Keys.Q))
                     {
                         _cartasAcercadas = !_cartasAcercadas;
@@ -1304,35 +1303,34 @@ namespace Duska.Screens
                         Debug.WriteLine($"[INPUT] Cartas acercadas: {_cartasAcercadas}");
                     }
 
-                    // Teclas que afectan al juego - SOLO activas si es tu turno
-                    if (esMiTurno && _permitirAccionesJuego)
+                    // Navegación con flechas SIEMPRE disponible cuando las cartas están acercadas
+                    if (_cartasAcercadas)
                     {
-                        // La navegación con flechas y aplicación de filtros SOLO funciona cuando las cartas están acercadas
-                        if (_cartasAcercadas)
+                        if (keyboardState.WasKeyReleased(Keys.Left))
                         {
-                            // Navegación con flechas entre cartas
-                            if (keyboardState.WasKeyReleased(Keys.Left))
+                            if (_cartasDisponibles.Count > 0)
                             {
-                                if (_cartasDisponibles.Count > 0)
-                                {
-                                    _cartaSeleccionadaIndex--;
-                                    if (_cartaSeleccionadaIndex < 0)
-                                        _cartaSeleccionadaIndex = _cartasDisponibles.Count - 1;
+                                _cartaSeleccionadaIndex--;
+                                if (_cartaSeleccionadaIndex < 0)
+                                    _cartaSeleccionadaIndex = _cartasDisponibles.Count - 1;
 
-                                    Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
-                                }
+                                Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex}");
                             }
-                            else if (keyboardState.WasKeyReleased(Keys.Right))
+                        }
+                        else if (keyboardState.WasKeyReleased(Keys.Right))
+                        {
+                            if (_cartasDisponibles.Count > 0)
                             {
-                                if (_cartasDisponibles.Count > 0)
-                                {
-                                    _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
+                                _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
 
-                                    Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
-                                }
+                                Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex}");
                             }
+                        }
 
-                            // Espacio ahora alterna el filtro en la carta seleccionada
+                        // GRUPO 2: TECLAS DE ACCIÓN (solo disponibles en tu turno)
+                        if (esMiTurno && _permitirAccionesJuego)
+                        {
+                            // Espacio para seleccionar/aplicar filtro a la carta
                             if (keyboardState.WasKeyReleased(Keys.Space))
                             {
                                 // Solo aplicar filtro si hay una carta seleccionada
@@ -1348,20 +1346,23 @@ namespace Duska.Screens
                                     Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
                                         $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
                                         $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
-                                    //_cartasConFiltro[_cartaSeleccionadaIndex]
                                 }
                             }
 
+                            // Tecla E para enviar cartas seleccionadas
                             if (keyboardState.WasKeyReleased(Keys.E))
                             {
                                 EnviarCartasSeleccionadas();
                             }
                         }
-                    }
-                    else if (_cartasAcercadas && !esMiTurno && keyboardState.WasKeyReleased(Keys.Space))
-                    {
-                        // Si no es tu turno pero intentas hacer una acción, mostrar mensaje
-                        ChatPanel(true, "Sistema/No es tu turno para realizar acciones");
+                        else if (keyboardState.WasKeyReleased(Keys.Space) || keyboardState.WasKeyReleased(Keys.E))
+                        {
+                            // Mensaje informativo cuando intentas realizar acciones fuera de tu turno
+                            if (!esMiTurno)
+                            {
+                                ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
+                            }
+                        }
                     }
                 }
 
@@ -1410,6 +1411,7 @@ namespace Duska.Screens
 
                             int ancho = (int)(150 * escalaActual);
                             int alto = (int)(225 * escalaActual);
+
 
                             // Determinar el color a aplicar
                             Color colorTextura = Color.White;

@@ -35,6 +35,7 @@ namespace Duska.Screens
 
         public string usuario;
         public string destinatario;
+        private bool esLider = false;
 
         private bool conectado = false; // Indica si el cliente está conectado al servidor
 
@@ -68,6 +69,8 @@ namespace Duska.Screens
                 ConnectToServer();
                 StartMessageListener();
             }
+
+            SolicitarEstadoLider();
 
             Menu(true);
         }
@@ -104,19 +107,43 @@ namespace Duska.Screens
             topPanel.Visible = visible;
 
             Button playBtn = new Button("Play", ButtonSkin.Default, Anchor.Auto, new Vector2(300, topPanelHeight));
+            playBtn.Identifier = "playBtn";
             playBtn.OnClick = (Entity btn) =>
             {
-                // 1) Señalar al listener que pare
-                stopMessageListener = true;
+                if (esLider)
+                {
+                    try
+                    {
+                        // Formato: 20/usuario/
+                        // Este es el código para iniciar una partida según partidas.c
+                        string iniciarPartidaMsg = "20/" + usuario + "/";
+                        byte[] msg = Encoding.ASCII.GetBytes(iniciarPartidaMsg);
+                        server.Send(msg);
+                        Debug.WriteLine("[JUEGO] Solicitud para iniciar partida enviada al servidor");
 
-                // 2) Crear y cargar GameCardScreen reutilizando el socket vivo
-                var gameScreen = new GameCardScreen(Game, usuario);
-                //var gamescreee2n = new gamecardScreen(Game, usuario);
-
-                gameScreen.SetExistingSocket(server);
-                ScreenManager.LoadScreen(gameScreen, new FadeTransition(GraphicsDevice, Color.Black));
+                        // El mensaje de confirmación START_GAME_OK iniciará la transición
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] Error al iniciar partida: {ex.Message}");
+                        GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                            "No se pudo iniciar la partida. Inténtalo de nuevo.",
+                            "Error de conexión"
+                        );
+                    }
+                }
+                else
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                        "Solo el líder puede iniciar la partida.",
+                        "No eres el líder"
+                    );
+                }
             };
             topPanel.AddChild(playBtn);
+
+            // Actualizar estado inicial del botón
+            ActualizarEstadoLider();
 
             Button listfriendsBtn = new Button("Friends", ButtonSkin.Default, Anchor.TopRight, new Vector2(300, topPanelHeight));
             listfriendsBtn.OnClick = (Entity btn) =>
@@ -124,6 +151,24 @@ namespace Duska.Screens
                 friends = this.friends();
             };
             topPanel.AddChild(listfriendsBtn);
+        }
+
+        private void SolicitarEstadoLider()
+        {
+            try
+            {
+                if (conectado)
+                {
+                    string mensaje = "22/" + usuario + "/CHECK_LEADER";
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+                    Debug.WriteLine("Solicitud de estado de líder enviada");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Error al solicitar estado de líder: " + ex.Message);
+            }
         }
 
         private void Options(bool visible)
@@ -763,6 +808,13 @@ namespace Duska.Screens
                     server.Connect(ipep);
                     conectado = true;
                     Debug.WriteLine("Conexión al servidor establecida.");
+
+                    string mensaje = "0/" + usuario;
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+
+                    // Una vez conectado, solicitar información de sala/líder
+                    SolicitarInformacionSala();
                 }
                 catch (SocketException ex)
                 {
@@ -770,6 +822,25 @@ namespace Duska.Screens
                     conectado = false;
                     throw new Exception("No se pudo conectar al servidor.");
                 }
+            }
+        }
+
+        private void SolicitarInformacionSala()
+        {
+            try
+            {
+                if (conectado && server != null && server.Connected)
+                {
+                    // Código 10: Solicitud de información de sala
+                    string mensaje = "10/" + usuario;
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+                    Debug.WriteLine("[RED] Solicitud de información de sala enviada");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al solicitar información de sala: {ex.Message}");
             }
         }
 
@@ -843,26 +914,117 @@ namespace Duska.Screens
             isReconnecting = false;
         }
 
+        private void SolicitarInformacionLider(string grupoId)
+        {
+            try
+            {
+                if (conectado && server != null && server.Connected)
+                {
+                    // Enviar solicitud para obtener información del líder
+                    // Formato: 12/usuario/
+                    string mensaje = "12/" + usuario + "/";
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+                    Debug.WriteLine("[GRUPO] Solicitud de información del líder enviada");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al solicitar información de líder: {ex.Message}");
+            }
+        }
+
         private void ProcessServerMessage(string message)
         {
-            // 1) Ignorar mensajes de cartas (los maneja GameCardScreen)
+            Debug.WriteLine($"[RED] Mensaje recibido: {message}");
+
+            // Mensajes del tipo CARDS/ son manejados por GameCardScreen, ignorarlos aquí
             if (message.StartsWith("CARDS/")) return;
 
-            if (message.StartsWith("LIST/"))
+            // Manejar diferentes tipos de mensajes del servidor
+            if (message.StartsWith("GRUPO_CREADO/"))
+            {
+                // Formato: "GRUPO_CREADO/id"
+                string grupoId = message.Substring(13);
+                Debug.WriteLine($"[GRUPO] Grupo creado con ID: {grupoId}");
+
+                // Solicitar información sobre el líder del grupo
+                SolicitarInformacionLider(grupoId);
+            }
+            else if (message.StartsWith("GRUPO/"))
+            {
+                // Formato: "GRUPO/id/usuario1/usuario2/..."
+                string[] partes = message.Split('/');
+                if (partes.Length >= 3)
+                {
+                    string grupoId = partes[1];
+
+                    // El primer usuario listado es el líder según el servidor
+                    string primerUsuario = partes[2];
+                    esLider = primerUsuario.Equals(usuario, StringComparison.OrdinalIgnoreCase);
+
+                    Debug.WriteLine($"[GRUPO] Grupo {grupoId}, usuarios: {string.Join(", ", partes.Skip(2))}");
+                    Debug.WriteLine($"[GRUPO] Líder: {primerUsuario}, ¿Soy líder? {esLider}");
+
+                    // Actualizar la interfaz según el estado de líder
+                    ActualizarEstadoLider();
+                }
+            }
+            else if (message.StartsWith("LEADER/"))
+            {
+                // Formato: "LEADER/nombreUsuario"
+                string nombreLider = message.Substring(7);
+                esLider = nombreLider.Trim().Equals(usuario.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                Debug.WriteLine($"[GRUPO] Información de líder: {nombreLider}, ¿Soy líder? {esLider}");
+
+                // Actualizar la interfaz según el estado de líder
+                ActualizarEstadoLider();
+            }
+            else if (message.StartsWith("GRUPO_SALIDA/"))
+            {
+                // Formato: "GRUPO_SALIDA/nombreUsuario"
+                string nombreUsuario = message.Substring(13);
+                Debug.WriteLine($"[GRUPO] El usuario {nombreUsuario} ha salido del grupo");
+
+                // Si alguien sale del grupo, verificar si ahora somos líder
+                SolicitarInformacionSala();
+            }
+            else if (message.StartsWith("START_GAME_OK") || message.StartsWith("GAME_STARTED") ||
+                    message.Contains("PARTIDA_INICIADA") || message.StartsWith("GAMESTART/"))
+            {
+                Debug.WriteLine("[JUEGO] Notificación de inicio de partida recibida");
+
+                // Cambiar a la pantalla de juego
+                try
+                {
+                    // Detener escucha de mensajes
+                    stopMessageListener = true;
+
+                    // Crear y cargar GameCardScreen reutilizando el socket vivo
+                    var gameScreen = new GameCardScreen(Game, usuario);
+                    gameScreen.SetExistingSocket(server);
+                    ScreenManager.LoadScreen(gameScreen, new FadeTransition(GraphicsDevice, Color.Black));
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ERROR] Error al cambiar a pantalla de juego: {ex.Message}");
+                }
+            }
+            else if (message.StartsWith("LIST/"))
             {
                 // Mensaje de lista de amigos
                 string friends = message.Substring(5);
-                Debug.WriteLine("Lista de amigos recibida: " + friends);
+                Debug.WriteLine("[AMIGOS] Lista de amigos recibida");
 
                 // Actualizar la lista de amigos
                 FriendsListPanel(true, friends);
-
             }
             else if (message.StartsWith("LISTU/"))
             {
                 // Mensaje de lista de usuarios
                 string usuarios = message.Substring(6);
-                Debug.WriteLine("Lista de usuarios recibida: " + usuarios);
+                Debug.WriteLine("[USUARIOS] Lista de usuarios recibida");
 
                 // Actualizar la lista de usuarios
                 ListaUsuariosPanel(true, usuarios);
@@ -871,7 +1033,7 @@ namespace Duska.Screens
             {
                 // Mensaje de lista de partidas
                 string partidas = message.Substring(6);
-                Debug.WriteLine("Lista de partidas recibida: " + partidas);
+                Debug.WriteLine("[PARTIDAS] Lista de partidas recibida");
 
                 // Actualizar la lista de partidas
                 ListaPartidasPanel(true, partidas);
@@ -879,52 +1041,83 @@ namespace Duska.Screens
             else if (message.StartsWith("LISTPG/"))
             {
                 // Mensaje de lista de partidas ganadas
-                string partidasGanadas = message.Substring(8);
-                Debug.WriteLine("Lista de partidas ganadas recibida: " + partidasGanadas);
+                string partidasGanadas = message.Substring(7);
+                Debug.WriteLine("[PARTIDAS] Lista de partidas ganadas recibida");
 
                 // Actualizar la lista de partidas ganadas
                 ListaPartidasGanadasPanel(true, partidasGanadas);
             }
             else if (message.StartsWith("INV/"))
             {
-                string Message = message.Substring(4);
-                Debug.WriteLine("Mensaje recibido del servidor: " + Message);
+                // Invitación recibida
+                string invitacion = message.Substring(4);
+                Debug.WriteLine("[INVITACIÓN] Invitación recibida");
 
-                InvitacionPanel(1, true, Message); // Llamar a la función para enviar la invitación
+                InvitacionPanel(1, true, invitacion);
             }
             else if (message.StartsWith("INVR/"))
             {
-                string Message = message.Substring(5);
-                Debug.WriteLine("Mensaje recibido del servidor: " + Message);
+                // Respuesta a invitación
+                string respuestaInv = message.Substring(5);
+                Debug.WriteLine("[INVITACIÓN] Respuesta a invitación recibida");
 
-                InvitacionPanel(2, true, Message);
-            }
-            else if (message.StartsWith("INV2/"))
-            {
-                string Message = message.Substring(5);
-                Debug.WriteLine("Mensaje recibido del servidor: " + Message);
-
-                InvitacionPanel(2, true, Message); // Llamar a la función para enviar la invitación
-            }
-            else if (message.StartsWith("FAIL/"))
-            {
-                // Mensaje de error
-                string failMessage = message.Substring(5);
-                Debug.WriteLine("Error recibido del servidor: " + failMessage);
+                InvitacionPanel(2, true, respuestaInv);
             }
             else if (message.StartsWith("ERROR/"))
             {
                 // Mensaje de error
-                string errorMessage = message.Substring(6);
-                Debug.WriteLine("Error recibido del servidor: " + errorMessage);
+                string errorMsg = message.Substring(6);
+                Debug.WriteLine($"[ERROR] {errorMsg}");
+
+                // Mostrar mensaje de error al usuario
+                GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                    errorMsg,
+                    "Error"
+                );
             }
             else
             {
-                // Mensaje desconocido
-                Debug.WriteLine("Mensaje desconocido recibido: " + message);
+                Debug.WriteLine($"[RED] Mensaje no reconocido: {message}");
             }
         }
 
+        private void ActualizarEstadoLider()
+        {
+            // Ejecutar en el hilo principal (MonoGame Update/Draw ya está en el hilo principal)
+            if (UserInterface.Active != null && UserInterface.Active.Root != null)
+            {
+                Button playButton = UserInterface.Active.Root.Find<Button>("playBtn");
+                if (playButton != null)
+                {
+                    if (esLider)
+                    {
+                        playButton.FillColor = Color.Green;
+                        playButton.Enabled = true;
+                    }
+                    else
+                    {
+                        playButton.FillColor = Color.Gray;
+                        playButton.Enabled = false;
+                    }
+                }
+
+                // Mostrar un indicador de estado de líder en la pantalla
+                Panel infoPanel = UserInterface.Active.Root.Find<Panel>("infoPanel");
+                if (infoPanel == null)
+                {
+                    // Crear panel si no existe
+                    infoPanel = new Panel(new Vector2(200, 50), PanelSkin.Simple, Anchor.TopLeft);
+                    infoPanel.Identifier = "infoPanel";
+                    UserInterface.Active.Root.AddChild(infoPanel);
+                }
+
+                // Actualizar contenido del panel
+                infoPanel.ClearChildren();
+                Paragraph statusText = new Paragraph(esLider ? "Estado: LÍDER" : "Estado: MIEMBRO");
+                statusText.FillColor = esLider ? Color.Green : Color.Gray;
+                infoPanel.AddChild(statusText);
+            }
+        }
         private void StartMessageListener()
         {
             stopMessageListener = false;

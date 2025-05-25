@@ -264,6 +264,195 @@ void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
     }
 }
 
+// Función para obtener el nombre del primer usuario en un grupo (el líder)
+char *obtener_lider_grupo(int grupo_id)
+{
+    static char lider[50];
+    lider[0] = '\0';
+
+    if (grupo_id <= 0)
+        return NULL;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    // Buscar el primer cliente que pertenezca a este grupo
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            strncpy(lider, current->usuario, sizeof(lider) - 1);
+            lider[sizeof(lider) - 1] = '\0';
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return (lider[0] != '\0') ? lider : NULL;
+}
+
+// Función para obtener el socket de un usuario por su nombre
+int obtener_socket_usuario(const char *usuario)
+{
+    int socket = -1;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, usuario) == 0)
+        {
+            socket = current->socket;
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return socket;
+}
+
+// Función para obtener el número de usuarios en un grupo
+int num_usuarios_grupo(int grupo_id)
+{
+    int count = 0;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            count++;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return count;
+}
+
+// Función para obtener un usuario específico de un grupo por índice
+char *obtener_usuario_grupo(int grupo_id, int indice)
+{
+    static char usuario[50];
+    usuario[0] = '\0';
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    int idx = 0;
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            if (idx == indice)
+            {
+                strncpy(usuario, current->usuario, sizeof(usuario) - 1);
+                usuario[sizeof(usuario) - 1] = '\0';
+                break;
+            }
+            idx++;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return (usuario[0] != '\0') ? usuario : NULL;
+}
+
+// Función para notificar a todos los miembros de un grupo quién es el líder
+void notificar_lider_grupo(int grupo_id)
+{
+    char *lider = obtener_lider_grupo(grupo_id);
+
+    if (lider != NULL)
+    {
+        char mensaje[100];
+        snprintf(mensaje, sizeof(mensaje), "LEADER/%s", lider);
+
+        // Enviar a todos los miembros del grupo
+        broadcast_to_group(grupo_id, mensaje);
+
+        printf("Notificado líder '%s' a grupo %d\n", lider, grupo_id);
+    }
+}
+
+int send_to_user(const char *destinatario, const char *mensaje)
+{
+    int enviado = 0;
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, destinatario) == 0)
+        {
+            // Asegurarnos que el mensaje tiene un formato estándar y termina con \n
+            char mensaje_formateado[1024] = {0};
+            snprintf(mensaje_formateado, sizeof(mensaje_formateado), "%s\n", mensaje);
+
+            if (write(current->socket, mensaje_formateado, strlen(mensaje_formateado)) >= 0)
+            {
+                enviado = 1;
+            }
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return enviado;
+}
+
+// Función para obtener la lista de usuarios en un grupo
+void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
+{
+    if (grupo_id <= 0)
+    {
+        snprintf(buffer, buffer_size, "ERROR/Grupo inválido");
+        return;
+    }
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    char temp_buffer[1024] = {0};
+    snprintf(temp_buffer, sizeof(temp_buffer), "GRUPO/%d", grupo_id);
+
+    int count = 0;
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            char usuario_info[100];
+            snprintf(usuario_info, sizeof(usuario_info), "/%s", current->usuario);
+            strcat(temp_buffer, usuario_info);
+            count++;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    if (count > 0)
+    {
+        strncpy(buffer, temp_buffer, buffer_size - 1);
+        buffer[buffer_size - 1] = '\0';
+    }
+    else
+    {
+        snprintf(buffer, buffer_size, "ERROR/No hay usuarios en este grupo");
+    }
+}
+
 // Función para verificar si un usuario es líder de un grupo
 // Esta es usada por partidas.c
 int es_lider_grupo(const char *usuario, int grupo_id)
@@ -515,6 +704,9 @@ void *cliente(void *socket_ptr)
                         listar_usuarios_grupo(grupo_id, lista_grupo, sizeof(lista_grupo));
                         broadcast_to_group(grupo_id, lista_grupo);
 
+                        // AÑADIR ESTA LÍNEA: Notificar quién es el líder
+                        notificar_lider_grupo(grupo_id);
+
                         printf("Grupo %d creado para %s y %s\n", grupo_id, usuario, destinatario);
                     }
                     else
@@ -625,7 +817,18 @@ void *cliente(void *socket_ptr)
 
             if (grupo_id > 0)
             {
+                // Primero, enviar la lista de usuarios en el grupo
                 listar_usuarios_grupo(grupo_id, respuesta, sizeof(respuesta));
+
+                // Luego, enviar explícitamente quién es el líder
+                char *lider = obtener_lider_grupo(grupo_id);
+                if (lider != NULL)
+                {
+                    char mensaje_lider[100];
+                    snprintf(mensaje_lider, sizeof(mensaje_lider), "LEADER/%s", lider);
+                    // Este mensaje se enviará inmediatamente después de la respuesta actual
+                    send_to_user(usuario, mensaje_lider);
+                }
             }
             else
             {
@@ -659,12 +862,147 @@ void *cliente(void *socket_ptr)
                 }
                 pthread_mutex_unlock(&client_list_mutex);
 
+                // AÑADIR ESTA LÍNEA: Notificar cambio de líder si corresponde
+                notificar_lider_grupo(grupo_id);
+
                 strcpy(respuesta, "GRUPO_SALIDA/OK");
                 printf("Usuario %s salió del grupo %d\n", usuario, grupo_id);
             }
             else
             {
                 strcpy(respuesta, "ERROR/No estás en ningún grupo");
+            }
+        }
+        // Para código 20 (iniciar partida)
+        else if (codigo == 20)
+        {
+            // Verificar que el usuario es líder de un grupo
+            int grupo_id = obtener_grupo_id(usuario);
+            int es_lider = 0;
+
+            if (grupo_id > 0)
+            {
+                // Verificar si es el líder
+                es_lider = es_lider_grupo(usuario, grupo_id);
+            }
+
+            if (es_lider)
+            {
+                // Crear la partida
+                int partida_id = crear_partida(grupo_id);
+
+                if (partida_id > 0)
+                {
+                    // Iniciar la partida (asignar turnos aleatorios)
+                    int result = iniciar_partida(partida_id);
+
+                    if (result == 0)
+                    {
+                        // La notificación de inicio se envía dentro de iniciar_partida
+                        strncpy(respuesta, "START_GAME_OK/Partida iniciada correctamente", respuesta_size);
+                    }
+                    else
+                    {
+                        snprintf(respuesta, respuesta_size, "ERROR/No se pudo iniciar la partida (código %d)", result);
+                    }
+                }
+                else
+                {
+                    snprintf(respuesta, respuesta_size, "ERROR/No se pudo crear la partida (código %d)", partida_id);
+                }
+            }
+            else
+            {
+                strncpy(respuesta, "ERROR/Solo el líder del grupo puede iniciar la partida", respuesta_size);
+            }
+        }
+        // Para código 21 (realizar acción en el juego)
+        else if (codigo == 21)
+        {
+            // Formato esperado: 21/usuario/accion/datos
+            char accion[50] = {0};
+            char datos[800] = {0};
+
+            // El campo 'contrasena' contiene la acción
+            strncpy(accion, contrasena, sizeof(accion) - 1);
+
+            // El campo 'mensaje' contiene los datos adicionales
+            if (mensaje != NULL)
+            {
+                strncpy(datos, mensaje, sizeof(datos) - 1);
+            }
+
+            // Verificar que es el turno del jugador
+            if (es_turno_de_jugador(usuario))
+            {
+                // Obtener la partida del jugador
+                GameInfo *partida = obtener_partida_por_jugador(usuario);
+
+                if (partida != NULL)
+                {
+                    // Formato del mensaje: ACTION/jugador/accion/datos
+                    char mensaje_accion[1024];
+                    snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%s",
+                             usuario, accion, datos);
+
+                    // Notificar a todos los jugadores de la partida
+                    broadcast_to_group(partida->grupo_id, mensaje_accion);
+
+                    // Avanzar automáticamente al siguiente turno después de procesar la acción
+                    int result = avanzar_turno(partida->partida_id);
+
+                    if (result == 0)
+                    {
+                        strncpy(respuesta, "ACTION_OK/Acción procesada", respuesta_size);
+                    }
+                    else
+                    {
+                        snprintf(respuesta, respuesta_size,
+                                 "ERROR/Acción procesada pero no se pudo avanzar el turno (código %d)",
+                                 result);
+                    }
+                }
+                else
+                {
+                    strncpy(respuesta, "ERROR/No estás en una partida activa", respuesta_size);
+                }
+            }
+            else
+            {
+                strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", respuesta_size);
+            }
+        }
+        // Para código 22 (pasar turno)
+        else if (codigo == 22)
+        {
+            // Verificar que es el turno del jugador
+            if (es_turno_de_jugador(usuario))
+            {
+                // Obtener la partida del jugador
+                GameInfo *partida = obtener_partida_por_jugador(usuario);
+
+                if (partida != NULL)
+                {
+                    // Avanzar al siguiente turno
+                    int result = avanzar_turno(partida->partida_id);
+
+                    if (result == 0)
+                    {
+                        strncpy(respuesta, "TURN_OK/Turno pasado correctamente", respuesta_size);
+                    }
+                    else
+                    {
+                        snprintf(respuesta, respuesta_size, "ERROR/No se pudo avanzar el turno (código %d)", result);
+                    }
+                }
+                else
+                {
+                    strncpy(respuesta, "ERROR/No estás en una partida activa", respuesta_size);
+                }
+            }
+            else
+            {
+                strncpy(respuesta, "ERROR/No es tu turno para pasar", respuesta_size);
             }
         }
         else
