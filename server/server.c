@@ -196,33 +196,6 @@ void broadcast_to_all(const char *message)
     pthread_mutex_unlock(&client_list_mutex);
 }
 
-int send_to_user(const char *destinatario, const char *mensaje)
-{
-    int enviado = 0;
-    pthread_mutex_lock(&client_list_mutex);
-
-    ClientNode *current = client_list;
-    while (current != NULL)
-    {
-        if (strcmp(current->usuario, destinatario) == 0)
-        {
-            // Asegurarnos que el mensaje tiene un formato estándar y termina con \n
-            char mensaje_formateado[1024] = {0};
-            snprintf(mensaje_formateado, sizeof(mensaje_formateado), "%s\n", mensaje);
-
-            if (write(current->socket, mensaje_formateado, strlen(mensaje_formateado)) >= 0)
-            {
-                enviado = 1;
-            }
-            break;
-        }
-        current = current->next;
-    }
-
-    pthread_mutex_unlock(&client_list_mutex);
-    return enviado;
-}
-
 // Función para obtener la lista de usuarios en un grupo
 void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
 {
@@ -410,47 +383,6 @@ int send_to_user(const char *destinatario, const char *mensaje)
 
     pthread_mutex_unlock(&client_list_mutex);
     return enviado;
-}
-
-// Función para obtener la lista de usuarios en un grupo
-void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
-{
-    if (grupo_id <= 0)
-    {
-        snprintf(buffer, buffer_size, "ERROR/Grupo inválido");
-        return;
-    }
-
-    pthread_mutex_lock(&client_list_mutex);
-
-    char temp_buffer[1024] = {0};
-    snprintf(temp_buffer, sizeof(temp_buffer), "GRUPO/%d", grupo_id);
-
-    int count = 0;
-    ClientNode *current = client_list;
-    while (current != NULL)
-    {
-        if (current->grupo_id == grupo_id)
-        {
-            char usuario_info[100];
-            snprintf(usuario_info, sizeof(usuario_info), "/%s", current->usuario);
-            strcat(temp_buffer, usuario_info);
-            count++;
-        }
-        current = current->next;
-    }
-
-    pthread_mutex_unlock(&client_list_mutex);
-
-    if (count > 0)
-    {
-        strncpy(buffer, temp_buffer, buffer_size - 1);
-        buffer[buffer_size - 1] = '\0';
-    }
-    else
-    {
-        snprintf(buffer, buffer_size, "ERROR/No hay usuarios en este grupo");
-    }
 }
 
 // Función para verificar si un usuario es líder de un grupo
@@ -899,21 +831,21 @@ void *cliente(void *socket_ptr)
                     if (result == 0)
                     {
                         // La notificación de inicio se envía dentro de iniciar_partida
-                        strncpy(respuesta, "START_GAME_OK/Partida iniciada correctamente", respuesta_size);
+                        strncpy(respuesta, "START_GAME_OK/Partida iniciada correctamente", sizeof(respuesta) - 1);
                     }
                     else
                     {
-                        snprintf(respuesta, respuesta_size, "ERROR/No se pudo iniciar la partida (código %d)", result);
+                        snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo iniciar la partida (código %d)", result);
                     }
                 }
                 else
                 {
-                    snprintf(respuesta, respuesta_size, "ERROR/No se pudo crear la partida (código %d)", partida_id);
+                    snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo crear la partida (código %d)", partida_id);
                 }
             }
             else
             {
-                strncpy(respuesta, "ERROR/Solo el líder del grupo puede iniciar la partida", respuesta_size);
+                strncpy(respuesta, "ERROR/Solo el líder del grupo puede iniciar la partida", sizeof(respuesta));
             }
         }
         // Para código 21 (realizar acción en el juego)
@@ -953,23 +885,23 @@ void *cliente(void *socket_ptr)
 
                     if (result == 0)
                     {
-                        strncpy(respuesta, "ACTION_OK/Acción procesada", respuesta_size);
+                        strncpy(respuesta, "ACTION_OK/Acción procesada", sizeof(respuesta));
                     }
                     else
                     {
-                        snprintf(respuesta, respuesta_size,
+                        snprintf(respuesta, sizeof(respuesta),
                                  "ERROR/Acción procesada pero no se pudo avanzar el turno (código %d)",
                                  result);
                     }
                 }
                 else
                 {
-                    strncpy(respuesta, "ERROR/No estás en una partida activa", respuesta_size);
+                    strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
                 }
             }
             else
             {
-                strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", respuesta_size);
+                strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", sizeof(respuesta));
             }
         }
         // Para código 22 (pasar turno)
@@ -988,21 +920,21 @@ void *cliente(void *socket_ptr)
 
                     if (result == 0)
                     {
-                        strncpy(respuesta, "TURN_OK/Turno pasado correctamente", respuesta_size);
+                        strncpy(respuesta, "TURN_OK/Turno pasado correctamente", sizeof(respuesta));
                     }
                     else
                     {
-                        snprintf(respuesta, respuesta_size, "ERROR/No se pudo avanzar el turno (código %d)", result);
+                        snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo avanzar el turno (código %d)", result);
                     }
                 }
                 else
                 {
-                    strncpy(respuesta, "ERROR/No estás en una partida activa", respuesta_size);
+                    strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
                 }
             }
             else
             {
-                strncpy(respuesta, "ERROR/No es tu turno para pasar", respuesta_size);
+                strncpy(respuesta, "ERROR/No es tu turno para pasar", sizeof(respuesta));
             }
         }
         else
