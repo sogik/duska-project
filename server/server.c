@@ -222,6 +222,12 @@ int send_to_user(const char *destinatario, const char *mensaje)
     return enviado;
 }
 
+// Función equivalente con nombre en español para usar desde gamelogic.c
+int enviar_mensaje_a_usuario(const char *destinatario, const char *mensaje)
+{
+    return send_to_user(destinatario, mensaje);
+}
+
 // Función para obtener la lista de usuarios en un grupo
 void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
 {

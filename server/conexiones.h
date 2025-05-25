@@ -27,6 +27,8 @@ char *obtener_lista_usuarios();
 
 // Funciones de comunicación
 void broadcast_to_group(int grupo_id, const char *message);
+void broadcast_to_all(const char *message);
 int send_to_user(const char *destinatario, const char *mensaje);
+int enviar_mensaje_a_usuario(const char *destinatario, const char *mensaje);
 
 #endif
