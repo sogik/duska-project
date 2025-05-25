@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-#include <mysql.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -127,7 +126,8 @@ int agregar_a_grupo(const char *usuario, int grupo_id)
 // Función para obtener el ID de grupo de un usuario
 int obtener_grupo_id(const char *usuario)
 {
-    int grupo_id = 0;
+    if (!usuario)
+        return 0;
 
     pthread_mutex_lock(&client_list_mutex);
 
@@ -136,41 +136,40 @@ int obtener_grupo_id(const char *usuario)
     {
         if (strcmp(current->usuario, usuario) == 0)
         {
-            grupo_id = current->grupo_id;
-            break;
+            int grupo_id = current->grupo_id;
+            pthread_mutex_unlock(&client_list_mutex);
+            return grupo_id;
         }
         current = current->next;
     }
 
     pthread_mutex_unlock(&client_list_mutex);
-
-    return grupo_id;
+    return 0;
 }
 
 // Función para enviar datos a todos los clientes de un grupo específico
-void broadcast_to_group(int grupo_id, const char *message)
+int broadcast_to_group(int grupo_id, const char *mensaje)
 {
-    if (grupo_id <= 0)
-        return; // Grupo inválido
+    if (grupo_id <= 0 || !mensaje)
+        return -1;
 
     pthread_mutex_lock(&client_list_mutex);
 
+    int count = 0;
     ClientNode *current = client_list;
     while (current != NULL)
     {
-        if (current->grupo_id == grupo_id)
+        if (current->grupo_id == grupo_id && current->socket > 0)
         {
-            if (write(current->socket, message, strlen(message)) < 0)
-            {
-                perror("Error al enviar broadcast al grupo");
-                // Si hay error, probablemente el cliente se desconectó
-                // Nota: No eliminamos aquí para evitar problemas con el iterador
-            }
+            write(current->socket, mensaje, strlen(mensaje));
+            count++;
         }
         current = current->next;
     }
 
     pthread_mutex_unlock(&client_list_mutex);
+
+    return count; // Retorna el número de usuarios a los que se envió el mensaje
 }
 
 // Función para enviar datos a todos los clientes
@@ -292,17 +291,18 @@ int obtener_socket_usuario(const char *usuario)
 // Función para obtener el número de usuarios en un grupo
 int num_usuarios_grupo(int grupo_id)
 {
-    int count = 0;
+    if (grupo_id <= 0)
+        return 0;
 
     pthread_mutex_lock(&client_list_mutex);
 
+    int count = 0;
     ClientNode *current = client_list;
     while (current != NULL)
     {
         if (current->grupo_id == grupo_id)
-        {
             count++;
-        }
+
         current = current->next;
     }
 
@@ -314,8 +314,11 @@ int num_usuarios_grupo(int grupo_id)
 // Función para obtener un usuario específico de un grupo por índice
 char *obtener_usuario_grupo(int grupo_id, int indice)
 {
-    static char usuario[50];
-    usuario[0] = '\0';
+    static char nombre[50];
+    nombre[0] = '\0';
+
+    if (grupo_id <= 0 || indice < 0)
+        return NULL;
 
     pthread_mutex_lock(&client_list_mutex);
 
@@ -327,9 +330,10 @@ char *obtener_usuario_grupo(int grupo_id, int indice)
         {
             if (idx == indice)
             {
-                strncpy(usuario, current->usuario, sizeof(usuario) - 1);
-                usuario[sizeof(usuario) - 1] = '\0';
-                break;
+                strncpy(nombre, current->usuario, sizeof(nombre) - 1);
+                nombre[sizeof(nombre) - 1] = '\0';
+                pthread_mutex_unlock(&client_list_mutex);
+                return nombre;
             }
             idx++;
         }
@@ -337,8 +341,7 @@ char *obtener_usuario_grupo(int grupo_id, int indice)
     }
 
     pthread_mutex_unlock(&client_list_mutex);
-
-    return (usuario[0] != '\0') ? usuario : NULL;
+    return NULL;
 }
 
 // Función para notificar a todos los miembros de un grupo quién es el líder

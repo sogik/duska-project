@@ -1,130 +1,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include <time.h>
 #include "partidas.h"
-#include "basedatos.h" // Si necesitas funciones de la base de datos
-#include "server.h"    // Si necesitas funciones de autenticación
 
-// Declaraciones externas para funciones del servidor principal
-extern int obtener_grupo_id(const char *usuario);
-extern void broadcast_to_group(int grupo_id, const char *message);
+// Implementación para la lista global de partidas
+GameInfo *partidas_lista = NULL;
 
-extern int es_lider_grupo(const char *usuario, int grupo_id);
-
-// Variables globales
-GameInfo *partidas_lista = NULL; // Inicializar la lista enlazada
-
-// Corrección para obtener_partida_por_id
-GameInfo *obtener_partida_por_id(int partida_id)
-{
-    GameInfo *partida = partidas_lista;
-
-    while (partida != NULL)
-    {
-        if (partida->partida_id == partida_id)
-        {
-            return partida;
-        }
-        partida = partida->next; // Usar el campo next
-    }
-
-    return NULL;
-}
-
-// Corrección para iniciar_partida
-int iniciar_partida(int partida_id)
-{
-    // Buscar la partida por ID
-    GameInfo *partida = obtener_partida_por_id(partida_id);
-    if (!partida)
-        return -1;
-
-    // Verificar que no esté ya iniciada
-    if (partida->estado == ESTADO_ACTIVA)
-        return -2;
-
-    // Inicializar el estado de la partida
-    partida->estado = ESTADO_ACTIVA;
-
-    // Obtener lista de jugadores del grupo
-    partida->num_jugadores = num_usuarios_grupo(partida->grupo_id); // Usar el campo num_jugadores
-    if (partida->num_jugadores <= 0)
-        return -3;
-
-    // Asignar memoria para los nombres de jugadores
-    partida->jugadores = (char **)malloc(partida->num_jugadores * sizeof(char *));
-    if (!partida->jugadores)
-        return -4;
-
-    // Copiar los nombres de los jugadores
-    for (int i = 0; i < partida->num_jugadores; i++)
-    {
-        char *nombre_jugador = obtener_usuario_grupo(partida->grupo_id, i);
-        if (nombre_jugador)
-        {
-            partida->jugadores[i] = strdup(nombre_jugador); // Usar strdup para copiar el string
-        }
-        else
-        {
-            partida->jugadores[i] = NULL;
-        }
-    }
-
-    // Asignar turno aleatorio inicial
-    srand(time(NULL));
-    partida->turno_actual = rand() % partida->num_jugadores;
-
-    // Obtener el nombre del jugador con el turno actual
-    char *jugador_actual = partida->jugadores[partida->turno_actual];
-    if (!jugador_actual)
-        return -5;
-
-    // Notificar a todos los jugadores del inicio de partida
-    char mensaje_inicio[100];
-    snprintf(mensaje_inicio, sizeof(mensaje_inicio), "GAMESTART/OK");
-    broadcast_to_group(partida->grupo_id, mensaje_inicio);
-
-    // Notificar turno
-    char mensaje_turno[100];
-    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s", jugador_actual);
-    broadcast_to_group(partida->grupo_id, mensaje_turno);
-
-    printf("Partida %d iniciada. Primer turno: %s\n", partida_id, jugador_actual);
-    return 0;
-}
-
-// Corrección para avanzar_turno
-int avanzar_turno(int partida_id)
-{
-    // Buscar la partida
-    GameInfo *partida = obtener_partida_por_id(partida_id);
-    if (!partida)
-        return -1;
-
-    // Verificar que la partida está activa
-    if (partida->estado != ESTADO_ACTIVA)
-        return -2;
-
-    // Avanzar al siguiente turno
-    partida->turno_actual = (partida->turno_actual + 1) % partida->num_jugadores;
-
-    // Obtener el nombre del siguiente jugador
-    char *siguiente_jugador = partida->jugadores[partida->turno_actual];
-    if (!siguiente_jugador)
-        return -3;
-
-    // Notificar a todos los jugadores del nuevo turno
-    char mensaje_turno[100];
-    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s", siguiente_jugador);
-    broadcast_to_group(partida->grupo_id, mensaje_turno);
-
-    printf("Partida %d: Turno avanzado a %s\n", partida_id, siguiente_jugador);
-    return 0;
-}
-
-// Corrección de crear_partida
+// Función para crear una partida
 int crear_partida(int grupo_id)
 {
     static int next_partida_id = 1;
@@ -140,13 +23,10 @@ int crear_partida(int grupo_id)
     // Inicializar la partida
     nueva_partida->partida_id = next_partida_id++;
     nueva_partida->grupo_id = grupo_id;
-    nueva_partida->estado = ESTADO_CREADA;
-    nueva_partida->turno_actual = -1; // No hay turno asignado aún
-    nueva_partida->num_jugadores = 0; // Se inicializará al iniciar la partida
-    nueva_partida->jugadores = NULL;  // Se inicializará al iniciar la partida
-    nueva_partida->next = NULL;
-
-    // Añadir a la lista de partidas
+    nueva_partida->estado = 0; // ESTADO_CREADA
+    nueva_partida->turno_actual = -1;
+    nueva_partida->num_jugadores = 0;
+    nueva_partida->jugadores = NULL;
     nueva_partida->next = partidas_lista;
     partidas_lista = nueva_partida;
 
@@ -154,18 +34,148 @@ int crear_partida(int grupo_id)
     return nueva_partida->partida_id;
 }
 
-// Añadir esta función para finalizar una partida
-int finalizar_partida(int partida_id)
+// Obtener partida por ID
+GameInfo *obtener_partida_por_id(int partida_id)
 {
-    // Buscar la partida en la lista
-    GameInfo **pp = &partidas_lista;
-    GameInfo *partida = *pp;
+    GameInfo *partida = partidas_lista;
 
     while (partida != NULL)
     {
         if (partida->partida_id == partida_id)
+            return partida;
+
+        partida = partida->next;
+    }
+
+    return NULL;
+}
+
+// Función para iniciar una partida
+int iniciar_partida(int partida_id)
+{
+    // Buscar la partida
+    GameInfo *partida = obtener_partida_por_id(partida_id);
+    if (!partida)
+        return -1;
+
+    // Marcar como activa
+    partida->estado = 1; // ESTADO_ACTIVA
+
+    // Obtener jugadores
+    int num_jug = num_usuarios_grupo(partida->grupo_id);
+    if (num_jug <= 0)
+        return -2;
+
+    partida->num_jugadores = num_jug;
+
+    // Reservar memoria para los nombres de los jugadores
+    partida->jugadores = (char **)malloc(num_jug * sizeof(char *));
+    if (!partida->jugadores)
+        return -3;
+
+    // Copiar nombres de jugadores
+    for (int i = 0; i < num_jug; i++)
+    {
+        char *nombre = obtener_usuario_grupo(partida->grupo_id, i);
+        if (nombre)
+            partida->jugadores[i] = strdup(nombre);
+        else
+            partida->jugadores[i] = NULL;
+    }
+
+    // Asignar turno inicial aleatorio
+    srand(time(NULL));
+    partida->turno_actual = rand() % num_jug;
+
+    // Notificar a todos los jugadores
+    char mensaje[100];
+    snprintf(mensaje, sizeof(mensaje), "GAMESTART/OK");
+    broadcast_to_group(partida->grupo_id, mensaje);
+
+    // Notificar el primer turno
+    char mensaje_turno[100];
+    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s",
+             partida->jugadores[partida->turno_actual]);
+    broadcast_to_group(partida->grupo_id, mensaje_turno);
+
+    return 0;
+}
+
+// Función para verificar si es el turno de un jugador
+int es_turno_de_jugador(const char *usuario)
+{
+    if (!usuario)
+        return 0;
+
+    // Buscar la partida del jugador
+    GameInfo *partida = obtener_partida_por_jugador(usuario);
+    if (!partida || partida->estado != 1) // ESTADO_ACTIVA
+        return 0;
+
+    if (!partida->jugadores || partida->turno_actual < 0 ||
+        partida->turno_actual >= partida->num_jugadores)
+        return 0;
+
+    // Verificar si es el turno del jugador
+    return (strcmp(partida->jugadores[partida->turno_actual], usuario) == 0);
+}
+
+// Función para obtener la partida de un jugador
+GameInfo *obtener_partida_por_jugador(const char *usuario)
+{
+    if (!usuario)
+        return NULL;
+
+    // Obtener el grupo del jugador
+    int grupo_id = obtener_grupo_id(usuario);
+    if (grupo_id <= 0)
+        return NULL;
+
+    // Buscar una partida activa para este grupo
+    GameInfo *partida = partidas_lista;
+    while (partida != NULL)
+    {
+        if (partida->grupo_id == grupo_id && partida->estado == 1) // ESTADO_ACTIVA
+            return partida;
+
+        partida = partida->next;
+    }
+
+    return NULL;
+}
+
+// Función para avanzar el turno
+int avanzar_turno(int partida_id)
+{
+    // Buscar partida
+    GameInfo *partida = obtener_partida_por_id(partida_id);
+    if (!partida || partida->estado != 1) // ESTADO_ACTIVA
+        return -1;
+
+    // Avanzar turno
+    partida->turno_actual = (partida->turno_actual + 1) % partida->num_jugadores;
+
+    // Notificar a los jugadores
+    char mensaje[100];
+    snprintf(mensaje, sizeof(mensaje), "TURN/%s",
+             partida->jugadores[partida->turno_actual]);
+    broadcast_to_group(partida->grupo_id, mensaje);
+
+    return 0;
+}
+
+// Función para finalizar una partida
+int finalizar_partida(int partida_id)
+{
+    GameInfo **pp = &partidas_lista;
+
+    while (*pp != NULL)
+    {
+        GameInfo *partida = *pp;
+
+        if (partida->partida_id == partida_id)
         {
-            // Liberar memoria de los nombres de jugadores
+            // Liberar memoria de jugadores
             if (partida->jugadores)
             {
                 for (int i = 0; i < partida->num_jugadores; i++)
@@ -178,15 +188,11 @@ int finalizar_partida(int partida_id)
             // Eliminar de la lista
             *pp = partida->next;
             free(partida);
-
-            printf("Partida %d finalizada y eliminada\n", partida_id);
             return 0;
         }
 
-        pp = &partida->next;
-        partida = *pp;
+        pp = &(*pp)->next;
     }
 
-    printf("No se encontró la partida %d para finalizar\n", partida_id);
     return -1;
 }

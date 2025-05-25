@@ -1,33 +1,34 @@
 #ifndef PARTIDAS_H
 #define PARTIDAS_H
 
-// Definiciones para el estado de la partida
-#define ESTADO_CREADA 0
-#define ESTADO_ACTIVA 1
-#define ESTADO_FINALIZADA 2
-
-// Estructura para almacenar información de la partida
+// Estructura para la información del juego
 typedef struct GameInfo
 {
     int partida_id;
     int grupo_id;
     int estado;
     int turno_actual;
-    int num_jugadores;     // Agregar este campo
-    char **jugadores;      // Agregar este campo (array de nombres de jugadores)
-    struct GameInfo *next; // Agregar este campo (para lista enlazada)
+    int num_jugadores;
+    char **jugadores;
+    struct GameInfo *next;
 } GameInfo;
 
-// Variables globales (declaradas como extern)
-extern GameInfo *partidas_lista; // Lista enlazada de partidas
+// Lista global de partidas
+extern GameInfo *partidas_lista;
 
 // Prototipos de funciones
 int crear_partida(int grupo_id);
 int iniciar_partida(int partida_id);
 int es_turno_de_jugador(const char *usuario);
 GameInfo *obtener_partida_por_jugador(const char *usuario);
-GameInfo *obtener_partida_por_id(int partida_id);
 int avanzar_turno(int partida_id);
+GameInfo *obtener_partida_por_id(int partida_id);
 int finalizar_partida(int partida_id);
 
-#endif
+// Funciones externas necesarias
+extern int obtener_grupo_id(const char *usuario);
+extern int broadcast_to_group(int grupo_id, const char *mensaje);
+extern char *obtener_usuario_grupo(int grupo_id, int indice);
+extern int num_usuarios_grupo(int grupo_id);
+
+#endif // PARTIDAS_H
