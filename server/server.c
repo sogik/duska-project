@@ -640,22 +640,33 @@ void *cliente(void *socket_ptr)
         }
         else if (codigo == 15)
         {
-            // Realizar jugada
-            // Formato: 15/usuario/grupo_id/jugador_id/tipo_carta/valor_carta
+            // Realizar jugada de múltiples cartas
+            // Formato: 15/usuario/grupo_id/jugador_id/tipo_declarado/num_cartas/tipo1/valor1/tipo2/valor2/...
             int grupo_id = atoi(contrasena);
             char *p_jugador = strtok(mensaje, "/");
             int jugador_id = atoi(p_jugador);
-            char *p_tipo = strtok(NULL, "/");
-            int tipo_carta = atoi(p_tipo);
-            char *p_valor = strtok(NULL, "/");
-            int valor_carta = atoi(p_valor);
+            char *p_tipo_declarado = strtok(NULL, "/");
+            int tipo_declarado = atoi(p_tipo_declarado);
+            char *p_num_cartas = strtok(NULL, "/");
+            int num_cartas = atoi(p_num_cartas);
 
-            Carta carta_jugada = {tipo_carta, valor_carta};
-            manejar_jugada(grupo_id, jugador_id, carta_jugada);
+            Carta cartas_jugadas[MAX_CARTAS_JUGADA];
+            for (int i = 0; i < num_cartas && i < MAX_CARTAS_JUGADA; i++)
+            {
+                char *p_tipo = strtok(NULL, "/");
+                char *p_valor = strtok(NULL, "/");
+                cartas_jugadas[i].tipo = atoi(p_tipo);
+                cartas_jugadas[i].valor = atoi(p_valor);
+            }
 
-            // Notificar jugada al grupo
-            char notif[256];
-            snprintf(notif, sizeof(notif), "JUGADA/%d/%d/%d/%d", jugador_id, grupo_id, tipo_carta, valor_carta);
+            manejar_jugada(grupo_id, jugador_id, cartas_jugadas, num_cartas, tipo_declarado);
+
+            // Crear mensaje para notificar jugada al grupo
+            char notif[512] = "";
+            snprintf(notif, sizeof(notif), "JUGADA/%d/%d/%d/%d",
+                     jugador_id, grupo_id, tipo_declarado, num_cartas);
+
+            // No enviamos las cartas reales, solo la cantidad y tipo declarado
             broadcast_to_group(grupo_id, notif);
 
             strcpy(respuesta, "JUGADA/OK");
@@ -694,6 +705,69 @@ void *cliente(void *socket_ptr)
                 printf("[SERVIDOR] Usuario %s no encontrado o no está en un grupo\n", usuario_a_buscar);
                 strcpy(respuesta, "GRUPO/NINGUNO");
             }
+        }
+        else if (codigo == 17)
+        {
+            // Acusar de mentiroso
+            // Formato: 17/usuario/grupo_id/jugador_acusador/jugador_acusado
+            int grupo_id = atoi(contrasena);
+            char *p_acusador = strtok(mensaje, "/");
+            int jugador_acusador = atoi(p_acusador);
+            char *p_acusado = strtok(NULL, "/");
+            int jugador_acusado = atoi(p_acusado);
+
+            int eliminado = comprobar_verdad(grupo_id, jugador_acusador, jugador_acusado);
+
+            // Notificar resultado al grupo con detalles de las cartas
+            char notif[512];
+            Mesa *mesaActual = NULL;
+
+            // Obtener la mesa actual
+            pthread_mutex_lock(&mutex_mesas);
+            for (int i = 0; i < num_mesas; i++)
+            {
+                if (mesas[i].grupo_id == grupo_id)
+                {
+                    mesaActual = &mesas[i];
+                    break;
+                }
+            }
+
+            if (mesaActual != NULL)
+            {
+                // Formato: ACUSACION/acusador/acusado/eliminado/num_cartas/tipo_declarado/tipo1/.../tipoN
+                snprintf(notif, sizeof(notif), "ACUSACION/%d/%d/%d/%d/%d",
+                         jugador_acusador, jugador_acusado, eliminado,
+                         mesaActual->num_cartas_jugadas, mesaActual->tipo_declarado);
+
+                // Añadir información de cada carta jugada
+                for (int i = 0; i < mesaActual->num_cartas_jugadas && i < MAX_CARTAS_JUGADA; i++)
+                {
+                    char cartaInfo[32];
+                    snprintf(cartaInfo, sizeof(cartaInfo), "/%d", mesaActual->ultima_jugada[i].tipo);
+                    strcat(notif, cartaInfo);
+                }
+            }
+            else
+            {
+                // Formato básico si no se encuentra la mesa
+                snprintf(notif, sizeof(notif), "ACUSACION/%d/%d/%d/0/0",
+                         jugador_acusador, jugador_acusado, eliminado);
+            }
+            pthread_mutex_unlock(&mutex_mesas);
+
+            broadcast_to_group(grupo_id, notif);
+
+            // Verificar si hay un ganador después de la acusación
+            int ganador = obtener_ganador(grupo_id);
+            if (ganador >= 0)
+            {
+                char ganador_msg[256];
+                snprintf(ganador_msg, sizeof(ganador_msg), "GANADOR/%d", ganador);
+                broadcast_to_group(grupo_id, ganador_msg);
+            }
+
+            strcpy(respuesta, "ACUSACION/OK");
         }
         else
         {

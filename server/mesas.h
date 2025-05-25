@@ -17,9 +17,13 @@ typedef struct
 {
     int grupo_id;
     TipoMesa tipo;
-    Carta ultima_jugada;                      // Última carta jugada
-    int jugador_ultimo;                       // Último jugador que hizo una jugada
-    bool jugadores_vivos[MAX_JUGADORES_MESA]; // Estado de los jugadores
+    int jugador_ultimo;
+    bool jugadores_vivos[MAX_JUGADORES_MESA];
+
+    // Modificar para soportar múltiples cartas
+    Carta ultima_jugada[MAX_CARTAS_JUGADA]; // Array de cartas jugadas
+    int num_cartas_jugadas;                 // Número de cartas en la última jugada
+    TipoCarta tipo_declarado;               // Tipo de carta que el jugador dice estar jugando
 } Mesa;
 
 #define MAX_MESAS 50

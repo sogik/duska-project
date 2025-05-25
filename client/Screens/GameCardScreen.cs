@@ -406,19 +406,47 @@ namespace Duska.Screens
                     {
                         int acusador = int.Parse(partes[0]);
                         int acusado = int.Parse(partes[1]);
-                        int resultado = int.Parse(partes[2]);
+                        int eliminado = int.Parse(partes[2]);
 
-                        // resultado: 1 = mentira detectada, 2 = era verdad
-                        bool eranVerdaderas = (resultado == 2);
+                        // Verificar si el jugador que mintió fue el acusado
+                        bool acusadoMintio = (eliminado == acusado);
 
-                        // Revelar las cartas con el color correspondiente
-                        RevelarCartasCentro(eranVerdaderas);
+                        // Preparar las cartas para mostrar
+                        List<Texture2D> cartasAMostrar = new List<Texture2D>();
 
-                        string mensaje = eranVerdaderas ?
-                            $"¡VERDAD! El jugador {acusado} no mentía. El jugador {acusador} pierde." :
-                            $"¡MENTIRA! El jugador {acusado} estaba mintiendo. El jugador {acusado} pierde.";
+                        // Si hay información de cartas en el mensaje (formato extendido)
+                        if (partes.Length >= 5)
+                        {
+                            int numCartas = int.Parse(partes[3]);
+                            int tipoDeclarado = int.Parse(partes[4]);
 
-                        //MostrarMensajeAccion(mensaje);
+                            Debug.WriteLine($"[ACUSACION] {acusador} acusó a {acusado}. Cartas: {numCartas}, Tipo declarado: {tipoDeclarado}");
+
+                            // Crear las cartas basadas en los tipos recibidos
+                            for (int i = 0; i < numCartas && i + 5 < partes.Length; i++)
+                            {
+                                int tipoCarta = int.Parse(partes[i + 5]);
+
+                                // Obtener la textura correspondiente
+                                if (tipoCarta >= 0 && tipoCarta < _cartas.Length)
+                                {
+                                    cartasAMostrar.Add(_cartas[tipoCarta]);
+                                    Debug.WriteLine($"[ACUSACION] Carta {i}: tipo {tipoCarta}");
+                                }
+                            }
+
+                            // Mostrar las cartas jugadas en el centro con el color correspondiente
+                            MostrarCartasAcusacion(cartasAMostrar, acusadoMintio);
+                        }
+
+                        // Mensaje de resultado
+                        string mensaje = acusadoMintio ?
+                            $"¡MENTIRA! El jugador {acusado} estaba mintiendo. ¡Ha sido eliminado!" :
+                            $"¡VERDAD! El jugador {acusado} no mentía. El jugador {acusador} ha sido eliminado.";
+
+                        // Añadir el mensaje al chat
+                        ChatPanel(true, "Sistema/" + mensaje);
+
                         Debug.WriteLine($"[JUEGO] {mensaje}");
                     }
                 }
@@ -1035,16 +1063,12 @@ namespace Duska.Screens
                                     Thread.Sleep(500);
                                     continue; // Continuar intentando, NO salir
                                 }
-
-
+                                if (bytesReceived > 0)
                                 {
                                     string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
 
                                     // Procesar el mensaje de forma segura
                                     ProcessServerMessage(message);
-
-                                    // CRÍTICO: NO hacer break, return o salir aquí
-                                    // El hilo debe seguir ejecutándose para recibir más mensajes
                                 }
                                 else
                                 {
@@ -1112,287 +1136,336 @@ namespace Duska.Screens
 
         public override void Update(GameTime gameTime)
         {
-            try
+            // Obtener estado del teclado
+            var keyboardState = KeyboardExtended.GetState();
+
+            // Controlar animación de revelación
+            if (_mostrandoRevelacion)
             {
-                // Procesar mensajes pendientes primero
-                List<string> mensajesAhora = null;
-                lock (mensajesLock)
+                _tiempoRevelacion += (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+                // Cuando termina el tiempo de revelación, ocultar las cartas
+                if (_tiempoRevelacion >= TIEMPO_REVELACION_COMPLETO)
                 {
-                    if (hayNuevosMensajes && mensajesPendientes.Count > 0)
-                    {
-                        Debug.WriteLine($"[UPDATE] Encontrados {mensajesPendientes.Count} mensajes pendientes");
-                        mensajesAhora = new List<string>(mensajesPendientes);
-                        mensajesPendientes.Clear();
-                        hayNuevosMensajes = false;
-                    }
+                    _mostrandoRevelacion = false;
+                    _tiempoRevelacion = 0f;
+                    _cartasEnCentro.Clear();
+                    _filtrosCartasCentro.Clear();
+                    _cantidadCartasCentro = 0;
+                    _necesitaRedibujado = true;
                 }
+            }
 
-                if (mensajesAhora != null)
+            // Verificar teclas para acusación
+            if (keyboardState.WasKeyReleased(Keys.F) && !_animacionEnCurso)
+            {
+                Debug.WriteLine("[INPUT] Tecla F presionada - Acusando al último jugador");
+                AcusarUltimoJugador();
+            }
+
+            // Procesar mensajes pendientes primero
+            List<string> mensajesAhora = null;
+            lock (mensajesLock)
+            {
+                if (hayNuevosMensajes && mensajesPendientes.Count > 0)
                 {
-                    foreach (string msg in mensajesAhora)
-                    {
-                        Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {msg}");
-
-                        if (msg.StartsWith("CARDS/"))
-                        {
-                            // Procesar mensaje de cartas
-                            ProcesarCartasDelServidor(msg);
-                            Debug.WriteLine($"[UPDATE] Cartas procesadas, disponibles ahora: {_cartasDisponibles.Count}");
-                        }
-                        else if (msg.StartsWith("CHAT/"))
-                        {
-                            // Procesar mensaje de chat
-                            string chatMessage = msg.Substring(5);
-                            ChatPanel(true, chatMessage);
-                        }
-                        else if (msg.StartsWith("MESA/"))
-                        {
-                            string tipoMesa = msg.Substring(5);
-                            Debug.WriteLine($"[MESA] Recibido tipo de mesa: {tipoMesa}");
-                            // Actualizar interfaz según tipo de mesa
-                        }
-                        else if (msg.StartsWith("JUGADA/"))
-                        {
-                            // Parse jugada data
-                            string[] parts = msg.Substring(7).Split('/');
-                            int jugadorId = int.Parse(parts[0]);
-                            int grupoId = int.Parse(parts[1]);
-                            int tipoCarta = int.Parse(parts[2]);
-                            int valorCarta = int.Parse(parts[3]);
-
-                            Debug.WriteLine($"[JUEGO] Jugador {jugadorId} jugó carta tipo {tipoCarta} valor {valorCarta}");
-                            // Actualizar interfaz con la nueva jugada
-                        }
-                        else if (msg.StartsWith("RETO/"))
-                        {
-                            // Parse reto data
-                            string[] parts = msg.Substring(5).Split('/');
-                            int retador = int.Parse(parts[0]);
-                            int retado = int.Parse(parts[1]);
-                            int eliminado = int.Parse(parts[2]);
-
-                            Debug.WriteLine($"[JUEGO] Reto: {retador} retó a {retado}, eliminado: {eliminado}");
-                            // Actualizar interfaz con el resultado del reto
-                        }
-                        else if (msg.StartsWith("GANADOR/"))
-                        {
-                            int ganador = int.Parse(msg.Substring(8));
-                            Debug.WriteLine($"[JUEGO] ¡El ganador es el jugador {ganador}!");
-                            // Mostrar pantalla de ganador
-                        }
-                        else if (msg.StartsWith("ACUSACION/"))
-                        {
-                            string[] partes = msg.Substring(10).Split('/');
-                            if (partes.Length >= 3)
-                            {
-                                int acusador = int.Parse(partes[0]);
-                                int acusado = int.Parse(partes[1]);
-                                int resultado = int.Parse(partes[2]);
-
-                                // resultado: 1 = mentira detectada, 2 = era verdad
-                                bool eranVerdaderas = (resultado == 2);
-
-                                // Revelar las cartas con el color correspondiente
-                                RevelarCartasCentro(eranVerdaderas);
-
-                                string mensaje = eranVerdaderas ?
-                                    $"¡VERDAD! El jugador {acusado} no mentía. El jugador {acusador} pierde." :
-                                    $"¡MENTIRA! El jugador {acusado} estaba mintiendo. El jugador {acusado} pierde.";
-
-                                //MostrarMensajeAccion(mensaje);
-                                Debug.WriteLine($"[JUEGO] {mensaje}");
-                            }
-                        }
-
-                    }
+                    Debug.WriteLine($"[UPDATE] Encontrados {mensajesPendientes.Count} mensajes pendientes");
+                    mensajesAhora = new List<string>(mensajesPendientes);
+                    mensajesPendientes.Clear();
+                    hayNuevosMensajes = false;
                 }
+            }
 
-                // Obtener estados de entrada actuales
-                KeyboardState estadoTeclado = Keyboard.GetState();
-                var keyboardState = KeyboardExtended.GetState();
-                var mouseState = MouseExtended.GetState();
-
-                // Permitir que UserInterface procese la entrada
-                if (UserInterface.Active != null)
+            if (mensajesAhora != null)
+            {
+                foreach (string msg in mensajesAhora)
                 {
-                    // Esto es importante para que los controles de UI respondan al ratón
-                    UserInterface.Active.Update(gameTime);
-                }
+                    Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {msg}");
 
-                // Verifica si el ratón está sobre un control de UI antes de procesar teclas de juego
-                bool ratónSobreUI = false;
-                if (UserInterface.Active != null)
-                {
-                    // Comprueba si el ratón está sobre alguna entidad de UI
-                    // GeonBit.UI no tiene IsMouseOverAnyEntity, pero puedes comprobar si el mouse está sobre alguna entidad así:
-                    ratónSobreUI = UserInterface.Active.TargetEntity != null && UserInterface.Active.TargetEntity.IsMouseOver;
-                }
-
-                // Solo procesar teclas de juego si el ratón no está sobre la UI
-                if (!ratónSobreUI)
-                {
-                    // Detectar tecla Q para acercar/alejar las cartas
-                    if (keyboardState.WasKeyReleased(Keys.Q))
+                    if (msg.StartsWith("CARDS/"))
                     {
-                        _cartasAcercadas = !_cartasAcercadas;
-                        MarcarParaRedibujado(); // Añadir esta línea
-                        Debug.WriteLine($"[INPUT] Cartas acercadas: {_cartasAcercadas}");
+                        // Procesar mensaje de cartas
+                        ProcesarCartasDelServidor(msg);
+                        Debug.WriteLine($"[UPDATE] Cartas procesadas, disponibles ahora: {_cartasDisponibles.Count}");
                     }
-
-                    // La navegación con flechas y aplicación de filtros SOLO funciona cuando las cartas están acercadas
-                    if (_cartasAcercadas)
+                    else if (msg.StartsWith("CHAT/"))
                     {
-                        // Navegación con flechas entre cartas
-                        if (keyboardState.WasKeyReleased(Keys.Left))
-                        {
-                            if (_cartasDisponibles.Count > 0)
-                            {
-                                _cartaSeleccionadaIndex--;
-                                if (_cartaSeleccionadaIndex < 0)
-                                    _cartaSeleccionadaIndex = _cartasDisponibles.Count - 1;
-
-                                // ELIMINAR: _filtroAplicado = false; 
-                                // El filtro ahora permanece activo al cambiar de carta
-                                Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
-                            }
-                        }
-                        else if (keyboardState.WasKeyReleased(Keys.Right))
-                        {
-                            if (_cartasDisponibles.Count > 0)
-                            {
-                                _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
-
-                                // ELIMINAR: _filtroAplicado = false; 
-                                // El filtro ahora permanece activo al cambiar de carta
-
-                            }
-                        }
-
-                        // Espacio ahora alterna el filtro en la carta seleccionada
-                        if (keyboardState.WasKeyReleased(Keys.Space))
-                        {
-                            // Solo aplicar filtro si hay una carta seleccionada
-                            if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
-                            {
-                                // Asegurarse de que la lista de filtros tiene suficientes elementos
-                                while (_cartasConFiltro.Count < _cartasDisponibles.Count)
-                                    _cartasConFiltro.Add(false);
-
-                                // Alternar el filtro solo para la carta seleccionada
-                                _cartasConFiltro[_cartaSeleccionadaIndex] = !_cartasConFiltro[_cartaSeleccionadaIndex];
-
-                                Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
-                                    $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
-                                    $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
-                            }
-                        }
+                        // Procesar mensaje de chat
+                        string chatMessage = msg.Substring(5);
+                        ChatPanel(true, chatMessage);
                     }
-
-                    // Añadir en el método Update, dentro del bloque if (!ratónSobreUI)
-                    if (keyboardState.WasKeyReleased(Keys.Escape))
+                    else if (msg.StartsWith("MESA/"))
                     {
-                        Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
-                        EscMenu(usuario, true);
+                        string tipoMesa = msg.Substring(5);
+                        Debug.WriteLine($"[MESA] Recibido tipo de mesa: {tipoMesa}");
+                        // Actualizar interfaz según tipo de mesa
                     }
-
-                    // Añade esto dentro del método Update
-                    if (keyboardState.WasKeyReleased(Keys.E) && !_animacionEnCurso)
+                    else if (msg.StartsWith("JUGADA/"))
                     {
-                        // Verificar si hay cartas con filtro
-                        List<int> cartasSeleccionadas = new List<int>();
-                        for (int i = 0; i < _cartasConFiltro.Count; i++)
-                        {
-                            if (_cartasConFiltro[i])
-                                cartasSeleccionadas.Add(i);
-                        }
+                        // Parse jugada data
+                        string[] parts = msg.Substring(7).Split('/');
+                        int jugadorId = int.Parse(parts[0]);
+                        int grupoId = int.Parse(parts[1]);
+                        int tipoCarta = int.Parse(parts[2]);
+                        int valorCarta = int.Parse(parts[3]);
 
-                        // Si hay cartas seleccionadas, enviarlas como jugada
-                        if (cartasSeleccionadas.Count > 0)
+                        Debug.WriteLine($"[JUEGO] Jugador {jugadorId} jugó carta tipo {tipoCarta} valor {valorCarta}");
+                        // Actualizar interfaz con la nueva jugada
+                    }
+                    else if (msg.StartsWith("RETO/"))
+                    {
+                        // Parse reto data
+                        string[] parts = msg.Substring(5).Split('/');
+                        int retador = int.Parse(parts[0]);
+                        int retado = int.Parse(parts[1]);
+                        int eliminado = int.Parse(parts[2]);
+
+                        Debug.WriteLine($"[JUEGO] Reto: {retador} retó a {retado}, eliminado: {eliminado}");
+                        // Actualizar interfaz con el resultado del reto
+                    }
+                    else if (msg.StartsWith("GANADOR/"))
+                    {
+                        int ganador = int.Parse(msg.Substring(8));
+                        Debug.WriteLine($"[JUEGO] ¡El ganador es el jugador {ganador}!");
+                        // Mostrar pantalla de ganador
+                    }
+                    else if (msg.StartsWith("ACUSACION/"))
+                    {
+                        string[] partes = msg.Substring(10).Split('/');
+                        if (partes.Length >= 3)
                         {
-                            try
+                            int acusador = int.Parse(partes[0]);
+                            int acusado = int.Parse(partes[1]);
+                            int eliminado = int.Parse(partes[2]);
+
+                            // Verificar si el jugador que mintió fue el acusado
+                            bool acusadoMintio = (eliminado == acusado);
+
+                            // Preparar las cartas para mostrar
+                            List<Texture2D> cartasAMostrar = new List<Texture2D>();
+
+                            // Si hay información de cartas en el mensaje (formato extendido)
+                            if (partes.Length >= 5)
                             {
-                                // Crear lista de tipos de cartas
-                                List<int> tipoCartas = new List<int>();
-                                foreach (int indice in cartasSeleccionadas)
+                                int numCartas = int.Parse(partes[3]);
+                                int tipoDeclarado = int.Parse(partes[4]);
+
+                                Debug.WriteLine($"[ACUSACION] {acusador} acusó a {acusado}. Cartas: {numCartas}, Tipo declarado: {tipoDeclarado}");
+
+                                // Crear las cartas basadas en los tipos recibidos
+                                for (int i = 0; i < numCartas && i + 5 < partes.Length; i++)
                                 {
-                                    if (indice >= 0 && indice < _cartasDisponibles.Count)
+                                    int tipoCarta = int.Parse(partes[i + 5]);
+
+                                    // Obtener la textura correspondiente
+                                    if (tipoCarta >= 0 && tipoCarta < _cartas.Length)
                                     {
-                                        int tipoCarta = DeterminarTipoCarta(_cartasDisponibles[indice]);
-                                        tipoCartas.Add(tipoCarta);
+                                        cartasAMostrar.Add(_cartas[tipoCarta]);
+                                        Debug.WriteLine($"[ACUSACION] Carta {i}: tipo {tipoCarta}");
                                     }
                                 }
 
-                                string tiposString = string.Join("/", tipoCartas);
-                                string mensaje = $"15/{usuario}/{grupoId}/{tipoCartas.Count}/{tiposString}";
-
-                                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                                server.Send(msg);
-
-                                Debug.WriteLine($"[JUGADA] Enviadas {tipoCartas.Count} cartas: {tiposString}");
-
-                                // Iniciar animación para todas las cartas seleccionadas
-                                IniciarAnimacionJugada(cartasSeleccionadas);
+                                // Mostrar las cartas jugadas en el centro con el color correspondiente
+                                MostrarCartasAcusacion(cartasAMostrar, acusadoMintio);
                             }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ERROR] Error al enviar jugada: {ex.Message}");
-                            }
-                        }
-                        else
-                        {
-                            Debug.WriteLine("[JUGADA] No hay cartas seleccionadas para jugar");
+
+                            // Mensaje de resultado
+                            string mensaje = acusadoMintio ?
+                                $"¡MENTIRA! El jugador {acusado} estaba mintiendo. ¡Ha sido eliminado!" :
+                                $"¡VERDAD! El jugador {acusado} no mentía. El jugador {acusador} ha sido eliminado.";
+
+
+                            // Añadir el mensaje al chat
+                            ChatPanel(true, "Sistema/" + mensaje);
+
+
+                            Debug.WriteLine($"[JUEGO] {mensaje}");
                         }
                     }
 
-                    // Si hay una animación en curso, actualizarla
-                    if (_animacionEnCurso)
-                    {
-                        ActualizarAnimacionJugada(gameTime);
-                    }
                 }
-
-                // Actualizar revelación
-                if (_mostrandoRevelacion)
-                {
-                    _tiempoRevelacion += (float)gameTime.ElapsedGameTime.TotalSeconds;
-                    if (_tiempoRevelacion >= TIEMPO_REVELACION_COMPLETO)
-                    {
-                        _mostrandoRevelacion = false;
-                        // Limpiar filtros de revelación
-                        for (int i = 0; i < _filtrosCartasCentro.Count; i++)
-                        {
-                            _filtrosCartasCentro[i] = Color.White;
-                        }
-                        MarcarParaRedibujado();
-                    }
-                }
-
-                // Controlar logs de cartas (solo cuando cambie el número)
-                if (_cartasDisponibles.Count != _ultimoConteoCartas)
-                {
-                    Debug.WriteLine($"[CARTAS] Cantidad cambiada: {_cartasDisponibles.Count}");
-                    _ultimoConteoCartas = _cartasDisponibles.Count;
-                    MarcarParaRedibujado();
-                }
-
-                // Verificar salud del hilo de escucha cada 5 segundos
-                _tiempoVerificacionHilo += (float)gameTime.ElapsedGameTime.TotalSeconds;
-                if (_tiempoVerificacionHilo >= INTERVALO_VERIFICACION)
-                {
-                    _tiempoVerificacionHilo = 0f;
-                    VerificarSaludHilo();
-                }
-
-                // IMPORTANTE: Actualizar el estado anterior del teclado al final
-                _estadoTecladoAnterior = keyboardState;
             }
-            catch (Exception ex)
+
+            // Obtener estados de entrada actuales
+            KeyboardState estadoTeclado = Keyboard.GetState();
+            keyboardState = KeyboardExtended.GetState();
+            var mouseState = MouseExtended.GetState();
+
+            // Permitir que UserInterface procese la entrada
+            if (UserInterface.Active != null)
             {
-                Debug.WriteLine($"[ERROR] Error en Update: {ex.Message}");
+                // Esto es importante para que los controles de UI respondan al ratón
+                UserInterface.Active.Update(gameTime);
             }
+
+            // Verifica si el ratón está sobre un control de UI antes de procesar teclas de juego
+            bool ratónSobreUI = false;
+            if (UserInterface.Active != null)
+            {
+                // Comprueba si el ratón está sobre alguna entidad de UI
+                // GeonBit.UI no tiene IsMouseOverAnyEntity, pero puedes comprobar si el mouse está sobre alguna entidad así:
+                ratónSobreUI = UserInterface.Active.TargetEntity != null && UserInterface.Active.TargetEntity.IsMouseOver;
+            }
+
+            // Solo procesar teclas de juego si el ratón no está sobre la UI
+            if (!ratónSobreUI)
+            {
+                // Detectar tecla Q para acercar/alejar las cartas
+                if (keyboardState.WasKeyReleased(Keys.Q))
+                {
+                    _cartasAcercadas = !_cartasAcercadas;
+                    _necesitaRedibujado = true; // Añadir esta línea
+                    Debug.WriteLine($"[INPUT] Cartas acercadas: {_cartasAcercadas}");
+                }
+
+                // La navegación con flechas y aplicación de filtros SOLO funciona cuando las cartas están acercadas
+                if (_cartasAcercadas)
+                {
+                    // Navegación con flechas entre cartas
+                    if (keyboardState.WasKeyReleased(Keys.Left))
+                    {
+                        if (_cartasDisponibles.Count > 0)
+                        {
+                            _cartaSeleccionadaIndex--;
+                            if (_cartaSeleccionadaIndex < 0)
+                                _cartaSeleccionadaIndex = _cartasDisponibles.Count - 1;
+
+                            // ELIMINAR: _filtroAplicado = false; 
+                            // El filtro ahora permanece activo al cambiar de carta
+                            Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex} | Filtro: {(_cartasConFiltro[_cartaSeleccionadaIndex] ? "activo" : "inactivo")}");
+                        }
+                    }
+                    else if (keyboardState.WasKeyReleased(Keys.Right))
+                    {
+                        if (_cartasDisponibles.Count > 0)
+                        {
+                            _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
+
+                            // ELIMINAR: _filtroAplicado = false; 
+                            // El filtro ahora permanece activo al cambiar de carta
+
+                        }
+                    }
+
+                    // Espacio ahora alterna el filtro en la carta seleccionada
+                    if (keyboardState.WasKeyReleased(Keys.Space))
+                    {
+                        // Solo aplicar filtro si hay una carta seleccionada
+                        if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
+                        {
+                            // Asegurarse de que la lista de filtros tiene suficientes elementos
+                            while (_cartasConFiltro.Count < _cartasDisponibles.Count)
+                                _cartasConFiltro.Add(false);
+
+                            // Alternar el filtro solo para la carta seleccionada
+                            _cartasConFiltro[_cartaSeleccionadaIndex] = !_cartasConFiltro[_cartaSeleccionadaIndex];
+
+                            Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
+                                $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
+                                $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
+                        }
+                    }
+                }
+
+                // Añadir en el método Update, dentro del bloque if (!ratónSobreUI)
+                if (keyboardState.WasKeyReleased(Keys.Escape))
+                {
+                    Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
+                    EscMenu(usuario, true);
+                }
+
+                // Añade esto dentro del método Update
+                if (keyboardState.WasKeyReleased(Keys.E) && !_animacionEnCurso)
+                {
+                    // Verificar si hay cartas con filtro
+                    List<int> cartasSeleccionadas = new List<int>();
+                    for (int i = 0; i < _cartasConFiltro.Count; i++)
+                    {
+                        if (_cartasConFiltro[i])
+                            cartasSeleccionadas.Add(i);
+                    }
+
+                    // Si hay cartas seleccionadas, enviarlas como jugada
+                    if (cartasSeleccionadas.Count > 0)
+                    {
+                        try
+                        {
+                            // Crear lista de tipos de cartas
+                            List<int> tipoCartas = new List<int>();
+                            foreach (int indice in cartasSeleccionadas)
+                            {
+                                if (indice >= 0 && indice < _cartasDisponibles.Count)
+                                {
+                                    int tipoCarta = DeterminarTipoCarta(_cartasDisponibles[indice]);
+                                    tipoCartas.Add(tipoCarta);
+                                }
+                            }
+
+                            string tiposString = string.Join("/", tipoCartas);
+                            string mensaje = $"15/{usuario}/{grupoId}/{tipoCartas.Count}/{tiposString}";
+
+                            byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                            server.Send(msg);
+
+                            Debug.WriteLine($"[JUGADA] Enviadas {tipoCartas.Count} cartas: {tiposString}");
+
+                            // Iniciar animación para todas las cartas seleccionadas
+                            IniciarAnimacionJugada(cartasSeleccionadas);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[ERROR] Error al enviar jugada: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.WriteLine("[JUGADA] No hay cartas seleccionadas para jugar");
+                    }
+                }
+
+                // Si hay una animación en curso, actualizarla
+                if (_animacionEnCurso)
+                {
+                    ActualizarAnimacionJugada(gameTime);
+                }
+            }
+
+            // Actualizar revelación
+            if (_mostrandoRevelacion)
+            {
+                _tiempoRevelacion += (float)gameTime.ElapsedGameTime.TotalSeconds;
+                if (_tiempoRevelacion >= TIEMPO_REVELACION_COMPLETO)
+                {
+                    _mostrandoRevelacion = false;
+                    // Limpiar filtros de revelación
+                    for (int i = 0; i < _filtrosCartasCentro.Count; i++)
+                    {
+                        _filtrosCartasCentro[i] = Color.White;
+                    }
+                    _necesitaRedibujado = true;
+                }
+            }
+
+            // Controlar logs de cartas (solo cuando cambie el número)
+            if (_cartasDisponibles.Count != _ultimoConteoCartas)
+            {
+                Debug.WriteLine($"[CARTAS] Cantidad cambiada: {_cartasDisponibles.Count}");
+                _ultimoConteoCartas = _cartasDisponibles.Count;
+                _necesitaRedibujado = true;
+            }
+
+            // Verificar salud del hilo de escucha cada 5 segundos
+            _tiempoVerificacionHilo += (float)gameTime.ElapsedGameTime.TotalSeconds;
+            if (_tiempoVerificacionHilo >= INTERVALO_VERIFICACION)
+            {
+                _tiempoVerificacionHilo = 0f;
+                VerificarSaludHilo();
+            }
+
+            // IMPORTANTE: Actualizar el estado anterior del teclado al final
+            _estadoTecladoAnterior = keyboardState;
         }
 
-        // Método para verificar la salud del hilo
         private void VerificarSaludHilo()
         {
             if (conectado && (messageListenerThread == null || !messageListenerThread.IsAlive))
@@ -1548,6 +1621,43 @@ namespace Duska.Screens
                     0
                 );
             }
+            // Dibujar cartas en el centro (para revelación)
+            if (_mostrandoRevelacion && _cartasEnCentro.Count > 0)
+            {
+                float separacion = 40 * _escalaCentroMesa; // Espaciado entre cartas
+                float anchoTotal = _cartasEnCentro.Count * separacion;
+                Vector2 posicionInicial = new Vector2(
+                    _posicionCentroMesa.X - anchoTotal / 2 + separacion / 2,
+                    _posicionCentroMesa.Y
+                );
+
+                for (int i = 0; i < _cartasEnCentro.Count; i++)
+                {
+                    Vector2 posicion = new Vector2(
+                        posicionInicial.X + i * separacion,
+                        posicionInicial.Y
+                    );
+
+                    // Dibujar la carta con su filtro de color
+                    Color colorFiltro = (i < _filtrosCartasCentro.Count) ?
+                        _filtrosCartasCentro[i] : Color.White;
+
+                    _spriteBatch.Draw(
+                        _cartasEnCentro[i],
+                        posicion,
+                        null,
+                        colorFiltro,
+                        0f,
+                        new Vector2(_cartasEnCentro[i].Width / 2, _cartasEnCentro[i].Height / 2),
+                        _escalaCentroMesa,
+                        SpriteEffects.None,
+                        0f
+                    );
+                }
+            }
+
+            // Reset _necesitaRedibujado si fue usado para forzar dibujado
+            _necesitaRedibujado = false;
 
             _spriteBatch.End();
 
@@ -1657,6 +1767,34 @@ namespace Duska.Screens
                 server.Send(msg);
 
                 Debug.WriteLine("[ACUSACIÓN] Enviada acusación de mentira");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al enviar acusación: {ex.Message}");
+            }
+        }
+
+        // Añade este método para enviar una acusación al servidor:
+        private void AcusarUltimoJugador()
+        {
+            if (!conectado || server == null || !server.Connected)
+            {
+                Debug.WriteLine("[ACUSACIÓN] Error: No hay conexión disponible");
+                return;
+            }
+
+            try
+            {
+                // Formato: 17/usuario/grupo_id/jugador_acusador/jugador_acusado
+                // Aquí asumimos que el cliente sabe su ID de jugador y el ID del último jugador
+                int miJugadorId = 0; // Este debería ser tu ID real
+                int ultimoJugadorId = 1; // Este debería ser el ID del último jugador
+
+                string mensaje = $"17/{usuario}/{grupoId}/{miJugadorId}/{ultimoJugadorId}";
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+
+                Debug.WriteLine("[ACUSACIÓN] Enviada acusación al último jugador");
             }
             catch (Exception ex)
             {
@@ -1847,19 +1985,32 @@ REGLAS:
                 return;
             }
 
+            // Definir colores con buena visibilidad semitransparentes
             Color filtro = sonVerdaderas ?
-                new Color(0, 255, 0, 180) :    // Verde para verdaderas
-                new Color(255, 0, 0, 180);     // Rojo para falsas
+                new Color(0, 255, 0, 150) :    // Verde para verdaderas (más transparente)
+                new Color(255, 0, 0, 150);     // Rojo para falsas (más transparente)
 
-            for (int i = 0; i < _filtrosCartasCentro.Count; i++)
+            // Inicializar la lista de filtros si es necesario
+            if (_filtrosCartasCentro == null)
+                _filtrosCartasCentro = new List<Color>();
+
+            // Limpiar filtros actuales
+            _filtrosCartasCentro.Clear();
+
+            // Aplicar filtro a todas las cartas
+            for (int i = 0; i < _cartasEnCentro.Count; i++)
             {
-                _filtrosCartasCentro[i] = filtro;
+                _filtrosCartasCentro.Add(filtro);
             }
 
+            // Activar revelación y reiniciar temporizador
             _mostrandoRevelacion = true;
             _tiempoRevelacion = 0f;
 
-            Debug.WriteLine($"[REVELACIÓN] Cartas reveladas: {(sonVerdaderas ? "VERDADERAS (Verde)" : "FALSAS (Rojo)")}");
+            Debug.WriteLine($"[REVELACIÓN] {_cartasEnCentro.Count} cartas reveladas: {(sonVerdaderas ? "VERDADERAS (Verde)" : "FALSAS (Rojo)")}");
+
+            // Variable de control en lugar de MarcarParaRedibujado()
+            _necesitaRedibujado = true;
         }
 
         private List<int> ObtenerCartasSeleccionadas()
@@ -1874,11 +2025,14 @@ REGLAS:
                 }
             }
 
+
+
             return cartasSeleccionadas;
         }
 
         private void IntentarReconectar()
         {
+
             if (DateTime.Now - _ultimaReconexion < _intervaloReconexion)
             {
                 Debug.WriteLine("[RED] Esperando antes de reconectar...");
@@ -1933,10 +2087,43 @@ REGLAS:
             isReconnecting = false;
         }
 
-        // Añadir este método en la clase
-
-        private void MarcarParaRedibujado()
+        // Añadir este método a la clase:
+        private void MostrarCartasAcusacion(List<Texture2D> cartas, bool esMentira)
         {
+            if (cartas == null || cartas.Count == 0)
+            {
+                Debug.WriteLine("[ACUSACIÓN] No hay cartas para mostrar");
+                return;
+            }
+
+            Debug.WriteLine($"[ACUSACIÓN] Mostrando {cartas.Count} cartas, esMentira: {esMentira}");
+
+            // Limpiar las cartas actuales del centro
+            _cartasEnCentro.Clear();
+            _filtrosCartasCentro.Clear();
+
+            // Añadir las nuevas cartas
+            foreach (var carta in cartas)
+            {
+                _cartasEnCentro.Add(carta);
+            }
+
+            // Almacenar la cantidad de cartas para el dibujado
+            _cantidadCartasCentro = cartas.Count;
+
+            // Configurar el centro de la mesa si no está definido
+            if (_posicionCentroMesa == Vector2.Zero)
+            {
+                _posicionCentroMesa = new Vector2(
+                    GraphicsDevice.Viewport.Width / 2,
+                    GraphicsDevice.Viewport.Height / 2 - 50
+                );
+            }
+
+            // Aplicar revelación con el color correspondiente
+            RevelarCartasCentro(!esMentira); // true=verde (verdaderas), false=rojo (falsas)
+
+            // Establecer variable para indicar redibujado
             _necesitaRedibujado = true;
         }
     }
