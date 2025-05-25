@@ -583,7 +583,10 @@ namespace Duska.Screens
                 Button acceptBtn = new Button("Ok", ButtonSkin.Default);
                 acceptBtn.OnClick = (Entity btn) =>
                 {
-                    GetGrupoid(usuario);
+                    if (mensaje2[1] == "ACEPTADA")
+                    {
+                        GetGrupoid(usuario);
+                    }
                     UserInterface.Active.RemoveEntity(panel);
                 };
                 panel.AddChild(acceptBtn);

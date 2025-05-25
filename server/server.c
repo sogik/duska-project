@@ -18,11 +18,12 @@
 #include "conexiones.h"
 #include "server.h"
 
-// Estructura completa para mantener los clientes conectados
-typedef struct ClientNode {
+// Estructura para mantener los clientes conectados
+typedef struct ClientNode
+{
     int socket;
     char usuario[50];
-    int grupo_id;
+    int grupo_id; // ID del grupo al que pertenece el cliente, 0 significa sin grupo
     struct ClientNode *next;
 } ClientNode;
 
@@ -265,43 +266,6 @@ void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
     {
         snprintf(buffer, buffer_size, "ERROR/No hay usuarios en este grupo");
     }
-}
-
-// Función para verificar si existe mesa para un grupo
-int existe_mesa_para_grupo(int grupo_id) {
-    pthread_mutex_lock(&mutex_mesas);
-    for (int i = 0; i < num_mesas; i++) {
-        if (mesas[i].grupo_id == grupo_id) {
-            pthread_mutex_unlock(&mutex_mesas);
-            return 1;
-        }
-    }
-    pthread_mutex_unlock(&mutex_mesas);
-    return 0;
-}
-
-// Función para obtener ID de jugador en un grupo
-int obtener_id_jugador_en_grupo(const char *usuario, int grupo_id) {
-    // Por simplicidad, asignamos IDs basados en el orden de llegada
-    // En una implementación más robusta, esto sería más complejo
-    
-    pthread_mutex_lock(&client_list_mutex);
-    ClientNode *current = client_list;
-    int jugador_id = 0;
-    
-    while (current != NULL) {
-        if (current->grupo_id == grupo_id) {
-            if (strcmp(current->usuario, usuario) == 0) {
-                pthread_mutex_unlock(&client_list_mutex);
-                return jugador_id;
-            }
-            jugador_id++;
-        }
-        current = current->next;
-    }
-    pthread_mutex_unlock(&client_list_mutex);
-    
-    return 0; // Por defecto
 }
 
 void *cliente(void *socket_ptr)
@@ -674,122 +638,61 @@ void *cliente(void *socket_ptr)
 
             strcpy(respuesta, "MESA_CREADA/OK");
         }
-        else if (codigo == 15) {
-            // Realizar jugada con múltiples cartas
-            // Formato: 15/usuario/cantidad/tipo1/tipo2/.../tipoN
-            int grupo_id = obtener_grupo_id(usuario);
-            
-            if (grupo_id <= 0) {
-                strcpy(respuesta, "JUGADA/ERROR/SIN_GRUPO");
-                break;
-            }
-            
-            // Extraer cantidad de cartas
-            char *p_cantidad = strtok(mensaje, "/");
-            if (!p_cantidad) {
-                strcpy(respuesta, "JUGADA/ERROR/FORMATO");
-                break;
-            }
-            int cantidad = atoi(p_cantidad);
-            
-            if (cantidad <= 0 || cantidad > 10) {
-                strcpy(respuesta, "JUGADA/ERROR/CANTIDAD_INVALIDA");
-                break;
-            }
-            
-            printf("[SERVIDOR] Jugada recibida: usuario %s, grupo %d, cantidad %d\n",
-                   usuario, grupo_id, cantidad);
-            
-            // Array para almacenar los tipos de cartas
-            int tipos_cartas[10];
-            
-            // Leer los tipos de cartas
-            for (int i = 0; i < cantidad; i++) {
-                char *p_tipo = strtok(NULL, "/");
-                if (!p_tipo) {
-                    printf("[ERROR] Formato incorrecto: faltan tipos de cartas\n");
-                    strcpy(respuesta, "JUGADA/ERROR/FORMATO");
+        else if (codigo == 15)
+        {
+            // Realizar jugada
+            // Formato: 15/usuario/grupo_id/jugador_id/tipo_carta/valor_carta
+            int grupo_id = atoi(contrasena);
+            char *p_jugador = strtok(mensaje, "/");
+            int jugador_id = atoi(p_jugador);
+            char *p_tipo = strtok(NULL, "/");
+            int tipo_carta = atoi(p_tipo);
+            char *p_valor = strtok(NULL, "/");
+            int valor_carta = atoi(p_valor);
+
+            Carta carta_jugada = {tipo_carta, valor_carta};
+            manejar_jugada(grupo_id, jugador_id, carta_jugada);
+
+            // Notificar jugada al grupo
+            char notif[256];
+            snprintf(notif, sizeof(notif), "JUGADA/%d/%d/%d/%d", jugador_id, grupo_id, tipo_carta, valor_carta);
+            broadcast_to_group(grupo_id, notif);
+
+            strcpy(respuesta, "JUGADA/OK");
+        }
+        else if (codigo == 16)
+        {
+            // Código 16: Buscar grupo de un usuario
+            char usuario_a_buscar[20];
+            strcpy(usuario_a_buscar, mensaje);
+            printf("[SERVIDOR] Buscando grupo del usuario: %s\n", usuario_a_buscar);
+
+            // Buscar el usuario en la lista de conectados
+            int grupo_encontrado = -1;
+            pthread_mutex_lock(&client_list_mutex); // Usar client_list_mutex en lugar de mutex
+
+            ClientNode *current = client_list;
+            while (current != NULL)
+            {
+                if (strcmp(current->usuario, usuario_a_buscar) == 0)
+                {
+                    grupo_encontrado = current->grupo_id;
                     break;
                 }
-                tipos_cartas[i] = atoi(p_tipo);
+                current = current->next;
             }
-            
-            // Buscar/crear mesa si es necesario
-            if (!existe_mesa_para_grupo(grupo_id)) {
-                crear_mesa_para_grupo(grupo_id);
+
+            pthread_mutex_unlock(&client_list_mutex);
+
+            if (grupo_encontrado != -1)
+            {
+                printf("[SERVIDOR] Usuario %s encontrado en grupo %d\n", usuario_a_buscar, grupo_encontrado);
+                sprintf(respuesta, "GRUPO/%s/%d", usuario_a_buscar, grupo_encontrado);
             }
-            
-            // Obtener ID del jugador
-            int jugador_id = obtener_id_jugador_en_grupo(usuario, grupo_id);
-            
-            // Registrar la jugada completa
-            if (registrar_jugada_multiple(grupo_id, jugador_id, tipos_cartas, cantidad)) {
-                // Notificar a todos los jugadores del grupo
-                char notif[512];
-                sprintf(notif, "JUGADA/%d/%d", jugador_id, cantidad);
-                
-                for (int i = 0; i < cantidad; i++) {
-                    char tipo_str[10];
-                    sprintf(tipo_str, "/%d", tipos_cartas[i]);
-                    strcat(notif, tipo_str);
-                }
-                
-                broadcast_to_group(grupo_id, notif);
-                strcpy(respuesta, "JUGADA/OK");
-            } else {
-                strcpy(respuesta, "JUGADA/ERROR");
-            }
-        }
-        else if (codigo == 16) {
-            // Acusar a otro jugador de mentir
-            int grupo_id = obtener_grupo_id(usuario);
-            
-            if (grupo_id <= 0) {
-                strcpy(respuesta, "ACUSACION/ERROR/SIN_GRUPO");
-                break;
-            }
-            
-            int jugador_acusador = obtener_id_jugador_en_grupo(usuario, grupo_id);
-            
-            printf("[SERVIDOR] Acusación de mentira: grupo %d, acusador %d\n", 
-                   grupo_id, jugador_acusador);
-            
-            // Verificar la acusación
-            int resultado = comprobar_mentira_ultima_jugada(grupo_id, jugador_acusador);
-            
-            // Notificar resultado a todos
-            char notif[256];
-            sprintf(notif, "ACUSACION/%d/%d", jugador_acusador, resultado);
-            broadcast_to_group(grupo_id, notif);
-            
-            sprintf(respuesta, "ACUSACION/OK/%d", resultado);
-        }
-        else if (codigo == 17) {
-            // Solicitar tipo de mesa
-            int grupo_id = obtener_grupo_id(usuario);
-            
-            if (grupo_id > 0) {
-                TipoMesa tipo_mesa = obtener_tipo_mesa(grupo_id);
-                
-                int tipo_carta;
-                switch (tipo_mesa) {
-                    case MESA_ASES:
-                        tipo_carta = CARD_AS;
-                        break;
-                    case MESA_REINAS:
-                        tipo_carta = CARD_REINA;
-                        break;
-                    case MESA_REYES:
-                        tipo_carta = CARD_REY;
-                        break;
-                    default:
-                        tipo_carta = CARD_AS;
-                }
-                
-                sprintf(respuesta, "TIPO_MESA/%d", tipo_carta);
-                printf("[SERVIDOR] Usuario %s solicitó tipo de mesa: %d\n", usuario, tipo_carta);
-            } else {
-                strcpy(respuesta, "TIPO_MESA/ERROR");
+            else
+            {
+                printf("[SERVIDOR] Usuario %s no encontrado o no está en un grupo\n", usuario_a_buscar);
+                strcpy(respuesta, "GRUPO/NINGUNO");
             }
         }
         else

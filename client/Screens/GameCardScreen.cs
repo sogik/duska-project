@@ -81,9 +81,10 @@ namespace Duska.Screens
         private float _escalaCartasAcercadas = 1.0f;
         private float _escalaCentroMesa = 0.5f;
 
-        // Variables para la revelación de cartas en el centro
+        // Variables para revelación de cartas
         private bool _mostrandoRevelacion = false;
         private float _tiempoRevelacion = 0f;
+        private const float TIEMPO_REVELACION_COMPLETO = 3f; // 3 segundos
 
         // Variable para el último conteo de cartas (para depuración)
         private int _ultimoConteoCartas = -1;
@@ -1035,7 +1036,7 @@ namespace Duska.Screens
                                     continue; // Continuar intentando, NO salir
                                 }
 
-                                if (bytesReceived > 0)
+
                                 {
                                     string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
 
@@ -1350,6 +1351,30 @@ namespace Duska.Screens
                     }
                 }
 
+                // Actualizar revelación
+                if (_mostrandoRevelacion)
+                {
+                    _tiempoRevelacion += (float)gameTime.ElapsedGameTime.TotalSeconds;
+                    if (_tiempoRevelacion >= TIEMPO_REVELACION_COMPLETO)
+                    {
+                        _mostrandoRevelacion = false;
+                        // Limpiar filtros de revelación
+                        for (int i = 0; i < _filtrosCartasCentro.Count; i++)
+                        {
+                            _filtrosCartasCentro[i] = Color.White;
+                        }
+                        MarcarParaRedibujado();
+                    }
+                }
+
+                // Controlar logs de cartas (solo cuando cambie el número)
+                if (_cartasDisponibles.Count != _ultimoConteoCartas)
+                {
+                    Debug.WriteLine($"[CARTAS] Cantidad cambiada: {_cartasDisponibles.Count}");
+                    _ultimoConteoCartas = _cartasDisponibles.Count;
+                    MarcarParaRedibujado();
+                }
+
                 // Verificar salud del hilo de escucha cada 5 segundos
                 _tiempoVerificacionHilo += (float)gameTime.ElapsedGameTime.TotalSeconds;
                 if (_tiempoVerificacionHilo >= INTERVALO_VERIFICACION)
@@ -1383,7 +1408,7 @@ namespace Duska.Screens
             if (!_necesitaRedibujado)
                 return;
 
-            _graphics.GraphicsDevice.Clear(Color.CornflowerBlue);
+            GraphicsDevice.Clear(Color.CornflowerBlue);
             _spriteBatch.Begin();
 
             // Mostrar información de depuración
@@ -1525,7 +1550,6 @@ namespace Duska.Screens
             }
 
             _spriteBatch.End();
-            base.Draw(gameTime);
 
             _necesitaRedibujado = false; // Marcar como dibujado
         }
@@ -1826,9 +1850,13 @@ REGLAS:
             Color filtro = sonVerdaderas ?
                 new Color(0, 255, 0, 180) :    // Verde para verdaderas
                 new Color(255, 0, 0, 180);     // Rojo para falsas
-        }
 
-        _mostrandoRevelacion = true;
+            for (int i = 0; i < _filtrosCartasCentro.Count; i++)
+            {
+                _filtrosCartasCentro[i] = filtro;
+            }
+
+            _mostrandoRevelacion = true;
             _tiempoRevelacion = 0f;
 
             Debug.WriteLine($"[REVELACIÓN] Cartas reveladas: {(sonVerdaderas ? "VERDADERAS (Verde)" : "FALSAS (Rojo)")}");
@@ -1903,6 +1931,13 @@ REGLAS:
             Debug.WriteLine("No se pudo reconectar al servidor después de varios intentos.");
             conectado = false;
             isReconnecting = false;
+        }
+
+        // Añadir este método en la clase
+
+        private void MarcarParaRedibujado()
+        {
+            _necesitaRedibujado = true;
         }
     }
 }
