@@ -418,7 +418,7 @@ namespace Duska.Screens
 
                     // Actualizar variables de estado
                     jugadorConTurnoActual = jugadorTurno;
-                    esMiTurno = (jugadorTurno == usuario);
+                    esMiTurno = jugadorTurno == usuario;
 
                     // Controlar si se permiten acciones
                     _permitirAccionesJuego = esMiTurno;

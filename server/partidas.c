@@ -87,15 +87,19 @@ int iniciar_partida(int partida_id)
     srand(time(NULL));
     partida->turno_actual = rand() % num_jug;
 
-    // Notificar a todos los jugadores
+    // Notificar a todos los jugadores sobre el inicio de la partida
     char mensaje[100];
-    snprintf(mensaje, sizeof(mensaje), "GAMESTART/OK");
+    snprintf(mensaje, sizeof(mensaje), "GAMESTART/OK\n"); // Añadir salto de línea
     broadcast_to_group(partida->grupo_id, mensaje);
 
-    // Notificar el primer turno
+    // Esperar un momento para asegurar que el mensaje llegue por separado
+    usleep(200000); // 200ms de pausa
+
+    // Notificar el primer turno como un mensaje separado
     char mensaje_turno[100];
-    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s",
+    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
              partida->jugadores[partida->turno_actual]);
+    printf("[PARTIDA] Enviando primer turno: '%s'\n", mensaje_turno);
     broadcast_to_group(partida->grupo_id, mensaje_turno);
 
     return 0;
@@ -116,8 +120,18 @@ int es_turno_de_jugador(const char *usuario)
         partida->turno_actual >= partida->num_jugadores)
         return 0;
 
-    // Verificar si es el turno del jugador
-    return (strcmp(partida->jugadores[partida->turno_actual], usuario) == 0);
+    // IMPORTANTE: Comparación insensible a mayúsculas/minúsculas
+    char *jugador_turno = partida->jugadores[partida->turno_actual];
+    if (!jugador_turno)
+        return 0;
+
+    // Usar strcasecmp para comparación insensible a mayúsculas
+    int es_turno = (strcasecmp(jugador_turno, usuario) == 0);
+
+    printf("[TURNO] Verificando turno - Turno actual: '%s', Usuario: '%s', Resultado: %s\n",
+           jugador_turno, usuario, es_turno ? "SI" : "NO");
+
+    return es_turno;
 }
 
 // Función para obtener la partida de un jugador
@@ -149,17 +163,30 @@ int avanzar_turno(int partida_id)
 {
     // Buscar partida
     GameInfo *partida = obtener_partida_por_id(partida_id);
-    if (!partida || partida->estado != 1) // ESTADO_ACTIVA
+    if (!partida || partida->estado != 1)
         return -1;
 
     // Avanzar turno
     partida->turno_actual = (partida->turno_actual + 1) % partida->num_jugadores;
 
-    // Notificar a los jugadores
-    char mensaje[100];
-    snprintf(mensaje, sizeof(mensaje), "TURN/%s",
-             partida->jugadores[partida->turno_actual]);
-    broadcast_to_group(partida->grupo_id, mensaje);
+    // Obtener nombre del siguiente jugador
+    char *siguiente_jugador = partida->jugadores[partida->turno_actual];
+    if (!siguiente_jugador)
+        return -2;
+
+    // Enviar mensaje de turno SEPARADO con salto de línea
+    char mensaje_turno[100];
+    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n", siguiente_jugador);
+    printf("[TURNO] Enviando mensaje de turno: '%s'\n", mensaje_turno);
+
+    // Enviar mensaje de turno
+    broadcast_to_group(partida->grupo_id, mensaje_turno);
+
+    // También enviar mensaje de turno como un mensaje de chat
+    char chat_mensaje[200];
+    snprintf(chat_mensaje, sizeof(chat_mensaje), "CHAT/SISTEMA/*** TURNO DE %s ***\n",
+             siguiente_jugador);
+    broadcast_to_group(partida->grupo_id, chat_mensaje);
 
     return 0;
 }
