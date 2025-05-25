@@ -2,9 +2,10 @@
 #define MESAS_H
 
 #include "cartas.h"
-#include <pthread.h>
 
-#define MAX_JUGADORES_MESA 4
+// Definir constantes
+#define MAX_JUGADORES 4
+#define MAX_CARTAS_JUGADA 5 // Número máximo de cartas que se pueden jugar de una vez
 
 typedef enum
 {
@@ -18,7 +19,7 @@ typedef struct
     int grupo_id;
     TipoMesa tipo;
     int jugador_ultimo;
-    bool jugadores_vivos[MAX_JUGADORES_MESA];
+    bool jugadores_vivos[MAX_JUGADORES];
 
     // Modificar para soportar múltiples cartas
     Carta ultima_jugada[MAX_CARTAS_JUGADA]; // Array de cartas jugadas

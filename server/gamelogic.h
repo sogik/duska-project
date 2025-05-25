@@ -1,8 +1,8 @@
 #ifndef GAMELOGIC_H
 #define GAMELOGIC_H
 
-#include "cartas.h"
 #include "mesas.h"
+#include "cartas.h"
 #include <stdbool.h>
 #include <pthread.h>
 
@@ -11,7 +11,7 @@
 
 // Ya no necesitamos definir estos tipos aquí, vienen de common_types.h
 // Funciones de gamelogic
-void manejar_jugada(int grupo_id, int jugador_id, Carta carta_jugada);
+void manejar_jugada(int grupo_id, int jugador_id, Carta cartas_jugadas[], int num_cartas, TipoCarta tipo_declarado);
 int obtener_ganador(int grupo_id);
 int comprobar_verdad(int grupo_id, int jugador_reta, int jugador_retado);
 void notificar_estado_grupo(int grupo_id);
