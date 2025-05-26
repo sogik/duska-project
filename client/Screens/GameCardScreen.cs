@@ -310,24 +310,6 @@ namespace Duska.Screens
                 return "0"; // Desconocido
         }
 
-        private void CrearPanelTurnos()
-        {
-            // Eliminar panel existente si lo hay
-            if (panelTurno != null && UserInterface.Active.Root != null)
-            {
-                UserInterface.Active.RemoveEntity(panelTurno);
-            }
-
-            // Crear nuevo panel
-            panelTurno = new Panel(new Vector2(250, 80), PanelSkin.Simple, Anchor.TopLeft);
-            panelTurno.Identifier = "panel-turno";
-            panelTurno.Padding = new Vector2(10, 10);
-            UserInterface.Active.AddEntity(panelTurno);
-
-            // Actualizar contenido
-            ActualizarInterfazTurno();
-        }
-
         private void ProcessServerMessage(string message)
         {
             if (string.IsNullOrEmpty(message))
@@ -1309,7 +1291,7 @@ namespace Duska.Screens
                         }
 
                         // GRUPO 2: TECLAS DE ACCIÓN (solo disponibles en tu turno)
-                        if (esMiTurno && _permitirAccionesJuego)
+                        if (_permitirAccionesJuego)
                         {
                             // Espacio para seleccionar/aplicar filtro a la carta
                             if (keyboardState.WasKeyReleased(Keys.Space))
@@ -1338,11 +1320,7 @@ namespace Duska.Screens
                         }
                         else if (keyboardState.WasKeyReleased(Keys.Space) || keyboardState.WasKeyReleased(Keys.E))
                         {
-                            // Mensaje informativo cuando intentas realizar acciones fuera de tu turno
-                            if (!esMiTurno)
-                            {
-                                ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
-                            }
+                            ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
                         }
                     }
                 }
