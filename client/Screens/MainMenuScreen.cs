@@ -1065,8 +1065,9 @@ namespace Duska.Screens
             }
             else if (message.StartsWith("ERROR/"))
             {
-                // Mensaje de error
-                string errorMsg = message.Substring(6);
+                if (mess)
+                    // Mensaje de error
+                    string errorMsg = message.Substring(6);
                 Debug.WriteLine($"[ERROR] {errorMsg}");
 
                 // Mostrar mensaje de error al usuario

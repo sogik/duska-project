@@ -431,7 +431,7 @@ namespace Duska.Screens
 
                     // Actualizar variables de estado
                     jugadorConTurnoActual = jugadorTurno;
-                    esMiTurno = jugadorTurno == usuario;
+                    esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
 
                     // Controlar si se permiten acciones
                     _permitirAccionesJuego = esMiTurno;
@@ -830,6 +830,8 @@ namespace Duska.Screens
                     // Distribuir botones horizontalmente
                     Button enviarBtn = new Button("Enviar");
                     Button cartasBtn = new Button("Pedir Cartas");
+                    cartasBtn.Enabled = false;
+                    cartasBtn.Visible = false;
 
                     if (enviarBtn != null && cartasBtn != null)
                     {
