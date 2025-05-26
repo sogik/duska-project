@@ -950,6 +950,7 @@ namespace Duska.Screens
 
                 // Solicitar información sobre el líder del grupo
                 SolicitarInformacionLider(grupoId);
+                return;
             }
             else if (message.StartsWith("GRUPO/"))
             {
@@ -968,6 +969,7 @@ namespace Duska.Screens
 
                     // Actualizar la interfaz según el estado de líder
                     ActualizarEstadoLider();
+                    return;
                 }
             }
             else if (message.StartsWith("LEADER/"))
@@ -980,6 +982,7 @@ namespace Duska.Screens
 
                 // Actualizar la interfaz según el estado de líder
                 ActualizarEstadoLider();
+                return;
             }
             else if (message.StartsWith("GRUPO_SALIDA/"))
             {
@@ -989,6 +992,7 @@ namespace Duska.Screens
 
                 // Si alguien sale del grupo, verificar si ahora somos líder
                 SolicitarInformacionSala();
+                return;
             }
             else if (message.StartsWith("START_GAME_OK") || message.StartsWith("GAME_STARTED") ||
                     message.Contains("PARTIDA_INICIADA") || message.StartsWith("GAMESTART/"))
@@ -1010,6 +1014,7 @@ namespace Duska.Screens
                 {
                     Debug.WriteLine($"[ERROR] Error al cambiar a pantalla de juego: {ex.Message}");
                 }
+                return;
             }
             else if (message.StartsWith("LIST/"))
             {
@@ -1019,6 +1024,7 @@ namespace Duska.Screens
 
                 // Actualizar la lista de amigos
                 FriendsListPanel(true, friends);
+                return;
             }
             else if (message.StartsWith("LISTU/"))
             {
@@ -1028,6 +1034,7 @@ namespace Duska.Screens
 
                 // Actualizar la lista de usuarios
                 ListaUsuariosPanel(true, usuarios);
+                return;
             }
             else if (message.StartsWith("LISTP/"))
             {
@@ -1037,6 +1044,7 @@ namespace Duska.Screens
 
                 // Actualizar la lista de partidas
                 ListaPartidasPanel(true, partidas);
+                return;
             }
             else if (message.StartsWith("LISTPG/"))
             {
@@ -1046,6 +1054,7 @@ namespace Duska.Screens
 
                 // Actualizar la lista de partidas ganadas
                 ListaPartidasGanadasPanel(true, partidasGanadas);
+                return;
             }
             else if (message.StartsWith("INV/"))
             {
@@ -1054,6 +1063,7 @@ namespace Duska.Screens
                 Debug.WriteLine("[INVITACIÓN] Invitación recibida");
 
                 InvitacionPanel(1, true, invitacion);
+                return;
             }
             else if (message.StartsWith("INVR/"))
             {
@@ -1062,6 +1072,7 @@ namespace Duska.Screens
                 Debug.WriteLine("[INVITACIÓN] Respuesta a invitación recibida");
 
                 InvitacionPanel(2, true, respuestaInv);
+                return;
             }
             else if (message.StartsWith("ERROR/"))
             {

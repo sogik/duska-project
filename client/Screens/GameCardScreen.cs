@@ -369,7 +369,6 @@ namespace Duska.Screens
             ActualizarInterfazTurno();
         }
 
-        // Reemplaza el método ProcessServerMessage por este código:
         private void ProcessServerMessage(string message)
         {
             if (string.IsNullOrEmpty(message))
@@ -423,15 +422,20 @@ namespace Duska.Screens
                     {
                         ChatPanel(true, chatMessage);
                     }
+                    return;
                 }
                 else if (message.StartsWith("TURN/"))
                 {
                     // TURN/jugadorNombre - Indica de quién es el turno
-                    string jugadorTurno = message.Substring(5);
+                    string jugadorTurno = message.Substring(5).Trim();
 
                     // Actualizar variables de estado
                     jugadorConTurnoActual = jugadorTurno;
-                    esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
+
+                    if (jugadorConTurnoActual == usuario)
+                        esMiTurno = true;
+
+                    //esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
 
                     // Controlar si se permiten acciones
                     _permitirAccionesJuego = esMiTurno;
@@ -446,6 +450,8 @@ namespace Duska.Screens
                         ChatPanel(true, $"Sistema/Turno de {jugadorConTurnoActual}. Esperando...");
 
                     Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
+
+                    return;
                 }
                 else if (message.StartsWith("ACTION/"))
                 {
@@ -493,6 +499,7 @@ namespace Duska.Screens
                             ChatPanel(true, $"Sistema/{jugador} ha realizado: {accion} {datos}");
                         }
                     }
+                    return;
                 }
             }
             catch (Exception ex)
