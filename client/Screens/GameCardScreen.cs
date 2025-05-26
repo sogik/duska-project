@@ -292,47 +292,6 @@ namespace Duska.Screens
             _permitirAccionesJuego = permitir;
 
             Debug.WriteLine($"[TURNOS] Acciones de juego {(permitir ? "HABILITADAS" : "BLOQUEADAS")}");
-
-            // Actualizar interfaz visual si es necesario
-            ActualizarInterfazTurno();
-        }
-        private void ActualizarInterfazTurno()
-        {
-            if (panelTurno == null) return;
-
-            // Limpiar panel
-            panelTurno.ClearChildren();
-
-            // Título
-            Header header = new Header("Estado del Turno");
-            panelTurno.AddChild(header);
-
-            // Mostrar jugador con turno actual
-            if (!string.IsNullOrEmpty(jugadorConTurnoActual))
-            {
-                Paragraph turnoMsg = new Paragraph($"Turno de: {jugadorConTurnoActual}");
-
-                // Destacar visualmente si es mi turno
-                if (esMiTurno)
-                {
-                    turnoMsg.FillColor = Color.Green;
-                    turnoMsg.Scale = 1.1f;
-                }
-                panelTurno.AddChild(turnoMsg);
-
-                // Estado de controles
-                Paragraph estadoMsg = new Paragraph(_permitirAccionesJuego ?
-                    "Controles activos" : "Controles bloqueados");
-
-                estadoMsg.FillColor = _permitirAccionesJuego ? Color.Green : Color.Red;
-                panelTurno.AddChild(estadoMsg);
-            }
-            else
-            {
-                Paragraph esperandoMsg = new Paragraph("Esperando inicio de turno...");
-                esperandoMsg.FillColor = Color.Yellow;
-                panelTurno.AddChild(esperandoMsg);
-            }
         }
         private string GetTipoCartaPorTextura(Texture2D textura)
         {
@@ -441,7 +400,7 @@ namespace Duska.Screens
                     _permitirAccionesJuego = esMiTurno;
 
                     // Actualizar interfaz
-                    ActualizarInterfazTurno();
+                    ControlarAccionesPorTurno(_permitirAccionesJuego);
 
                     // Mensaje en el chat
                     if (esMiTurno)
@@ -901,6 +860,7 @@ namespace Duska.Screens
                                 if (conectado || ConnectToServerIfNeeded())
                                 {
                                     cartasBtn.Enabled = false;
+                                    cartasBtn.Visible = false; // Deshabilitar botón mientras se solicitan cartas
                                     GetCards(usuario);
                                     historialChat.Add("Sistema/Solicitando nuevas cartas...");
                                     ChatPanel(true, null);
