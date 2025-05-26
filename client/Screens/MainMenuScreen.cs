@@ -941,6 +941,8 @@ namespace Duska.Screens
             // Mensajes del tipo CARDS/ son manejados por GameCardScreen, ignorarlos aquí
             if (message.StartsWith("CARDS/")) return;
 
+            if (message.StartsWith("TURN/")) return;
+
             // Manejar diferentes tipos de mensajes del servidor
             if (message.StartsWith("GRUPO_CREADO/"))
             {

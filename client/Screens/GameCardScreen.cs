@@ -297,13 +297,13 @@ namespace Duska.Screens
         {
             // Compara directamente con las texturas cargadas en _cartas[]
             if (textura == _cartas[0]) // ace
-                return "1";
+                return "ace";
             else if (textura == _cartas[1]) // jack
-                return "2";
+                return "jack";
             else if (textura == _cartas[2]) // king
-                return "3";
+                return "king";
             else if (textura == _cartas[3]) // queen
-                return "4";
+                return "queen";
             else if (textura == _cartas[4]) // cardback
                 return "0";
             else
@@ -317,6 +317,7 @@ namespace Duska.Screens
 
             try
             {
+                message = message.Trim();
                 Debug.WriteLine($"[SERVER] Procesando mensaje: {message}");
 
                 if (message.StartsWith("CARDS/"))
@@ -341,11 +342,12 @@ namespace Duska.Screens
                         // Forzar actualización inmediata
                         _mostrarTodas = true;
                     }
+                    return;
                 }
                 else if (message.StartsWith("CHAT/"))
                 {
                     // Mensaje de chat
-                    string chatMessage = message.Substring(5);
+                    string chatMessage = message.Substring(5).Trim(); ;
                     Debug.WriteLine("Mensaje de chat recibido: " + chatMessage);
 
                     // Usar Invoke para actualizar UI desde cualquier hilo
@@ -370,25 +372,18 @@ namespace Duska.Screens
                     // TURN/jugadorNombre - Indica de quién es el turno
                     string jugadorTurno = message.Substring(5).Trim();
 
-                    // Actualizar variables de estado
-                    jugadorConTurnoActual = jugadorTurno;
+                    esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
 
-                    if (jugadorConTurnoActual == usuario)
-                        esMiTurno = true;
-
-                    //esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
-
-                    // Controlar si se permiten acciones
                     _permitirAccionesJuego = esMiTurno;
 
-                    // Actualizar interfaz
-                    ControlarAccionesPorTurno(_permitirAccionesJuego);
+                    jugadorConTurnoActual = jugadorTurno;
 
                     // Mensaje en el chat
                     if (esMiTurno)
                         ChatPanel(true, "Sistema/¡ES TU TURNO! Selecciona cartas con [ESPACIO] y envíalas con [E]");
                     else
                         ChatPanel(true, $"Sistema/Turno de {jugadorConTurnoActual}. Esperando...");
+
 
                     Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
 
@@ -1290,8 +1285,16 @@ namespace Duska.Screens
                             }
                         }
 
+                        if (keyboardState.WasKeyReleased(Keys.F8))
+                        {
+                            _permitirAccionesJuego = true;
+                            esMiTurno = true;
+                            Debug.WriteLine("[FORZADO] Estado de juego forzado a: permitirAcciones=True, esMiTurno=True");
+                            ChatPanel(true, "Sistema/FORZADO: Controles habilitados manualmente");
+                        }
+
                         // GRUPO 2: TECLAS DE ACCIÓN (solo disponibles en tu turno)
-                        if (_permitirAccionesJuego)
+                        if (_permitirAccionesJuego == true)
                         {
                             // Espacio para seleccionar/aplicar filtro a la carta
                             if (keyboardState.WasKeyReleased(Keys.Space))

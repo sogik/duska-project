@@ -183,10 +183,10 @@ int avanzar_turno(int partida_id)
     broadcast_to_group(partida->grupo_id, mensaje_turno);
 
     // También enviar mensaje de turno como un mensaje de chat
-    char chat_mensaje[200];
+    /*char chat_mensaje[200];
     snprintf(chat_mensaje, sizeof(chat_mensaje), "CHAT/SISTEMA/*** TURNO DE %s ***\n",
              siguiente_jugador);
-    broadcast_to_group(partida->grupo_id, chat_mensaje);
+    broadcast_to_group(partida->grupo_id, chat_mensaje);*/
 
     return 0;
 }
