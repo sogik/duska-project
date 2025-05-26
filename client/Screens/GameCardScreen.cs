@@ -323,6 +323,7 @@ namespace Duska.Screens
                 if (message.StartsWith("CARDS/"))
                 {
                     Debug.WriteLine($"[SERVER] *** MENSAJE DE CARTAS RECIBIDO *** : {message}");
+                    PedirTurno();
 
                     // Solo procesa o encola, pero no ambos
                     if (System.Threading.Thread.CurrentThread.IsBackground)
@@ -349,6 +350,7 @@ namespace Duska.Screens
                     // Mensaje de chat
                     string chatMessage = message.Substring(5).Trim(); ;
                     Debug.WriteLine("Mensaje de chat recibido: " + chatMessage);
+                    PedirTurno();
 
                     // Usar Invoke para actualizar UI desde cualquier hilo
                     if (System.Threading.Thread.CurrentThread.IsBackground)
