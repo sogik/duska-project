@@ -123,7 +123,7 @@ namespace Duska.Screens
                     StartMessageListener();
                     Thread.Sleep(300); // Esperar 300 ms
                     PedirTurno();
-                    GetCards(usuario);
+                    //GetCards(usuario);
                     ChatPanel(true, "Bienvenido al juego, " + usuario);
                 }
             }
@@ -830,8 +830,6 @@ namespace Duska.Screens
                     // Distribuir botones horizontalmente
                     Button enviarBtn = new Button("Enviar");
                     Button cartasBtn = new Button("Pedir Cartas");
-                    cartasBtn.Enabled = false;
-                    cartasBtn.Visible = false;
 
                     if (enviarBtn != null && cartasBtn != null)
                     {
@@ -895,6 +893,7 @@ namespace Duska.Screens
                             {
                                 if (conectado || ConnectToServerIfNeeded())
                                 {
+                                    cartasBtn.Enabled = false;
                                     GetCards(usuario);
                                     historialChat.Add("Sistema/Solicitando nuevas cartas...");
                                     ChatPanel(true, null);
