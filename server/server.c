@@ -940,6 +940,25 @@ void *cliente(void *socket_ptr)
                 strncpy(respuesta, "ERROR/No es tu turno para pasar", sizeof(respuesta));
             }
         }
+        else if (codigo == 23)
+        {
+            // Formato esperado: 23/usuario
+            // Aquí podríamos implementar una lógica para obtener el estado de la partida
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                char mensaje_turno[100];
+                snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
+                         partida->jugadores[partida->turno_actual]);
+                printf("[PARTIDA] Enviando primer turno: '%s'\n", mensaje_turno);
+                broadcast_to_group(partida->grupo_id, mensaje_turno);
+                strcpy(respuesta, "PARTIDA/OK");
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida activa");
+            }
+        }
         else
         {
             strcpy(respuesta, "ERROR/Comando desconocido");

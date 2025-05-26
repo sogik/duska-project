@@ -96,11 +96,11 @@ int iniciar_partida(int partida_id)
     usleep(2000000); // 1000ms de pausa
 
     // Notificar el primer turno como un mensaje separado
-    char mensaje_turno[100];
+    /*char mensaje_turno[100];
     snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
              partida->jugadores[partida->turno_actual]);
     printf("[PARTIDA] Enviando primer turno: '%s'\n", mensaje_turno);
-    broadcast_to_group(partida->grupo_id, mensaje_turno);
+    broadcast_to_group(partida->grupo_id, mensaje_turno);*/
 
     return 0;
 }

@@ -121,6 +121,8 @@ namespace Duska.Screens
                 {
                     MensajesPrueba();
                     StartMessageListener();
+                    PedirTurno();
+                    GetCards(usuario);
                     ChatPanel(true, "Bienvenido al juego, " + usuario);
                 }
             }
@@ -138,6 +140,16 @@ namespace Duska.Screens
                 GraphicsDevice.Viewport.Height / 2 - 112);
 
             Debug.WriteLine($"[INIT] Posición normal cartas: {_posicionCartasNormal}, Posición acercada: {_posicionCartasAcercadas}");
+        }
+
+        private void PedirTurno()
+        {
+            if (server != null && server.Connected)
+            {
+                string mensaje = "23/" + usuario;
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+            }
         }
 
         // Método auxiliar para verificar y establecer conexión
