@@ -950,13 +950,13 @@ void *cliente(void *socket_ptr)
                 char mensaje_turno[100];
                 snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
                          partida->jugadores[partida->turno_actual]);
-                printf("[PARTIDA] Enviando primer turno: '%s'\n", mensaje_turno);
+                printf("[TURNO] Enviando primer turno: '%s'\n", mensaje_turno);
                 broadcast_to_group(partida->grupo_id, mensaje_turno);
                 strcpy(respuesta, "PARTIDA/OK");
             }
             else
             {
-                strcpy(respuesta, "ERROR/No estás en una partida activa");
+                strcpy(respuesta, "ERROR/Error al obtener el turno");
             }
         }
         else
