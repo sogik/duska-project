@@ -75,6 +75,68 @@ void remove_client(int sock)
     pthread_mutex_unlock(&client_list_mutex);
 }
 
+void verificar_cartas(GameInfo *partida, char cartas[][5], int num_cartas, int resultados[])
+{
+    if (!partida || partida->ronda_actual >= partida->total_rondas)
+    {
+        // Si hay error, marcar todas como inválidas
+        for (int i = 0; i < num_cartas; i++)
+        {
+            resultados[i] = 0;
+        }
+        return;
+    }
+
+    // Obtener el tipo de carta designado para la ronda actual
+    const char *tipo_ronda = partida->cartas_ronda[partida->ronda_actual];
+
+    printf("[VERIFICACIÓN] Ronda %d: tipo designado '%s', verificando %d cartas individualmente\n",
+           partida->ronda_actual + 1, tipo_ronda, num_cartas);
+
+    // Verificar cada carta jugada de forma individual
+    for (int i = 0; i < num_cartas; i++)
+    {
+        // Determinar el tipo de carta basado en el valor
+        char tipo_carta[20] = {0};
+
+        // Clasificar la carta según su primer carácter
+        if (strcmp(cartas[i], "ace") == 0)
+        {
+            strcpy(tipo_carta, "ACES");
+        }
+        else if (strcmp(cartas[i], "king") == 0)
+        {
+            strcpy(tipo_carta, "REYES");
+        }
+        else if (strcmp(cartas[i], "queen") == 0)
+        {
+            strcpy(tipo_carta, "REINAS");
+        }
+        else if (strcmp(cartas[i], "jack") == 0)
+        {
+            strcpy(tipo_carta, "JOKERS");
+        }
+        else
+        {
+            strcpy(tipo_carta, "OTRO");
+        }
+
+        // Verificar si esta carta específica coincide con el tipo de la ronda
+        if (strcmp(tipo_carta, tipo_ronda) == 0)
+        {
+            resultados[i] = 1; // Carta válida
+            printf("[VERIFICACIÓN] Carta %d: '%s' (tipo: '%s') - VÁLIDA\n",
+                   i + 1, cartas[i], tipo_carta);
+        }
+        else
+        {
+            resultados[i] = 0; // Carta no válida
+            printf("[VERIFICACIÓN] Carta %d: '%s' (tipo: '%s') - NO VÁLIDA\n",
+                   i + 1, cartas[i], tipo_carta);
+        }
+    }
+}
+
 // Función para crear un nuevo grupo con dos usuarios
 int crear_grupo(const char *usuario1, const char *usuario2)
 {
@@ -869,6 +931,20 @@ void *cliente(void *socket_ptr)
                 strncpy(datos, mensaje, sizeof(datos) - 1);
             }
 
+            char cartas_jugadas[10][10] = {{0}};   // Array para almacenar hasta 10 cartas
+            int resultados_verificacion[10] = {0}; // Para almacenar resultados individuales
+
+            // Extraer cada carta
+            for (int i = 0; i < cantidad && i < 10; i++)
+            {
+                char *carta = strtok(NULL, ",");
+                if (carta == NULL)
+                    break;
+                strncpy(cartas_jugadas[i], carta, sizeof(cartas_jugadas[i]) - 1);
+            }
+
+            guardar_cartas_jugadas(partida, usuario, cartas_jugadas, cantidad);
+
             // Verificar que es el turno del jugador
             if (es_turno_de_jugador(usuario))
             {
@@ -942,6 +1018,7 @@ void *cliente(void *socket_ptr)
                 strncpy(respuesta, "ERROR/No es tu turno para pasar", sizeof(respuesta));
             }
         }
+        // Para código 23 (pedir turno)
         else if (codigo == 23)
         {
             // Formato esperado: 23/usuario
@@ -959,6 +1036,162 @@ void *cliente(void *socket_ptr)
             else
             {
                 strcpy(respuesta, "ERROR/Error al obtener el turno");
+            }
+        }
+        else if (codigo == 24) // Desafiar último jugador por mentiroso
+        {
+            // Formato: 24/usuario_desafiante
+            // No se envía el desafiado, siempre es el último jugador que jugó
+
+            // Verificar que estamos en una partida
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                // Obtener automáticamente el desafiado (último jugador que jugó)
+                char *desafiado = partida->ultimo_jugador;
+
+                // Verificar que hay un último jugador
+                if (desafiado[0] != '\0')
+                {
+                    // Verificar que el desafiante no es el mismo que el desafiado
+                    if (strcmp(usuario, desafiado) != 0)
+                    {
+                        // Verificar si hay al menos una carta inválida en la última jugada
+                        int mintiendo = 0;
+                        for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+                        {
+                            if (partida->resultados_verificacion[i] == 0)
+                            {
+                                mintiendo = 1;
+                                break;
+                            }
+                        }
+
+                        // Preparar mensaje de resultado
+                        char mensaje_resultado[1024];
+
+                        // PASO 1: Determinar quién será eliminado pero NO eliminarlo todavía
+                        if (mintiendo)
+                        {
+                            // El desafiado estaba mintiendo - SERÁ ELIMINADO POSTERIORMENTE
+                            strcpy(partida->jugador_pendiente_eliminacion, desafiado);
+
+                            // Enviar resultado del desafío
+                            sprintf(mensaje_resultado, "DESAFIO/EXITO");
+
+                            // Incluir solo las cartas que fallan
+                            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+                            {
+                                if (partida->resultados_verificacion[i] == 0)
+                                {
+                                    char temp[50];
+                                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
+                                    strcat(mensaje_resultado, temp);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // El desafiado NO estaba mintiendo - EL DESAFIANTE SERÁ ELIMINADO
+                            strcpy(partida->jugador_pendiente_eliminacion, usuario);
+
+                            // Enviar resultado del desafío
+                            sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
+                        }
+
+                        // Marcar que hay una eliminación pendiente
+                        partida->eliminacion_pendiente = 1;
+
+                        // Enviar el resultado a todos los jugadores
+                        broadcast_to_group(partida->grupo_id, mensaje_resultado);
+
+                        strcpy(respuesta, "DESAFIO_OK");
+                    }
+                    else
+                    {
+                        strcpy(respuesta, "ERROR/No puedes desafiarte a ti mismo");
+                    }
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/No hay un jugador anterior para desafiar");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida activa");
+            }
+        }
+        else if (codigo == 25) // Confirmar eliminación después de desafío
+        {
+            // Formato: 25/usuario
+            // Este mensaje lo envía el cliente cuando está listo para que se elimine al jugador
+
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL && partida->eliminacion_pendiente)
+            {
+                // Proceder con la eliminación pendiente
+                char jugador_a_eliminar[50];
+                strcpy(jugador_a_eliminar, partida->jugador_pendiente_eliminacion);
+
+                // Eliminar al jugador (esto también avanzará a la siguiente ronda)
+                int resultado_eliminacion = eliminar_jugador_de_partida(partida, jugador_a_eliminar);
+
+                // Notificar sobre la eliminación
+                char mensaje_eliminacion[100];
+                sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_a_eliminar);
+                broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
+
+                // Restablecer estado
+                partida->eliminacion_pendiente = 0;
+                partida->jugador_pendiente_eliminacion[0] = '\0';
+
+                // Verificar si queda solo un jugador (ganador)
+                if (partida->num_jugadores_activos == 1)
+                {
+                    // Buscar al jugador activo restante
+                    char *ganador = NULL;
+                    for (int i = 0; i < partida->num_jugadores; i++)
+                    {
+                        if (!partida->jugadores_eliminados[i])
+                        {
+                            ganador = partida->jugadores[i];
+                            break;
+                        }
+                    }
+                    // Notificar fin de partida con ganador
+                    if (ganador != NULL)
+                    {
+                        char mensaje_ganador[100];
+                        sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+                        broadcast_to_group(partida->grupo_id, mensaje_ganador);
+                        partida->estado = 2; // Finalizada
+                    }
+                }
+
+                strcpy(respuesta, "ELIMINACION_OK");
+            }
+            else if (partida && !partida->eliminacion_pendiente)
+            {
+                strcpy(respuesta, "ERROR/No hay eliminación pendiente");
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida activa");
+            }
+        }
+        else if (codigo == 26) // Obtener carta de la ronda actual
+        {
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                char carta_ronda[10];
+                obtener_carta_ronda_actual(partida, carta_ronda, sizeof(carta_ronda));
+                snprintf(respuesta, sizeof(respuesta), "CARTA_RONDA/%s", carta_ronda);
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida activa");
             }
         }
         else

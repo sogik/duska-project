@@ -439,6 +439,20 @@ namespace Duska.Screens
                     }
                     return;
                 }
+                else if (message.StartsWith("DESAFIO/"))
+                {
+                    string mensaje = message.Substring(8).Trim();
+
+                    return;
+                }
+                else if (message.StartsWith("ERROR/"))
+                {
+                    // Mensaje de error del servidor
+                    string errorMessage = message.Substring(6).Trim();
+                    Debug.WriteLine($"[SERVER] Error recibido: {errorMessage}");
+                    ChatPanel(true, $"Sistema/Error: {errorMessage}");
+                    return;
+                }
             }
             catch (Exception ex)
             {
@@ -1131,7 +1145,7 @@ namespace Duska.Screens
                 }
 
                 // Construir el mensaje con la cantidad de cartas y sus tipos
-                string datosCartas = $"{cartasConFiltroCount},{string.Join(",", tiposCartas)}";
+                string datosCartas = $"{cartasConFiltroCount}/{string.Join(",", tiposCartas)}";
 
                 // Enviar acción al servidor
                 string mensaje = $"21/{usuario}/PLAY/{datosCartas}";
@@ -1322,20 +1336,49 @@ namespace Duska.Screens
                             {
                                 EnviarCartasSeleccionadas();
                             }
+
+                            if (keyboardState.WasKeyReleased(Keys.F))
+                            {
+                                // Forzar la eliminación de cartas seleccionadas
+                                DesafiarJugador();
+                            }
                         }
-                        else if (keyboardState.WasKeyReleased(Keys.Space) || keyboardState.WasKeyReleased(Keys.E))
+                        else if (keyboardState.WasKeyReleased(Keys.Space) || keyboardState.WasKeyReleased(Keys.E) || keyboardState.WasKeyReleased(Keys.F))
                         {
-                            ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
+                            // Si no se permiten acciones de juego, mostrar mensaje
+                            Debug.WriteLine("[INPUT] Intento de acción de juego fuera de turno");
+                            {
+                                ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
+                            }
                         }
                     }
-                }
 
-                // IMPORTANTE: Actualizar el estado anterior del teclado al final
-                _estadoTecladoAnterior = keyboardState;
+                    // IMPORTANTE: Actualizar el estado anterior del teclado al final
+                    _estadoTecladoAnterior = keyboardState;
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error en Update: {ex.Message}");
+            }
+        }
+
+        private void DesafiarJugador()
+        {
+            try
+            {
+                // Enviar acción de desafío al servidor
+                string mensaje = $"24/{usuario}";
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+
+                Debug.WriteLine("[ACCIÓN] Desafío enviado al servidor");
+                ChatPanel(true, "Sistema/Desafío enviado al servidor");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al enviar desafío: {ex.Message}");
+                ChatPanel(true, $"Sistema/ERROR: {ex.Message}");
             }
         }
 

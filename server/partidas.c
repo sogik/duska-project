@@ -87,22 +87,199 @@ int iniciar_partida(int partida_id)
     srand(time(NULL));
     partida->turno_actual = rand() % num_jug;
 
+    nueva_partida->ronda_actual = 0;
+    nueva_partida->total_rondas = 13;
+    generar_carta_para_ronda_actual(nueva_partida);
+
+    // Inicializar jugadores eliminados
+    nueva_partida->num_jugadores_activos = nueva_partida->num_jugadores;
+    for (int i = 0; i < 4; i++)
+    {
+        nueva_partida->jugadores_eliminados[i] = 0; // Todos activos al inicio
+    }
+
+    // Inicializar campos de eliminación pendiente
+    nueva_partida->eliminacion_pendiente = 0;
+    nueva_partida->jugador_pendiente_eliminacion[0] = '\0';
+
     // Notificar a todos los jugadores sobre el inicio de la partida
     char mensaje[100];
     snprintf(mensaje, sizeof(mensaje), "GAMESTART/OK\n"); // Añadir salto de línea
     broadcast_to_group(partida->grupo_id, mensaje);
+    return 0;
+}
 
-    // Esperar un momento para asegurar que el mensaje llegue por separado
-    usleep(2000000); // 1000ms de pausa
+void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][10], int num_cartas)
+{
+    if (!partida || !jugador || num_cartas <= 0)
+        return;
 
-    // Notificar el primer turno como un mensaje separado
-    /*char mensaje_turno[100];
-    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
-             partida->jugadores[partida->turno_actual]);
-    printf("[PARTIDA] Enviando primer turno: '%s'\n", mensaje_turno);
-    broadcast_to_group(partida->grupo_id, mensaje_turno);*/
+    // Guardar información básica
+    strncpy(partida->ultimo_jugador, jugador, sizeof(partida->ultimo_jugador) - 1);
+    partida->num_cartas_ultima_jugada = num_cartas;
+
+    for (int i = 0; i < num_cartas && i < 10; i++)
+    {
+        // Copiar la carta
+        strncpy(partida->cartas_ultima_jugada[i], cartas[i], sizeof(partida->cartas_ultima_jugada[i]) - 1);
+    }
+
+    printf("[DESAFÍO] Guardada última jugada de %s: %d cartas\n",
+           jugador, num_cartas);
+}
+
+int avanzar_ronda(int partida_id)
+{
+    GameInfo *partida = encontrar_partida(partida_id);
+    if (partida == NULL)
+    {
+        printf("[ERROR] No se encontró la partida %d\n", partida_id);
+        return -1;
+    }
+
+    // Incrementar contador de ronda
+    partida->ronda_actual++;
+
+    // Verificar si se han completado todas las rondas
+    if (partida->ronda_actual >= partida->total_rondas)
+    {
+        partida->estado = 2; // Finalizada
+        printf("[PARTIDA] Partida %d finalizada, se completaron todas las rondas\n", partida_id);
+
+        // Notificar fin de partida
+        char mensaje[100];
+        sprintf(mensaje, "FIN_PARTIDA/%d", partida_id);
+        broadcast_to_group(partida->grupo_id, mensaje);
+
+        return 2; // Código para indicar fin de partida
+    }
+
+    // Generar carta designada para esta nueva ronda
+    generar_carta_para_ronda_actual(partida);
+
+    printf("[RONDA] Partida %d avanzó a ronda %d, carta designada: %s\n",
+           partida_id, partida->ronda_actual + 1, partida->cartas_ronda[partida->ronda_actual]);
+
+    // Notificar a todos los jugadores sobre la nueva ronda
+    char mensaje_ronda[100];
+    sprintf(mensaje_ronda, "NUEVA_RONDA/%d/%s",
+            partida->ronda_actual + 1, partida->cartas_ronda[partida->ronda_actual]);
+    broadcast_to_group(partida->grupo_id, mensaje_ronda);
+
+    return 0; // Éxito
+}
+
+// Eliminar un jugador de la partida y avanzar a la siguiente ronda
+int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
+{
+    if (!partida || !jugador)
+        return -1;
+
+    // Buscar al jugador
+    int indice_jugador = -1;
+    for (int i = 0; i < partida->num_jugadores; i++)
+    {
+        if (strcmp(partida->jugadores[i], jugador) == 0)
+        {
+            indice_jugador = i;
+            break;
+        }
+    }
+
+    if (indice_jugador == -1)
+    {
+        printf("[ERROR] Jugador %s no encontrado en la partida %d\n",
+               jugador, partida->partida_id);
+        return -1;
+    }
+
+    // Marcar al jugador como eliminado
+    partida->jugadores_eliminados[indice_jugador] = 1;
+    partida->num_jugadores_activos--;
+
+    printf("[PARTIDA] Jugador %s eliminado de la partida %d. Quedan %d jugadores activos.\n",
+           jugador, partida->partida_id, partida->num_jugadores_activos);
+
+    // Si quedan más de 1 jugador activo, avanzar a la siguiente ronda
+    if (partida->num_jugadores_activos > 1)
+    {
+        // AVANZAR A LA SIGUIENTE RONDA
+        partida->ronda_actual++;
+
+        // Verificar si hemos excedido el número total de rondas
+        if (partida->ronda_actual >= partida->total_rondas)
+        {
+            // Reiniciar al inicio si superamos el número de rondas
+            partida->ronda_actual = 0;
+        }
+
+        // Generar nueva carta para la ronda
+        generar_carta_para_ronda_actual(partida);
+
+        printf("[RONDA] Avanzando a ronda %d, carta designada: %s\n",
+               partida->ronda_actual + 1,
+               partida->cartas_ronda[partida->ronda_actual]);
+
+        // Notificar a todos sobre la nueva ronda
+        char mensaje_ronda[100];
+        sprintf(mensaje_ronda, "NUEVA_RONDA/%d/%s",
+                partida->ronda_actual + 1,
+                partida->cartas_ronda[partida->ronda_actual]);
+        broadcast_to_group(partida->grupo_id, mensaje_ronda);
+    }
+
+    // Si el jugador eliminado tenía el turno, avanzar al siguiente jugador activo
+    if (partida->turno_actual == indice_jugador)
+    {
+        // Buscar el siguiente jugador activo
+        int nuevo_turno = (indice_jugador + 1) % partida->num_jugadores;
+        while (partida->jugadores_eliminados[nuevo_turno] && nuevo_turno != indice_jugador)
+        {
+            nuevo_turno = (nuevo_turno + 1) % partida->num_jugadores;
+        }
+
+        partida->turno_actual = nuevo_turno;
+
+        // Notificar el nuevo turno
+        char mensaje_turno[100];
+        sprintf(mensaje_turno, "TURN/%s", partida->jugadores[partida->turno_actual]);
+        broadcast_to_group(partida->grupo_id, mensaje_turno);
+    }
 
     return 0;
+}
+
+// Generar las cartas designadas para cada ronda
+void generar_carta_para_ronda_actual(GameInfo *partida)
+{
+    // Definir los 4 tipos de cartas disponibles
+    const char *tipos_cartas[] = {"ACES", "REYES", "REINAS", "JOKERS"};
+    int num_tipos = 4;
+
+    // Asignar un tipo de carta aleatoriamente
+    int indice_tipo = rand() % num_tipos;
+
+    // Guardar el tipo de carta para esta ronda
+    strncpy(partida->cartas_ronda[partida->ronda_actual], tipos_cartas[indice_tipo],
+            sizeof(partida->cartas_ronda[partida->ronda_actual]) - 1);
+
+    printf("[RONDA] Ronda %d: Carta designada '%s'\n",
+           partida->ronda_actual + 1, partida->cartas_ronda[partida->ronda_actual]);
+}
+
+// Obtener la carta designada para la ronda actual
+void obtener_carta_ronda_actual(int partida_id, char *carta_ronda)
+{
+    GameInfo *partida = encontrar_partida(partida_id);
+    if (partida != NULL && partida->ronda_actual < partida->total_rondas)
+    {
+        strcpy(carta_ronda, partida->cartas_ronda[partida->ronda_actual]);
+    }
+    else
+    {
+        // Si hay algún error, asignar un valor por defecto
+        strcpy(carta_ronda, "?");
+    }
 }
 
 // Función para verificar si es el turno de un jugador
