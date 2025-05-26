@@ -769,7 +769,7 @@ namespace Duska.Screens
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
 
                 // Limitar historial para no acumular demasiados
-                int maxHistorialPermitido = 50;
+                int maxHistorialPermitido = 10;
                 if (historialChat.Count > maxHistorialPermitido)
                 {
                     historialChat.RemoveRange(0, historialChat.Count - maxHistorialPermitido);

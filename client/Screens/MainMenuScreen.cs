@@ -1065,9 +1065,12 @@ namespace Duska.Screens
             }
             else if (message.StartsWith("ERROR/"))
             {
-                if (mess)
-                    // Mensaje de error
-                    string errorMsg = message.Substring(6);
+                string errorMsg = message.Substring(6);
+                if (message.Contains("ERROR/No es tu turno para pasar"))
+                {
+                    return;
+                }
+
                 Debug.WriteLine($"[ERROR] {errorMsg}");
 
                 // Mostrar mensaje de error al usuario

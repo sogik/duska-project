@@ -755,6 +755,8 @@ void *cliente(void *socket_ptr)
                 // Primero, enviar la lista de usuarios en el grupo
                 listar_usuarios_grupo(grupo_id, respuesta, sizeof(respuesta));
 
+                usleep(100000); // Esperar un momento para asegurar que el mensaje se envíe
+
                 // Luego, enviar explícitamente quién es el líder
                 char *lider = obtener_lider_grupo(grupo_id);
                 if (lider != NULL)
