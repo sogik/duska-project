@@ -121,6 +121,7 @@ namespace Duska.Screens
                 {
                     MensajesPrueba();
                     StartMessageListener();
+                    Thread.Sleep(300); // Esperar 300 ms
                     PedirTurno();
                     GetCards(usuario);
                     ChatPanel(true, "Bienvenido al juego, " + usuario);
@@ -1036,7 +1037,7 @@ namespace Duska.Screens
             string mensajeFormato = "1000/" + usuario + "/" + "mensaje de prueba";
             byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 7; i++)
             {
                 server.Send(msg);
             }
