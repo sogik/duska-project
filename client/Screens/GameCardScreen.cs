@@ -442,6 +442,7 @@ namespace Duska.Screens
                 else if (message.StartsWith("DESAFIO/"))
                 {
                     string mensaje = message.Substring(8).Trim();
+                    qq
 
                     return;
                 }
