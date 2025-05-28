@@ -684,31 +684,104 @@ void *cliente(void *socket_ptr)
 
                 int result = send_to_user(destinatario, mensaje_final);
 
-                // Si la respuesta es "ACEPTADA", crear un grupo
+                // Si la respuesta es "ACEPTADA", manejar la unión al grupo
                 if (result == 1 && strcmp(respuesta_inv, "ACEPTADA") == 0)
                 {
-                    int grupo_id = crear_grupo(usuario, destinatario);
-                    if (grupo_id > 0)
+                    // Obtener el grupo del usuario que invitó (destinatario)
+                    int grupo_invitador = obtener_grupo_id(destinatario);
+
+                    // Verificar si el que acepta ya está en un grupo
+                    int grupo_aceptante = obtener_grupo_id(usuario);
+
+                    // Si el aceptante ya está en un grupo, hacerlo salir primero
+                    if (grupo_aceptante > 0)
                     {
-                        // Notificar a ambos usuarios sobre la creación del grupo
-                        char grupo_msg[256];
-                        snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d", grupo_id);
-                        send_to_user(usuario, grupo_msg);
-                        send_to_user(destinatario, grupo_msg);
+                        printf("Usuario %s estaba en grupo %d, haciéndolo abandonar\n",
+                               usuario, grupo_aceptante);
 
-                        // Enviar la lista de usuarios en el grupo
-                        char lista_grupo[1024];
-                        listar_usuarios_grupo(grupo_id, lista_grupo, sizeof(lista_grupo));
-                        broadcast_to_group(grupo_id, lista_grupo);
+                        // Notificar a los demás miembros del grupo original
+                        char mensaje_salida[256];
+                        snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
+                        broadcast_to_group(grupo_aceptante, mensaje_salida);
 
-                        // AÑADIR ESTA LÍNEA: Notificar quién es el líder
-                        notificar_lider_grupo(grupo_id);
+                        // Eliminar al usuario del grupo
+                        pthread_mutex_lock(&client_list_mutex);
+                        ClientNode *current = client_list;
+                        while (current != NULL)
+                        {
+                            if (strcmp(current->usuario, usuario) == 0)
+                            {
+                                current->grupo_id = 0;
+                                break;
+                            }
+                            current = current->next;
+                        }
+                        pthread_mutex_unlock(&client_list_mutex);
 
-                        printf("Grupo %d creado para %s y %s\n", grupo_id, usuario, destinatario);
+                        // Notificar cambio de líder en el grupo anterior si corresponde
+                        notificar_lider_grupo(grupo_aceptante);
                     }
+
+                    // Caso 1: El invitador ya está en un grupo - unir al aceptante a ese grupo
+                    if (grupo_invitador > 0)
+                    {
+                        printf("Añadiendo usuario %s al grupo existente %d\n", usuario, grupo_invitador);
+
+                        // Añadir al usuario al grupo existente
+                        pthread_mutex_lock(&client_list_mutex);
+                        ClientNode *current = client_list;
+                        while (current != NULL)
+                        {
+                            if (strcmp(current->usuario, usuario) == 0)
+                            {
+                                current->grupo_id = grupo_invitador;
+                                break;
+                            }
+                            current = current->next;
+                        }
+                        pthread_mutex_unlock(&client_list_mutex);
+
+                        // Notificar al usuario que se ha unido al grupo
+                        char grupo_msg[256];
+                        snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d", grupo_invitador);
+                        send_to_user(usuario, grupo_msg);
+
+                        // Notificar a todos los miembros que se unió un nuevo usuario
+                        char mensaje_union[256];
+                        snprintf(mensaje_union, sizeof(mensaje_union), "GRUPO_UNION/%s", usuario);
+                        broadcast_to_group(grupo_invitador, mensaje_union);
+
+                        // Enviar la lista actualizada de usuarios en el grupo
+                        char lista_grupo[1024];
+                        listar_usuarios_grupo(grupo_invitador, lista_grupo, sizeof(lista_grupo));
+                        broadcast_to_group(grupo_invitador, lista_grupo);
+                    }
+                    // Caso 2: El invitador no está en un grupo - crear uno nuevo
                     else
                     {
-                        printf("Error al crear grupo para %s y %s\n", usuario, destinatario);
+                        int grupo_id = crear_grupo(usuario, destinatario);
+                        if (grupo_id > 0)
+                        {
+                            // Notificar a ambos usuarios sobre la creación del grupo
+                            char grupo_msg[256];
+                            snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d", grupo_id);
+                            send_to_user(usuario, grupo_msg);
+                            send_to_user(destinatario, grupo_msg);
+
+                            // Enviar la lista de usuarios en el grupo
+                            char lista_grupo[1024];
+                            listar_usuarios_grupo(grupo_id, lista_grupo, sizeof(lista_grupo));
+                            broadcast_to_group(grupo_id, lista_grupo);
+
+                            // Notificar quién es el líder
+                            notificar_lider_grupo(grupo_id);
+
+                            printf("Grupo %d creado para %s y %s\n", grupo_id, usuario, destinatario);
+                        }
+                        else
+                        {
+                            printf("Error al crear grupo para %s y %s\n", usuario, destinatario);
+                        }
                     }
                 }
 
@@ -719,7 +792,7 @@ void *cliente(void *socket_ptr)
                 }
                 else
                 {
-                    strcpy(respuesta, "INVR2/El usuario no está conectado o hubo un error");
+                    strcpy(respuesta, "ERROR/El usuario no está conectado o hubo un error");
                 }
             }
             else
