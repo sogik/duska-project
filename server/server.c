@@ -1010,62 +1010,67 @@ void *cliente(void *socket_ptr)
                 strncpy(respuesta, "ERROR/Solo el líder del grupo puede iniciar la partida", sizeof(respuesta));
             }
         }
-        // Para código 21 (realizar acción en el juego)
         else if (codigo == 21)
         {
-            // Formato: 21/usuario/PLAY/cantidad/cartas
-            char accion[50] = {0};
+            // Formato: 21/usuario/PLAY|PASS/cantidad/cartas
+            char accion[10] = {0};
             int cantidad = 0;
             char cartas_jugadas[10][10] = {{0}};
             int resultados_verificacion[10] = {0};
 
-            // Extraer la acción (PLAY o PASS)
-            strncpy(accion, contrasena, sizeof(accion) - 1);
+            // PASO 1: Reconstruir el mensaje completo para analizar
+            char mensaje_completo[1024] = {0};
+            sprintf(mensaje_completo, "%d/%s/%s/%s", codigo, usuario, contrasena, mensaje ? mensaje : "");
+            printf("[DEBUG] Mensaje completo: '%s'\n", mensaje_completo);
 
-            // Extraer la cantidad y las cartas del campo mensaje
+            // PASO 2: Extraer acción del campo contrasena
+            strncpy(accion, contrasena, sizeof(accion) - 1);
+            printf("[DEBUG] Acción: '%s'\n", accion);
+
+            // PASO 3: Analizar el campo mensaje para extraer cantidad y cartas
             if (mensaje != NULL)
             {
-                // La primera parte del mensaje es la cantidad
-                char *cant_str = strtok(mensaje, "/");
-                if (cant_str != NULL)
+                printf("[DEBUG] Campo mensaje: '%s'\n", mensaje);
+
+                // PASO 3.1: Hacer una copia del mensaje para no perder el original
+                char mensaje_copy[256];
+                strncpy(mensaje_copy, mensaje, sizeof(mensaje_copy) - 1);
+                mensaje_copy[sizeof(mensaje_copy) - 1] = '\0';
+
+                // PASO 3.2: Extraer cantidad (primera parte del mensaje)
+                char *token = strtok(mensaje_copy, "/");
+                if (token != NULL)
                 {
-                    cantidad = atoi(cant_str);
+                    cantidad = atoi(token);
+                    printf("[DEBUG] Cantidad: %d\n", cantidad);
 
-                    // La parte restante son las cartas
-                    char *cartas_str = strtok(NULL, "");
-                    if (cartas_str != NULL && cantidad > 0)
+                    // PASO 3.3: Extraer cartas (segunda parte del mensaje)
+                    token = strtok(NULL, ""); // Obtener todo lo que queda después de "/"
+                    if (token != NULL)
                     {
-                        printf("[DEBUG] Procesando cartas: '%s'\n", cartas_str);
+                        printf("[DEBUG] Cadena de cartas: '%s'\n", token);
 
-                        // Si hay una sola carta, no habrá comas
-                        if (cantidad == 1 && strchr(cartas_str, ',') == NULL)
+                        // PASO 3.4: Crear una copia nueva para tokenizar por comas
+                        char cartas_str[256];
+                        strncpy(cartas_str, token, sizeof(cartas_str) - 1);
+                        cartas_str[sizeof(cartas_str) - 1] = '\0';
+
+                        // PASO 3.5: Obtener cada carta individualmente
+                        char *carta = strtok(cartas_str, ",");
+                        int idx = 0;
+
+                        while (carta != NULL && idx < cantidad && idx < 10)
                         {
-                            strncpy(cartas_jugadas[0], cartas_str, sizeof(cartas_jugadas[0]) - 1);
-                            printf("[CARTA] Única carta jugada: '%s'\n", cartas_jugadas[0]);
+                            strncpy(cartas_jugadas[idx], carta, sizeof(cartas_jugadas[idx]) - 1);
+                            printf("[CARTA] Jugada %d: '%s'\n", idx + 1, cartas_jugadas[idx]);
+                            idx++;
+                            carta = strtok(NULL, ",");
                         }
-                        else
+
+                        if (idx < cantidad)
                         {
-                            // Tokenizar por comas para múltiples cartas
-                            char *token = strtok(cartas_str, ",");
-                            int idx = 0;
-
-                            while (token != NULL && idx < cantidad && idx < 10)
-                            {
-                                strncpy(cartas_jugadas[idx], token, sizeof(cartas_jugadas[idx]) - 1);
-                                printf("[CARTA] Jugada %d: '%s'\n", idx + 1, cartas_jugadas[idx]);
-                                idx++;
-                                token = strtok(NULL, ",");
-                            }
-
-                            if (idx < cantidad)
-                            {
-                                printf("[ERROR] Solo se encontraron %d cartas de %d esperadas\n", idx, cantidad);
-                            }
+                            printf("[ERROR] Solo se encontraron %d cartas de %d esperadas\n", idx, cantidad);
                         }
-                    }
-                    else
-                    {
-                        printf("[ERROR] No se encontraron cartas o cantidad inválida\n");
                     }
                 }
             }
