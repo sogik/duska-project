@@ -1013,47 +1013,60 @@ void *cliente(void *socket_ptr)
         // Para código 21 (realizar acción en el juego)
         else if (codigo == 21)
         {
-            // Formato esperado: 21/usuario/accion/datos
+            // Formato: 21/usuario/PLAY/cantidad/cartas
             char accion[50] = {0};
-            char datos[800] = {0};
+            int cantidad = 0;
+            char cartas_jugadas[10][10] = {{0}};
+            int resultados_verificacion[10] = {0};
 
-            // El campo 'contrasena' contiene la acción
+            // Extraer la acción (PLAY o PASS)
             strncpy(accion, contrasena, sizeof(accion) - 1);
 
-            // El campo 'mensaje' contiene los datos adicionales
+            // Extraer la cantidad y las cartas del campo mensaje
             if (mensaje != NULL)
             {
-                strncpy(datos, mensaje, sizeof(datos) - 1);
-            }
-
-            // Extraer las cartas jugadas
-            char *token = strtok(datos, "/");
-            int cantidad = 0;
-            if (token != NULL)
-            {
-                cantidad = atoi(token);
-            }
-
-            char cartas_jugadas[10][10] = {{0}};   // Array para almacenar hasta 10 cartas
-            int resultados_verificacion[10] = {0}; // Para almacenar resultados individuales
-
-            // Extraer cada carta
-            int carta_index = 0;
-            for (int i = 0; i < cantidad && i < 10; i++)
-            {
-                token = strtok(NULL, ",");
-                if (token != NULL)
+                // La primera parte del mensaje es la cantidad
+                char *cant_str = strtok(mensaje, "/");
+                if (cant_str != NULL)
                 {
-                    // Asegurar que el token se copia correctamente
-                    memset(cartas_jugadas[i], 0, sizeof(cartas_jugadas[i])); // Limpiar el buffer
-                    strncpy(cartas_jugadas[i], token, sizeof(cartas_jugadas[i]) - 1);
-                    printf("[CARTA] Jugada %d: '%s' (longitud: %lu)\n",
-                           i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
-                }
-                else
-                {
-                    printf("[ERROR] Faltan datos para la carta %d\n", i + 1);
-                    break;
+                    cantidad = atoi(cant_str);
+
+                    // La parte restante son las cartas
+                    char *cartas_str = strtok(NULL, "");
+                    if (cartas_str != NULL && cantidad > 0)
+                    {
+                        printf("[DEBUG] Procesando cartas: '%s'\n", cartas_str);
+
+                        // Si hay una sola carta, no habrá comas
+                        if (cantidad == 1 && strchr(cartas_str, ',') == NULL)
+                        {
+                            strncpy(cartas_jugadas[0], cartas_str, sizeof(cartas_jugadas[0]) - 1);
+                            printf("[CARTA] Única carta jugada: '%s'\n", cartas_jugadas[0]);
+                        }
+                        else
+                        {
+                            // Tokenizar por comas para múltiples cartas
+                            char *token = strtok(cartas_str, ",");
+                            int idx = 0;
+
+                            while (token != NULL && idx < cantidad && idx < 10)
+                            {
+                                strncpy(cartas_jugadas[idx], token, sizeof(cartas_jugadas[idx]) - 1);
+                                printf("[CARTA] Jugada %d: '%s'\n", idx + 1, cartas_jugadas[idx]);
+                                idx++;
+                                token = strtok(NULL, ",");
+                            }
+
+                            if (idx < cantidad)
+                            {
+                                printf("[ERROR] Solo se encontraron %d cartas de %d esperadas\n", idx, cantidad);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        printf("[ERROR] No se encontraron cartas o cantidad inválida\n");
+                    }
                 }
             }
 
