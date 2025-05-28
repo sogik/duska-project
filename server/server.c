@@ -1028,82 +1028,83 @@ void *cliente(void *socket_ptr)
             strncpy(accion, contrasena, sizeof(accion) - 1);
             printf("[DEBUG] Acción extraída: '%s'\n", accion);
 
-            // SOLUCIÓN: Reconstruir la parte que falta del mensaje original
-            // El problema es que el parseo general divide incorrectamente
-            // Necesitamos obtener la cantidad y las cartas que vienen después
-
-            // Para el código 21, sabemos que el formato es: 21/usuario/PLAY/cantidad/cartas
-            // Donde mensaje actual solo contiene "cantidad" pero necesitamos "cantidad/cartas"
-
             if (mensaje != NULL && strlen(mensaje) > 0)
             {
                 // La cantidad está en el campo mensaje
                 cantidad = atoi(mensaje);
                 printf("[DEBUG] Cantidad extraída del mensaje: %d\n", cantidad);
 
-                // PROBLEMA: Las cartas están en la parte que se perdió del parseo original
-                // SOLUCIÓN: Buscar en la petición original la parte que falta
+                // SOLUCIÓN MEJORADA: Aumentar el tamaño del buffer y usar verificaciones
+                char patron_busqueda[1200] = {0}; // Aumentar tamaño del buffer
+                int resultado_snprintf = snprintf(patron_busqueda, sizeof(patron_busqueda), "%d/%s/%s/%s/",
+                                                  codigo, usuario, contrasena, mensaje);
 
-                // Encontrar la posición donde deberían estar las cartas en peticion
-                char patron_busqueda[100];
-                snprintf(patron_busqueda, sizeof(patron_busqueda), "%d/%s/%s/%s/",
-                         codigo, usuario, contrasena, mensaje);
-
-                printf("[DEBUG] Buscando patrón: '%s'\n", patron_busqueda);
-                printf("[DEBUG] En petición: '%s'\n", peticion);
-
-                char *pos_cartas = strstr(peticion, patron_busqueda);
-                if (pos_cartas != NULL)
+                // Verificar si hubo truncamiento
+                if (resultado_snprintf >= sizeof(patron_busqueda))
                 {
-                    // Avanzar hasta después del patrón para obtener las cartas
-                    pos_cartas += strlen(patron_busqueda);
-                    printf("[DEBUG] Cartas encontradas: '%s'\n", pos_cartas);
+                    printf("[ERROR] Patrón de búsqueda truncado, usando método alternativo\n");
+                    strcpy(respuesta, "ERROR/Datos demasiado largos");
+                }
+                else
+                {
+                    printf("[DEBUG] Buscando patrón: '%s'\n", patron_busqueda);
+                    printf("[DEBUG] En petición: '%s'\n", peticion);
 
-                    if (strlen(pos_cartas) > 0)
+                    char *pos_cartas = strstr(peticion, patron_busqueda);
+                    if (pos_cartas != NULL)
                     {
-                        // Procesar las cartas
-                        if (cantidad == 1)
+                        // Avanzar hasta después del patrón para obtener las cartas
+                        pos_cartas += strlen(patron_busqueda);
+                        printf("[DEBUG] Cartas encontradas: '%s'\n", pos_cartas);
+
+                        if (strlen(pos_cartas) > 0)
                         {
-                            // Una sola carta
-                            strncpy(cartas_jugadas[0], pos_cartas, sizeof(cartas_jugadas[0]) - 1);
-                            printf("[DEBUG] Carta única: '%s'\n", cartas_jugadas[0]);
+                            // Procesar las cartas
+                            if (cantidad == 1)
+                            {
+                                // Una sola carta
+                                strncpy(cartas_jugadas[0], pos_cartas, sizeof(cartas_jugadas[0]) - 1);
+                                printf("[DEBUG] Carta única: '%s'\n", cartas_jugadas[0]);
+                            }
+                            else
+                            {
+                                // Múltiples cartas separadas por comas
+                                char cartas_temp[256];
+                                strncpy(cartas_temp, pos_cartas, sizeof(cartas_temp) - 1);
+                                cartas_temp[sizeof(cartas_temp) - 1] = '\0';
+
+                                char *token = strtok(cartas_temp, ",");
+                                int idx = 0;
+
+                                while (token != NULL && idx < cantidad && idx < 10)
+                                {
+                                    // Limpiar espacios
+                                    while (*token == ' ')
+                                        token++;
+
+                                    strncpy(cartas_jugadas[idx], token, sizeof(cartas_jugadas[idx]) - 1);
+                                    cartas_jugadas[idx][sizeof(cartas_jugadas[idx]) - 1] = '\0';
+                                    printf("[DEBUG] Carta %d: '%s'\n", idx + 1, cartas_jugadas[idx]);
+
+                                    idx++;
+                                    token = strtok(NULL, ",");
+                                }
+
+                                if (idx != cantidad)
+                                {
+                                    printf("[ERROR] Esperadas %d cartas, encontradas %d\n", cantidad, idx);
+                                }
+                            }
                         }
                         else
                         {
-                            // Múltiples cartas separadas por comas
-                            char cartas_temp[256];
-                            strncpy(cartas_temp, pos_cartas, sizeof(cartas_temp) - 1);
-
-                            char *token = strtok(cartas_temp, ",");
-                            int idx = 0;
-
-                            while (token != NULL && idx < cantidad && idx < 10)
-                            {
-                                // Limpiar espacios
-                                while (*token == ' ')
-                                    token++;
-
-                                strncpy(cartas_jugadas[idx], token, sizeof(cartas_jugadas[idx]) - 1);
-                                printf("[DEBUG] Carta %d: '%s'\n", idx + 1, cartas_jugadas[idx]);
-
-                                idx++;
-                                token = strtok(NULL, ",");
-                            }
-
-                            if (idx != cantidad)
-                            {
-                                printf("[ERROR] Esperadas %d cartas, encontradas %d\n", cantidad, idx);
-                            }
+                            printf("[ERROR] No se encontraron cartas después del patrón\n");
                         }
                     }
                     else
                     {
-                        printf("[ERROR] No se encontraron cartas después del patrón\n");
+                        printf("[ERROR] No se pudo encontrar el patrón en la petición\n");
                     }
-                }
-                else
-                {
-                    printf("[ERROR] No se pudo encontrar el patrón en la petición\n");
                 }
             }
             else
