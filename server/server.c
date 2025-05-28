@@ -1016,6 +1016,8 @@ void *cliente(void *socket_ptr)
             // Formato: 21/usuario/PLAY|PASS/cantidad/[cartas separadas por coma]
             char accion[10] = {0};
             int cantidad = 0;
+            char *token = NULL;
+            char datos[256] = {0};
             char cartas_jugadas[10][10] = {{0}};
             int resultados_verificacion[10] = {0};
 
