@@ -520,7 +520,7 @@ void *cliente(void *socket_ptr)
     char usuario[50] = {0}; // Para mantener el nombre de usuario
 
     MYSQL *conn = mysql_init(NULL);
-    if (!mysql_real_connect(conn, "shiva2.upc.es", "root", "mysql", "duska_project", 0, NULL, 0))
+    if (!mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
     {
         printf("Error MySQL: %s\n", mysql_error(conn));
         strcpy(respuesta, "Error en la base de datos");
