@@ -269,7 +269,6 @@ void generar_carta_para_ronda_actual(GameInfo *partida)
 }
 
 // Obtener la carta designada para la ronda actual
-// Obtener la carta designada para la ronda actual
 void obtener_carta_ronda_actual(GameInfo *partida, char *carta_ronda)
 {
     if (partida != NULL && partida->ronda_actual < partida->total_rondas)

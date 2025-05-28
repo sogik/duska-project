@@ -1215,7 +1215,7 @@ void *cliente(void *socket_ptr)
             if (partida != NULL)
             {
                 char carta_ronda[10] = {0};
-                obtener_carta_ronda_actual(partida, carta_ronda, sizeof(carta_ronda));
+                obtener_carta_ronda_actual(partida, carta_ronda);
                 snprintf(respuesta, sizeof(respuesta), "CARTA_RONDA/%s", carta_ronda);
                 printf("[RONDA] Usuario %s solicita carta de ronda: %s\n", usuario, carta_ronda);
             }
