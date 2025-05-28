@@ -332,6 +332,9 @@ namespace Duska.Screens
                     }
 
                     UserInterface.Active.Clear();
+                    UserInterface.Active.RemoveEntity(panel);
+
+                    // Volver al menú principal
                     ScreenManager.LoadScreen(new MainMenuScreen(Game, usuario), new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
                 }
                 catch (Exception ex)
@@ -946,7 +949,10 @@ namespace Duska.Screens
                 }
 
                 // Crear el panel principal con altura fija
-                Panel panel = new Panel(new Vector2(350, 500), PanelSkin.Simple, Anchor.CenterRight);
+                Panel panel = new Panel(
+            new Vector2(350, GraphicsDevice.Viewport.Height),
+            PanelSkin.Simple,
+            Anchor.TopRight);
                 if (panel == null)
                 {
                     Debug.WriteLine("[ERROR] No se pudo crear el panel principal");
@@ -972,7 +978,8 @@ namespace Duska.Screens
                 if (lineTop != null) panel.AddChild(lineTop);
 
                 // 2. PANEL DE MENSAJES - contenedor fijo
-                Panel mensajesPanel = new Panel(new Vector2(0, 340), PanelSkin.None, Anchor.TopCenter);
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 160;
+                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.None, Anchor.TopCenter);
                 if (mensajesPanel == null)
                 {
                     Debug.WriteLine("[ERROR] No se pudo crear el panel de mensajes");
@@ -983,7 +990,7 @@ namespace Duska.Screens
                 panel.AddChild(mensajesPanel);
 
                 // Limitar historial y obtener los mensajes más recientes
-                int mensajesPorPantalla = 10; // Aproximadamente cuántos caben
+                int mensajesPorPantalla = 15; // Aproximadamente cuántos caben
 
                 if (historialChat == null)
                 {
@@ -994,7 +1001,7 @@ namespace Duska.Screens
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
 
                 // Limitar historial para no acumular demasiados
-                int maxHistorialPermitido = 10;
+                int maxHistorialPermitido = 15;
                 if (historialChat.Count > maxHistorialPermitido)
                 {
                     historialChat.RemoveRange(0, historialChat.Count - maxHistorialPermitido);

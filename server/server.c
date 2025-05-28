@@ -219,19 +219,34 @@ int broadcast_to_group(int grupo_id, const char *mensaje)
 
     int count = 0;
     ClientNode *current = client_list;
+
+    // Preparar mensaje con formato adecuado (añadir \n al final)
+    char mensaje_formateado[1024] = {0};
+    snprintf(mensaje_formateado, sizeof(mensaje_formateado), "%s\n", mensaje);
+
     while (current != NULL)
     {
         if (current->grupo_id == grupo_id && current->socket > 0)
         {
-            write(current->socket, mensaje, strlen(mensaje));
-            count++;
+            int result = write(current->socket, mensaje_formateado, strlen(mensaje_formateado));
+            if (result < 0)
+            {
+                printf("[ERROR] Error al enviar broadcast: %s\n", strerror(errno));
+            }
+            else
+            {
+                count++;
+            }
         }
         current = current->next;
     }
 
     pthread_mutex_unlock(&client_list_mutex);
 
-    return count; // Retorna el número de usuarios a los que se envió el mensaje
+    printf("[BROADCAST] Mensaje '%s' enviado a %d destinatarios\n",
+           mensaje, count);
+
+    return count;
 }
 
 // Función para enviar datos a todos los clientes
