@@ -63,7 +63,7 @@ namespace Duska.Screens
             }
 
             _spriteBatch = new SpriteBatch(GraphicsDevice);
-            _background = Content.Load<Texture2D>("bg");
+            _background = Content.Load<Texture2D>("bg2");
 
             // Solo iniciar conexión si no hay socket
             if (server == null || !conectado)
