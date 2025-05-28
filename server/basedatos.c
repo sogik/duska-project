@@ -196,7 +196,8 @@ void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista,
     if (err != 0)
     {
         printf("Error al consultar: %s\n", mysql_error(conn));
-        return NULL;
+        lista[0] = '\0'; // Establecer string vacío
+        return;
     }
 
     res = mysql_store_result(conn);
@@ -211,7 +212,8 @@ void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista,
             {
                 printf("Error al consultar: %s\n", mysql_error(conn));
                 mysql_free_result(res);
-                return NULL;
+                lista[0] = '\0'; // Establecer string vacío
+                return;
             }
 
             MYSQL_RES *res2 = mysql_store_result(conn);
@@ -252,7 +254,8 @@ void listarConectados(MYSQL *conn, char *lista, int tamano_lista)
     if (err != 0)
     {
         printf("Error al consultar: %s\n", mysql_error(conn));
-        return NULL;
+        lista[0] = '\0'; // Establecer string vacío
+        return;
     }
 
     res = mysql_use_result(conn);

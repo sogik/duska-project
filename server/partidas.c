@@ -144,7 +144,7 @@ GameInfo *encontrar_partida(int partida_id)
 
 int avanzar_ronda(int partida_id)
 {
-    GameInfo *partida = encontrar_partida(partida_id);
+    GameInfo *partida = obtener_partida_por_id(partida_id);
     if (partida == NULL)
     {
         printf("[ERROR] No se encontró la partida %d\n", partida_id);
