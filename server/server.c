@@ -75,7 +75,7 @@ void remove_client(int sock)
     pthread_mutex_unlock(&client_list_mutex);
 }
 
-void verificar_cartas(GameInfo *partida, char cartas[][5], int num_cartas, int resultados[])
+void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int resultados[])
 {
     if (!partida || partida->ronda_actual >= partida->total_rondas)
     {
