@@ -1224,6 +1224,91 @@ void *cliente(void *socket_ptr)
                 strcpy(respuesta, "ERROR/No estás en una partida activa");
             }
         }
+        else if (codigo == 27) // Abandonar partida
+        {
+            // Formato: 27/nombre_usuario
+
+            // Verificar si el usuario está en una partida
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                // Verificar si la partida está en curso
+                if (partida->estado == 1) // Estado 1 = En curso
+                {
+                    // Marcar que el jugador abandona (similar a eliminarlo)
+                    int indice_jugador = -1;
+                    for (int i = 0; i < partida->num_jugadores; i++)
+                    {
+                        if (strcmp(partida->jugadores[i], usuario) == 0)
+                        {
+                            indice_jugador = i;
+                            break;
+                        }
+                    }
+
+                    if (indice_jugador != -1)
+                    {
+                        // Marcar como eliminado
+                        partida->jugadores_eliminados[indice_jugador] = 1;
+                        partida->num_jugadores_activos--;
+
+                        // Notificar a los demás jugadores
+                        char mensaje_abandono[100];
+                        sprintf(mensaje_abandono, "JUGADOR_ABANDONO/%s", usuario);
+                        broadcast_to_group(partida->grupo_id, mensaje_abandono);
+
+                        printf("[PARTIDA] Jugador %s abandonó la partida %d\n",
+                               usuario, partida->partida_id);
+
+                        // Si era el turno de este jugador, avanzar el turno
+                        if (partida->turno_actual == indice_jugador)
+                        {
+                            avanzar_turno(partida->partida_id);
+                        }
+
+                        // Si solo queda un jugador activo, terminar la partida
+                        if (partida->num_jugadores_activos == 1)
+                        {
+                            // Buscar al último jugador activo
+                            char *ganador = NULL;
+                            for (int i = 0; i < partida->num_jugadores; i++)
+                            {
+                                if (!partida->jugadores_eliminados[i])
+                                {
+                                    ganador = partida->jugadores[i];
+                                    break;
+                                }
+                            }
+
+                            // Notificar fin de partida
+                            if (ganador != NULL)
+                            {
+                                char mensaje_fin[100];
+                                sprintf(mensaje_fin, "FIN_PARTIDA/%s", ganador);
+                                broadcast_to_group(partida->grupo_id, mensaje_fin);
+                                printf("[PARTIDA] Partida %d finalizada. Ganador: %s\n",
+                                       partida->partida_id, ganador);
+                                partida->estado = 2; // Finalizada
+                            }
+                        }
+
+                        strcpy(respuesta, "ABANDONO_OK");
+                    }
+                    else
+                    {
+                        strcpy(respuesta, "ERROR/No se encontró al jugador en la partida");
+                    }
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/La partida no está en curso");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida");
+            }
+        }
         else
         {
             strcpy(respuesta, "ERROR/Comando desconocido");

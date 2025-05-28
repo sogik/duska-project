@@ -285,17 +285,73 @@ namespace Duska.Screens
             };
             panel.AddChild(optionsBtn);
 
-            Button ExitBtn = new Button("Exit", ButtonSkin.Default);
-            ExitBtn.OnClick = (Entity btn) =>
+            // Añadir nuevo botón para abandonar partida
+            Button abandonarBtn = new Button("Abandonar Partida", ButtonSkin.Default);
+            abandonarBtn.OnClick = (Entity btn) =>
             {
-                int estado = this.estado(usuario, "0");
-                Debug.WriteLine("Estado enviado: " + estado);
-                DisconnectFromServer();
+                // Cerrar el menú de pausa
                 panel.Visible = false;
                 UserInterface.Active.RemoveEntity(panel);
-                Game.Exit();
+
+                // Mostrar el panel de confirmación personalizado
+                MostrarPanelConfirmacionAbandono();
             };
-            panel.AddChild(ExitBtn);
+            panel.AddChild(abandonarBtn);
+        }
+
+        private void MostrarPanelConfirmacionAbandono()
+        {
+            // Crear el panel principal
+            Panel panel = new Panel(new Vector2(450, -1), PanelSkin.Default, Anchor.Center);
+            panel.Visible = true;
+            UserInterface.Active.AddEntity(panel);
+
+            // Título y línea decorativa
+            panel.AddChild(new Header("Abandonar Partida"));
+            panel.AddChild(new HorizontalLine());
+
+            // Mensaje de confirmación
+            panel.AddChild(new Paragraph("¿Estás seguro que quieres abandonar la partida?"));
+            panel.AddChild(new HorizontalLine());
+
+            // Botón para confirmar abandono
+            Button acceptBtn = new Button("Sí", ButtonSkin.Default);
+            acceptBtn.OnClick = (Entity btn) =>
+            {
+                try
+                {
+                    if (server != null && server.Connected)
+                    {
+                        // Enviar mensaje para abandonar partida
+                        string mensaje = "27/" + usuario;
+                        byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                        server.Send(msg);
+
+                        ChatPanel(true, "Sistema/Abandonando partida...");
+                        Debug.WriteLine("[ABANDONO] Solicitud enviada para abandonar partida");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ERROR] Error al abandonar partida: {ex.Message}");
+                    ChatPanel(true, $"Sistema/Error al abandonar partida: {ex.Message}");
+                }
+
+                // Ocultar el panel de confirmación
+                panel.Visible = false;
+                UserInterface.Active.RemoveEntity(panel);
+            };
+            panel.AddChild(acceptBtn);
+
+            // Botón para cancelar
+            Button declineBtn = new Button("No", ButtonSkin.Default);
+            declineBtn.OnClick = (Entity btn) =>
+            {
+                // Simplemente cerrar el panel
+                panel.Visible = false;
+                UserInterface.Active.RemoveEntity(panel);
+            };
+            panel.AddChild(declineBtn);
         }
 
         private void ControlarAccionesPorTurno(bool permitir)
