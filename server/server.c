@@ -1027,7 +1027,7 @@ void *cliente(void *socket_ptr)
             }
 
             // Extraer las cartas jugadas
-            char *token = strtok(datos, ",");
+            char *token = strtok(datos, "/");
             int cantidad = 0;
             if (token != NULL)
             {
