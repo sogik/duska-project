@@ -21,6 +21,7 @@ typedef struct GameInfo
     char ultimo_jugador[50];
     int num_cartas_ultima_jugada;
     char cartas_ultima_jugada[10][5];
+    int resultados_verificacion[10];
 
     int jugadores_eliminados[4]; // 1 si está eliminado
     int num_jugadores_activos;   // Contador de jugadores que siguen en la partida
@@ -45,8 +46,8 @@ int finalizar_partida(int partida_id);
 // Prototipos de funciones para el sistema de rondas
 int avanzar_ronda(int partida_id);
 void generar_carta_para_ronda_actual(GameInfo *partida);
-void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][10], int num_cartas);
-void obtener_carta_ronda_actual(int partida_id, char *carta_ronda);
+void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][5], int num_cartas);
+void obtener_carta_ronda_actual(GameInfo *partida, char *carta_ronda);
 int eliminar_jugador_de_partida(GameInfo *partida, char *jugador);
 
 // Funciones externas necesarias

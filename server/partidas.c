@@ -119,7 +119,7 @@ void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[]
     partida->num_cartas_ultima_jugada = num_cartas;
 
     // Copiar cada carta y su resultado de verificación
-    for (int i = 0; i < num_cartas && i < 10; i++)
+    for (int i = 0; i < num_cartas && i < 5; i++)
     {
         // Copiar la carta
         strncpy(partida->cartas_ultima_jugada[i], cartas[i], sizeof(partida->cartas_ultima_jugada[i]) - 1);
@@ -270,21 +270,15 @@ void generar_carta_para_ronda_actual(GameInfo *partida)
 
 // Obtener la carta designada para la ronda actual
 // Obtener la carta designada para la ronda actual
-void obtener_carta_ronda_actual(GameInfo *partida, char *carta_ronda, size_t tam_buffer)
+void obtener_carta_ronda_actual(GameInfo *partida, char *carta_ronda)
 {
     if (partida != NULL && partida->ronda_actual < partida->total_rondas)
     {
-        strncpy(carta_ronda, partida->cartas_ronda[partida->ronda_actual], tam_buffer - 1);
-        carta_ronda[tam_buffer - 1] = '\0';
-        printf("[RONDA] Obteniendo carta para ronda %d: %s\n",
-               partida->ronda_actual + 1, carta_ronda);
+        strcpy(carta_ronda, partida->cartas_ronda[partida->ronda_actual]);
     }
     else
     {
-        // Si hay algún error, asignar un valor por defecto
-        strncpy(carta_ronda, "?", tam_buffer - 1);
-        carta_ronda[tam_buffer - 1] = '\0';
-        printf("[RONDA] Error al obtener carta de ronda\n");
+        strcpy(carta_ronda, "?");
     }
 }
 
