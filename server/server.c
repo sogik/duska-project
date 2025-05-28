@@ -1010,69 +1010,120 @@ void *cliente(void *socket_ptr)
                 strncpy(respuesta, "ERROR/Solo el líder del grupo puede iniciar la partida", sizeof(respuesta));
             }
         }
+        // Para código 21 (realizar acción en el juego)
         else if (codigo == 21)
         {
-            // Formato: 21/usuario/PLAY|PASS/cantidad/cartas
+            // Formato: 21/usuario/PLAY/cantidad/cartas
+            printf("[DEBUG-INICIAL] ====== PROCESANDO CÓDIGO 21 ======\n");
+            printf("[DEBUG-INICIAL] Buffer recibido: '%s'\n", buffer);
+            printf("[DEBUG-INICIAL] Usuario: '%s'\n", usuario);
+            printf("[DEBUG-INICIAL] Contrasena: '%s'\n", contrasena);
+            printf("[DEBUG-INICIAL] Mensaje: '%s'\n", mensaje ? mensaje : "NULL");
+
             char accion[10] = {0};
             int cantidad = 0;
             char cartas_jugadas[10][10] = {{0}};
             int resultados_verificacion[10] = {0};
 
-            // PASO 1: Reconstruir el mensaje completo para analizar
-            char mensaje_completo[1024] = {0};
-            sprintf(mensaje_completo, "%d/%s/%s/%s", codigo, usuario, contrasena, mensaje ? mensaje : "");
-            printf("[DEBUG] Mensaje completo: '%s'\n", mensaje_completo);
+            // IMPORTANTE: El formato esperado es 21/usuario/PLAY/cantidad/cartas
+            // Donde:
+            // - codigo = 21
+            // - usuario = nombre del usuario
+            // - contrasena = acción (PLAY/PASS)
+            // - mensaje = "cantidad/cartas"
 
-            // PASO 2: Extraer acción del campo contrasena
-            strncpy(accion, contrasena, sizeof(accion) - 1);
-            printf("[DEBUG] Acción: '%s'\n", accion);
-
-            // PASO 3: Analizar el campo mensaje para extraer cantidad y cartas
-            if (mensaje != NULL)
+            // Extraer acción
+            if (contrasena != NULL)
             {
-                printf("[DEBUG] Campo mensaje: '%s'\n", mensaje);
+                strncpy(accion, contrasena, sizeof(accion) - 1);
+                printf("[DEBUG] Acción extraída: '%s'\n", accion);
+            }
 
-                // PASO 3.1: Hacer una copia del mensaje para no perder el original
-                char mensaje_copy[256];
-                strncpy(mensaje_copy, mensaje, sizeof(mensaje_copy) - 1);
-                mensaje_copy[sizeof(mensaje_copy) - 1] = '\0';
+            // Procesar el campo mensaje que contiene "cantidad/cartas"
+            if (mensaje != NULL && strlen(mensaje) > 0)
+            {
+                printf("[DEBUG] Procesando mensaje: '%s'\n", mensaje);
 
-                // PASO 3.2: Extraer cantidad (primera parte del mensaje)
-                char *token = strtok(mensaje_copy, "/");
-                if (token != NULL)
+                // Buscar el primer '/' para separar cantidad de cartas
+                char *separador = strchr(mensaje, '/');
+                if (separador != NULL)
                 {
-                    cantidad = atoi(token);
-                    printf("[DEBUG] Cantidad: %d\n", cantidad);
+                    // Extraer cantidad (antes del '/')
+                    int pos_separador = separador - mensaje;
+                    char cantidad_str[10] = {0};
 
-                    // PASO 3.3: Extraer cartas (segunda parte del mensaje)
-                    token = strtok(NULL, ""); // Obtener todo lo que queda después de "/"
-                    if (token != NULL)
+                    if (pos_separador > 0 && pos_separador < 10)
                     {
-                        printf("[DEBUG] Cadena de cartas: '%s'\n", token);
+                        strncpy(cantidad_str, mensaje, pos_separador);
+                        cantidad = atoi(cantidad_str);
+                        printf("[DEBUG] Cantidad encontrada: %d\n", cantidad);
 
-                        // PASO 3.4: Crear una copia nueva para tokenizar por comas
-                        char cartas_str[256];
-                        strncpy(cartas_str, token, sizeof(cartas_str) - 1);
-                        cartas_str[sizeof(cartas_str) - 1] = '\0';
+                        // Extraer cartas (después del '/')
+                        char *cartas_parte = separador + 1;
+                        printf("[DEBUG] Parte de cartas: '%s'\n", cartas_parte);
 
-                        // PASO 3.5: Obtener cada carta individualmente
-                        char *carta = strtok(cartas_str, ",");
-                        int idx = 0;
-
-                        while (carta != NULL && idx < cantidad && idx < 10)
+                        if (strlen(cartas_parte) > 0)
                         {
-                            strncpy(cartas_jugadas[idx], carta, sizeof(cartas_jugadas[idx]) - 1);
-                            printf("[CARTA] Jugada %d: '%s'\n", idx + 1, cartas_jugadas[idx]);
-                            idx++;
-                            carta = strtok(NULL, ",");
+                            // Manejar caso de una sola carta (sin comas)
+                            if (cantidad == 1)
+                            {
+                                strncpy(cartas_jugadas[0], cartas_parte, sizeof(cartas_jugadas[0]) - 1);
+                                printf("[DEBUG] Carta única procesada: '%s'\n", cartas_jugadas[0]);
+                            }
+                            // Manejar múltiples cartas (con comas)
+                            else
+                            {
+                                char cartas_copia[256] = {0};
+                                strncpy(cartas_copia, cartas_parte, sizeof(cartas_copia) - 1);
+
+                                char *token = strtok(cartas_copia, ",");
+                                int idx = 0;
+
+                                while (token != NULL && idx < cantidad && idx < 10)
+                                {
+                                    // Limpiar espacios en blanco
+                                    while (*token == ' ')
+                                        token++;
+
+                                    strncpy(cartas_jugadas[idx], token, sizeof(cartas_jugadas[idx]) - 1);
+                                    printf("[DEBUG] Carta %d procesada: '%s'\n", idx + 1, cartas_jugadas[idx]);
+
+                                    idx++;
+                                    token = strtok(NULL, ",");
+                                }
+
+                                if (idx != cantidad)
+                                {
+                                    printf("[ERROR] Esperadas %d cartas, encontradas %d\n", cantidad, idx);
+                                }
+                            }
                         }
-
-                        if (idx < cantidad)
+                        else
                         {
-                            printf("[ERROR] Solo se encontraron %d cartas de %d esperadas\n", idx, cantidad);
+                            printf("[ERROR] No hay cartas después del separador\n");
                         }
                     }
+                    else
+                    {
+                        printf("[ERROR] Posición del separador inválida: %d\n", pos_separador);
+                    }
                 }
+                else
+                {
+                    printf("[ERROR] No se encontró separador '/' en el mensaje\n");
+                }
+            }
+            else
+            {
+                printf("[ERROR] Campo mensaje es NULL o vacío\n");
+            }
+
+            // Verificación final
+            printf("[DEBUG-FINAL] Cartas procesadas:\n");
+            for (int i = 0; i < cantidad; i++)
+            {
+                printf("[DEBUG-FINAL]   Carta %d: '%s' (longitud: %lu)\n",
+                       i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
             }
 
             // Verificar que es el turno del jugador
