@@ -41,6 +41,7 @@ int es_turno_de_jugador(const char *usuario);
 GameInfo *obtener_partida_por_jugador(const char *usuario);
 int avanzar_turno(int partida_id);
 GameInfo *obtener_partida_por_id(int partida_id);
+GameInfo *encontrar_partida(int partida_id);
 int finalizar_partida(int partida_id);
 
 // Prototipos de funciones para el sistema de rondas

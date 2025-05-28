@@ -129,6 +129,19 @@ void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[]
            jugador, num_cartas);
 }
 
+GameInfo *encontrar_partida(int partida_id)
+{
+    // Buscar la partida por ID en la lista de partidas
+    for (int i = 0; i < num_partidas; i++)
+    {
+        if (lista_partidas[i] != NULL && lista_partidas[i]->partida_id == partida_id)
+        {
+            return lista_partidas[i];
+        }
+    }
+    return NULL; // No se encontró
+}
+
 int avanzar_ronda(int partida_id)
 {
     GameInfo *partida = encontrar_partida(partida_id);
