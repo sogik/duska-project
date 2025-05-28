@@ -37,6 +37,10 @@ namespace Duska.Screens
 
         public string usuario;
 
+        private string carta_ronda_actual; // Inicialmente no hay carta jugada
+
+        private string[] cartas_jugadas = new string[5];
+
         private RichParagraph panelmensajes = new RichParagraph(@"");
 
         // Añade estas variables para manejar mensajes pendientes
@@ -63,7 +67,13 @@ namespace Duska.Screens
         private string jugadorConTurnoActual = "";
         private bool esMiTurno = false;
         private bool _permitirAccionesJuego = false;
-        private Panel panelTurno;
+
+        // Variables para el sistema de desafío
+        private bool mostrandoDesafio = false;
+        private float tiempoDesafio = 0f;
+        private const float DURACION_DESAFIO = 5.0f; // 5 segundos de duración
+        private List<Texture2D> cartasDesafio = new List<Texture2D>();
+        private List<bool> cartasDesafioValidas = new List<bool>(); // true = verde, false = roj
 
         public GameCardScreen(Game game, string usuario) : base(game)
         {
@@ -123,6 +133,7 @@ namespace Duska.Screens
                     StartMessageListener();
                     Thread.Sleep(300); // Esperar 300 ms
                     PedirTurno();
+                    obtener_carta_ronda();
                     //GetCards(usuario);
                     ChatPanel(true, "Bienvenido al juego, " + usuario);
                 }
@@ -442,7 +453,98 @@ namespace Duska.Screens
                 else if (message.StartsWith("DESAFIO/"))
                 {
                     string mensaje = message.Substring(8).Trim();
-                    qq
+
+                    if (message.StartsWith("EXITO"))
+                    {
+
+                        string[] mensaje2 = mensaje.Split('/');
+                        string desafiado = mensaje2[1].Trim();
+
+                        string[] cartas = new string[mensaje2.Length - 2];
+                        for (int i = 2; i < mensaje2.Length; i++)
+                        {
+                            cartas[i - 2] = mensaje2[i].Trim();
+                        }
+
+                        for (int i = 0; i < cartas.Length; i++)
+                        {
+                            cartas_jugadas[i] = cartas[i];
+                        }
+
+                        PrepararCartasDesafio(cartas_jugadas);
+
+                        ChatPanel(true, $"Sistema/El jugador {usuario} ha desafiado a {desafiado} y como el desafío fue exitoso, {desafiado} ha sido eliminado.");
+                    }
+                    else if (message.StartsWith("FALLIDO"))
+                    {
+                        string[] mensaje2 = mensaje.Split('/');
+                        string desafiado = mensaje2[1].Trim();
+                        ChatPanel(true, $"Sistema/El jugador {usuario} ha desafiado a {desafiado} y como el desafío fue fallido, {usuario} ha sido eliminado.");
+                        string[] cartas = new string[mensaje2.Length - 2];
+                        for (int i = 2; i < mensaje2.Length; i++)
+                        {
+                            cartas[i - 2] = mensaje2[i].Trim();
+                        }
+
+                        for (int i = 0; i < cartas.Length; i++)
+                        {
+                            cartas_jugadas[i] = cartas[i];
+                        }
+
+                        PrepararCartasDesafio(cartas_jugadas);
+                    }
+                    return;
+                }
+                else if (message.StartsWith("CARTA_RONDA"))
+                {
+                    string carta = message.Substring(12).Trim();
+                    carta_ronda_actual = carta;
+                    Debug.WriteLine($"[JUEGO] Carta de la ronda actual: {carta_ronda_actual}");
+                }
+                else if (message.StartsWith("NUEVA_RONDA/"))
+                {
+                    // Formato: NUEVA_RONDA/numero_ronda
+                    string[] partes = message.Split('/');
+
+                    if (partes.Length >= 2)
+                    {
+                        // Obtener número de ronda y carta
+                        string numeroRonda = partes[1];
+
+                        obtener_carta_ronda();
+
+                        // Notificar al usuario
+                        ChatPanel(true, $"Sistema/¡Comienza la ronda {numeroRonda}! Carta designada: {carta_ronda_actual}");
+
+                        // Solicitar nuevas cartas para esta ronda
+                        if (conectado || ConnectToServerIfNeeded())
+                        {
+                            // Solicitar cartas nuevas para la nueva ronda
+                            GetCards(usuario);
+                            PedirTurno();
+
+                            Debug.WriteLine($"[RONDA] Nueva ronda {numeroRonda}, carta: {carta_ronda_actual}. Solicitando nuevas cartas.");
+                        }
+                    }
+                    return;
+                }
+                else if (message.StartsWith("JUGADOR_ELIMINADO/"))
+                {
+                    // Formato: JUGADOR_ELIMINADO/nombre_usuario
+                    string jugadorEliminado = message.Substring(17).Trim();
+
+                    // Mostrar mensaje de eliminación
+                    ChatPanel(true, $"Sistema/¡El jugador {jugadorEliminado} ha sido eliminado!");
+
+                    // Si el jugador eliminado soy yo
+                    if (jugadorEliminado.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Deshabilitar controles de juego
+                        _permitirAccionesJuego = false;
+                        esMiTurno = false;
+
+                        ChatPanel(true, "Sistema/¡Has sido eliminado! Ya no puedes realizar acciones.");
+                    }
 
                     return;
                 }
@@ -458,6 +560,97 @@ namespace Duska.Screens
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SERVER] Error procesando mensaje: {ex.Message}");
+            }
+        }
+
+        private void obtener_carta_ronda()
+        {
+            try
+            {
+                if (server != null && server.Connected)
+                {
+                    string mensajeFormato = "26/" + usuario + "/LALA";
+                    byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
+                    server.Send(msg);
+                    Debug.WriteLine("[RONDA] Solicitando información de carta de ronda actual");
+                }
+                else
+                {
+                    Debug.WriteLine("[ERROR] No se puede solicitar carta de ronda - sin conexión");
+                    if (ConnectToServerIfNeeded())
+                    {
+                        obtener_carta_ronda(); // Reintentar si la reconexión es exitosa
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al solicitar carta de ronda: {ex.Message}");
+            }
+        }
+
+        private void PrepararCartasDesafio(string[] cartasJugadas)
+        {
+            // Limpiar listas previas
+            cartasDesafio.Clear();
+            cartasDesafioValidas.Clear();
+
+            Debug.WriteLine($"[DESAFÍO] Preparando {cartasJugadas.Length} cartas para visualización");
+
+            // Para cada carta jugada, determinar si es válida según la carta de ronda
+            foreach (string nombreCarta in cartasJugadas)
+            {
+                if (string.IsNullOrEmpty(nombreCarta)) continue;
+
+                // Cargar la textura adecuada según el nombre
+                Texture2D textura = ObtenerTexturaParaCarta(nombreCarta);
+                if (textura != null)
+                {
+                    cartasDesafio.Add(textura);
+
+                    // Verificar si coincide con la carta de ronda
+                    bool esValida = EsCartaValidaParaRonda(nombreCarta, carta_ronda_actual);
+                    cartasDesafioValidas.Add(esValida);
+
+                    Debug.WriteLine($"[DESAFÍO] Carta {nombreCarta}: {(esValida ? "VÁLIDA" : "INVÁLIDA")}");
+                }
+            }
+
+            // Activar la visualización y reiniciar el temporizador
+            mostrandoDesafio = true;
+            tiempoDesafio = 0f;
+        }
+
+        // Método para determinar si una carta es válida para la ronda actual
+        private bool EsCartaValidaParaRonda(string nombreCarta, string tipoRonda)
+        {
+            // Ignorar si falta algún dato
+            if (string.IsNullOrEmpty(nombreCarta) || string.IsNullOrEmpty(tipoRonda))
+                return false;
+
+            // Comparar el tipo de la carta con el tipo de la ronda
+            if (tipoRonda == "ACES" && nombreCarta == "ace")
+                return true;
+            else if (tipoRonda == "REYES" && nombreCarta == "king")
+                return true;
+            else if (tipoRonda == "REINAS" && nombreCarta == "queen")
+                return true;
+            else if (tipoRonda == "JOKERS" && nombreCarta == "jack")
+                return true;
+
+            return false;
+        }
+
+        // Obtener la textura correspondiente al nombre de la carta
+        private Texture2D ObtenerTexturaParaCarta(string nombreCarta)
+        {
+            switch (nombreCarta.ToLower())
+            {
+                case "ace": return _cartas[0];
+                case "jack": return _cartas[1];
+                case "king": return _cartas[2];
+                case "queen": return _cartas[3];
+                default: return null;
             }
         }
 
@@ -615,17 +808,31 @@ namespace Duska.Screens
                 {
                     Debug.WriteLine("[CARTAS] Reiniciando hilo de escucha...");
                     StartMessageListener();
+                    Thread.Sleep(100); // Pequeña pausa para dar tiempo a que se inicie el hilo
                 }
 
                 // Enviar solicitud
-                string mensaje = "9/" + usuario + "/";
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                server.Send(msg);
-                Debug.WriteLine("[CARTAS] Solicitud enviada: " + mensaje);
+                if (server != null && server.Connected)
+                {
+                    string mensaje = "9/" + usuario;
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+                    Debug.WriteLine("[CARTAS] Solicitud enviada para nueva ronda");
+                }
+                else
+                {
+                    Debug.WriteLine("[ERROR] No se pueden solicitar cartas - sin conexión");
+                    ConnectToServerIfNeeded(); // Intentar reconectar
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine("[ERROR] Error al solicitar cartas: " + ex.Message);
+                // Intentar reconectar si es un problema de conexión
+                if (ex is SocketException || ex is ObjectDisposedException)
+                {
+                    ConnectToServerIfNeeded();
+                }
             }
         }
 
@@ -1166,6 +1373,23 @@ namespace Duska.Screens
             }
         }
 
+        private void EnviarConfirmacionEliminacion()
+        {
+            try
+            {
+                // Enviar mensaje código 25 para confirmar eliminación
+                string mensaje = $"25/{usuario}/Lala";
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+
+                Debug.WriteLine($"[DESAFÍO] Confirmación de eliminación enviada");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al enviar confirmación de eliminación: {ex.Message}");
+            }
+        }
+
         private void LimpiarCartasEnviadas()
         {
             // Crear una nueva lista para las cartas que se mantienen
@@ -1252,6 +1476,22 @@ namespace Duska.Screens
                     // Comprueba si el ratón está sobre alguna entidad de UI
                     // GeonBit.UI no tiene IsMouseOverAnyEntity, pero puedes comprobar si el mouse está sobre alguna entidad así:
                     ratónSobreUI = UserInterface.Active.TargetEntity != null && UserInterface.Active.TargetEntity.IsMouseOver;
+                }
+
+                if (mostrandoDesafio)
+                {
+                    // Incrementar el contador de tiempo
+                    tiempoDesafio += (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+                    // Verificar si ha pasado el tiempo de visualización
+                    if (tiempoDesafio >= DURACION_DESAFIO)
+                    {
+                        // Finalizar la visualización
+                        mostrandoDesafio = false;
+
+                        // Enviar confirmación al servidor para que proceda con la eliminación
+                        EnviarConfirmacionEliminacion();
+                    }
                 }
 
                 // Solo procesar teclas de juego si el ratón no está sobre la UI
@@ -1466,6 +1706,48 @@ namespace Duska.Screens
                         new Rectangle(centerX, centerY, 150, 225),
                         Color.White
                     );
+                }
+
+                if (mostrandoDesafio)
+                {
+                    // Dibujar un fondo semitransparente
+                    Texture2D fondoTextura = GetOrCreatePlainTexture(new Color(0, 0, 0, 180));
+                    _spriteBatch.Draw(fondoTextura, new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), Color.White);
+
+                    // Si hay cartas para mostrar
+                    if (cartasDesafio.Count > 0)
+                    {
+                        // Calcular posición central para las cartas
+                        int anchoTotal = cartasDesafio.Count * 160; // 150px por carta + 10px espacio
+                        int inicioX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
+                        int posY = GraphicsDevice.Viewport.Height / 2 - 150; // Centrado vertical
+
+                        // Dibujar cada carta con su filtro
+                        for (int i = 0; i < cartasDesafio.Count; i++)
+                        {
+                            int posX = inicioX + (i * 160);
+
+                            // Determinar color de filtro según validez
+                            Color colorFiltro = cartasDesafioValidas[i] ?
+                                new Color(0, 255, 0, 100) :  // Verde semitransparente
+                                new Color(255, 0, 0, 100);   // Rojo semitransparente
+
+                            // Dibujar la carta
+                            _spriteBatch.Draw(
+                                cartasDesafio[i],
+                                new Rectangle(posX, posY, 150, 225),
+                                Color.White
+                            );
+
+                            // Dibujar el filtro
+                            Texture2D filtroTextura = GetOrCreatePlainTexture(colorFiltro);
+                            _spriteBatch.Draw(
+                                filtroTextura,
+                                new Rectangle(posX, posY, 150, 225),
+                                colorFiltro
+                            );
+                        }
+                    }
                 }
 
                 _spriteBatch.End();

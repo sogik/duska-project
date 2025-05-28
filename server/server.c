@@ -931,28 +931,46 @@ void *cliente(void *socket_ptr)
                 strncpy(datos, mensaje, sizeof(datos) - 1);
             }
 
-            char cartas_jugadas[10][10] = {{0}};   // Array para almacenar hasta 10 cartas
+            // Extraer las cartas jugadas
+            char *token = strtok(datos, ",");
+            int cantidad = 0;
+            if (token != NULL)
+            {
+                cantidad = atoi(token);
+            }
+
+            char cartas_jugadas[10][5] = {{0}};    // Array para almacenar hasta 10 cartas
             int resultados_verificacion[10] = {0}; // Para almacenar resultados individuales
 
             // Extraer cada carta
             for (int i = 0; i < cantidad && i < 10; i++)
             {
-                char *carta = strtok(NULL, ",");
-                if (carta == NULL)
+                token = strtok(NULL, ",");
+                if (token == NULL)
                     break;
-                strncpy(cartas_jugadas[i], carta, sizeof(cartas_jugadas[i]) - 1);
-            }
 
-            guardar_cartas_jugadas(partida, usuario, cartas_jugadas, cantidad);
+                strncpy(cartas_jugadas[i], token, sizeof(cartas_jugadas[i]) - 1);
+                printf("[CARTA] Jugada %d: %s\n", i + 1, cartas_jugadas[i]);
+            }
 
             // Verificar que es el turno del jugador
             if (es_turno_de_jugador(usuario))
             {
-                // Obtener la partida del jugador
                 GameInfo *partida = obtener_partida_por_jugador(usuario);
-
                 if (partida != NULL)
                 {
+                    // Verificar cada carta contra la carta de la ronda
+                    verificar_cartas(partida, cartas_jugadas, cantidad, resultados_verificacion);
+
+                    // Guardar información sobre esta jugada para posibles desafíos
+                    guardar_ultima_jugada(partida, usuario, cartas_jugadas, cantidad);
+
+                    // Copiar los resultados de verificación a la partida
+                    for (int i = 0; i < cantidad && i < 10; i++)
+                    {
+                        partida->resultados_verificacion[i] = resultados_verificacion[i];
+                    }
+
                     // Formato del mensaje: ACTION/jugador/accion/datos
                     char mensaje_accion[1024];
                     snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%s",
@@ -1077,7 +1095,7 @@ void *cliente(void *socket_ptr)
                             strcpy(partida->jugador_pendiente_eliminacion, desafiado);
 
                             // Enviar resultado del desafío
-                            sprintf(mensaje_resultado, "DESAFIO/EXITO");
+                            sprintf(mensaje_resultado, "DESAFIO/EXITO/%s", desafiado);
 
                             // Incluir solo las cartas que fallan
                             for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
@@ -1096,7 +1114,17 @@ void *cliente(void *socket_ptr)
                             strcpy(partida->jugador_pendiente_eliminacion, usuario);
 
                             // Enviar resultado del desafío
-                            sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
+                            sprintf(mensaje_resultado, "DESAFIO/FALLIDO/%s", desafiado);
+
+                            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+                            {
+                                if (partida->resultados_verificacion[i] == 0)
+                                {
+                                    char temp[50];
+                                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
+                                    strcat(mensaje_resultado, temp);
+                                }
+                            }
                         }
 
                         // Marcar que hay una eliminación pendiente
@@ -1140,6 +1168,7 @@ void *cliente(void *socket_ptr)
                 // Notificar sobre la eliminación
                 char mensaje_eliminacion[100];
                 sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_a_eliminar);
+                printf("[ELIMINACIÓN] Enviando notificación: %s\n", mensaje_eliminacion);
                 broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
 
                 // Restablecer estado
@@ -1185,9 +1214,10 @@ void *cliente(void *socket_ptr)
             GameInfo *partida = obtener_partida_por_jugador(usuario);
             if (partida != NULL)
             {
-                char carta_ronda[10];
+                char carta_ronda[10] = {0};
                 obtener_carta_ronda_actual(partida, carta_ronda, sizeof(carta_ronda));
                 snprintf(respuesta, sizeof(respuesta), "CARTA_RONDA/%s", carta_ronda);
+                printf("[RONDA] Usuario %s solicita carta de ronda: %s\n", usuario, carta_ronda);
             }
             else
             {

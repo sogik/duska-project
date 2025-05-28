@@ -87,20 +87,20 @@ int iniciar_partida(int partida_id)
     srand(time(NULL));
     partida->turno_actual = rand() % num_jug;
 
-    nueva_partida->ronda_actual = 0;
-    nueva_partida->total_rondas = 13;
-    generar_carta_para_ronda_actual(nueva_partida);
+    partida->ronda_actual = 0;
+    partida->total_rondas = 4;
+    generar_carta_para_ronda_actual(partida);
 
     // Inicializar jugadores eliminados
-    nueva_partida->num_jugadores_activos = nueva_partida->num_jugadores;
+    partida->num_jugadores_activos = partida->num_jugadores;
     for (int i = 0; i < 4; i++)
     {
-        nueva_partida->jugadores_eliminados[i] = 0; // Todos activos al inicio
+        partida->jugadores_eliminados[i] = 0; // Todos activos al inicio
     }
 
     // Inicializar campos de eliminación pendiente
-    nueva_partida->eliminacion_pendiente = 0;
-    nueva_partida->jugador_pendiente_eliminacion[0] = '\0';
+    partida->eliminacion_pendiente = 0;
+    partida->jugador_pendiente_eliminacion[0] = '\0';
 
     // Notificar a todos los jugadores sobre el inicio de la partida
     char mensaje[100];
@@ -109,7 +109,7 @@ int iniciar_partida(int partida_id)
     return 0;
 }
 
-void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][10], int num_cartas)
+void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][5], int num_cartas)
 {
     if (!partida || !jugador || num_cartas <= 0)
         return;
@@ -118,6 +118,7 @@ void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[]
     strncpy(partida->ultimo_jugador, jugador, sizeof(partida->ultimo_jugador) - 1);
     partida->num_cartas_ultima_jugada = num_cartas;
 
+    // Copiar cada carta y su resultado de verificación
     for (int i = 0; i < num_cartas && i < 10; i++)
     {
         // Copiar la carta
@@ -221,10 +222,10 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
                partida->cartas_ronda[partida->ronda_actual]);
 
         // Notificar a todos sobre la nueva ronda
+        // FORMATO MODIFICADO: Solo enviar el número de ronda, el cliente pedirá la carta después
         char mensaje_ronda[100];
-        sprintf(mensaje_ronda, "NUEVA_RONDA/%d/%s",
-                partida->ronda_actual + 1,
-                partida->cartas_ronda[partida->ronda_actual]);
+        sprintf(mensaje_ronda, "NUEVA_RONDA/%d",
+                partida->ronda_actual + 1);
         broadcast_to_group(partida->grupo_id, mensaje_ronda);
     }
 
@@ -268,17 +269,22 @@ void generar_carta_para_ronda_actual(GameInfo *partida)
 }
 
 // Obtener la carta designada para la ronda actual
-void obtener_carta_ronda_actual(int partida_id, char *carta_ronda)
+// Obtener la carta designada para la ronda actual
+void obtener_carta_ronda_actual(GameInfo *partida, char *carta_ronda, size_t tam_buffer)
 {
-    GameInfo *partida = encontrar_partida(partida_id);
     if (partida != NULL && partida->ronda_actual < partida->total_rondas)
     {
-        strcpy(carta_ronda, partida->cartas_ronda[partida->ronda_actual]);
+        strncpy(carta_ronda, partida->cartas_ronda[partida->ronda_actual], tam_buffer - 1);
+        carta_ronda[tam_buffer - 1] = '\0';
+        printf("[RONDA] Obteniendo carta para ronda %d: %s\n",
+               partida->ronda_actual + 1, carta_ronda);
     }
     else
     {
         // Si hay algún error, asignar un valor por defecto
-        strcpy(carta_ronda, "?");
+        strncpy(carta_ronda, "?", tam_buffer - 1);
+        carta_ronda[tam_buffer - 1] = '\0';
+        printf("[RONDA] Error al obtener carta de ronda\n");
     }
 }
 
