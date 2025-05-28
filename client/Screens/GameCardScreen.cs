@@ -332,7 +332,6 @@ namespace Duska.Screens
                     }
 
                     UserInterface.Active.Clear();
-                    UserInterface.Active.RemoveEntity(panel);
 
                     // Volver al menú principal
                     ScreenManager.LoadScreen(new MainMenuScreen(Game, usuario), new FadeTransition(GraphicsDevice, Color.Black, 0.5f));

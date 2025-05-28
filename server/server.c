@@ -93,6 +93,13 @@ void verificar_cartas(GameInfo *partida, char cartas[][5], int num_cartas, int r
     printf("[VERIFICACIÓN] Ronda %d: tipo designado '%s', verificando %d cartas individualmente\n",
            partida->ronda_actual + 1, tipo_ronda, num_cartas);
 
+    printf("[VERIFICACIÓN] Revisando %d cartas:\n", num_cartas);
+    for (int i = 0; i < num_cartas; i++)
+    {
+        printf("[VERIFICACIÓN] Carta recibida %d: '%s' (longitud: %lu)\n",
+               i + 1, cartas[i], strlen(cartas[i]));
+    }
+
     // Verificar cada carta jugada de forma individual
     for (int i = 0; i < num_cartas; i++)
     {
@@ -1027,18 +1034,27 @@ void *cliente(void *socket_ptr)
                 cantidad = atoi(token);
             }
 
-            char cartas_jugadas[10][5] = {{0}};    // Array para almacenar hasta 10 cartas
+            char cartas_jugadas[10][10] = {{0}};   // Array para almacenar hasta 10 cartas
             int resultados_verificacion[10] = {0}; // Para almacenar resultados individuales
 
             // Extraer cada carta
+            int carta_index = 0;
             for (int i = 0; i < cantidad && i < 10; i++)
             {
                 token = strtok(NULL, ",");
-                if (token == NULL)
+                if (token != NULL)
+                {
+                    // Asegurar que el token se copia correctamente
+                    memset(cartas_jugadas[i], 0, sizeof(cartas_jugadas[i])); // Limpiar el buffer
+                    strncpy(cartas_jugadas[i], token, sizeof(cartas_jugadas[i]) - 1);
+                    printf("[CARTA] Jugada %d: '%s' (longitud: %lu)\n",
+                           i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
+                }
+                else
+                {
+                    printf("[ERROR] Faltan datos para la carta %d\n", i + 1);
                     break;
-
-                strncpy(cartas_jugadas[i], token, sizeof(cartas_jugadas[i]) - 1);
-                printf("[CARTA] Jugada %d: %s\n", i + 1, cartas_jugadas[i]);
+                }
             }
 
             // Verificar que es el turno del jugador

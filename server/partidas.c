@@ -109,7 +109,7 @@ int iniciar_partida(int partida_id)
     return 0;
 }
 
-void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][5], int num_cartas)
+void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][10], int num_cartas)
 {
     if (!partida || !jugador || num_cartas <= 0)
         return;
