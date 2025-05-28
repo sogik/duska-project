@@ -1039,8 +1039,8 @@ void *cliente(void *socket_ptr)
                 int resultado_snprintf = snprintf(patron_busqueda, sizeof(patron_busqueda), "%d/%s/%s/%s/",
                                                   codigo, usuario, contrasena, mensaje);
 
-                // Verificar si hubo truncamiento
-                if (resultado_snprintf >= sizeof(patron_busqueda))
+                // Verificar si hubo truncamiento - CORRECCIÓN DEL WARNING
+                if (resultado_snprintf >= (int)sizeof(patron_busqueda))
                 {
                     printf("[ERROR] Patrón de búsqueda truncado, usando método alternativo\n");
                     strcpy(respuesta, "ERROR/Datos demasiado largos");
