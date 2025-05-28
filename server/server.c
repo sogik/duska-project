@@ -1013,48 +1013,71 @@ void *cliente(void *socket_ptr)
         // Para código 21 (realizar acción en el juego)
         else if (codigo == 21)
         {
-            // Formato esperado: 21/usuario/accion/datos
-            char accion[50] = {0};
-            char datos[800] = {0};
-
-            // El campo 'contrasena' contiene la acción
-            strncpy(accion, contrasena, sizeof(accion) - 1);
-
-            // El campo 'mensaje' contiene los datos adicionales
-            if (mensaje != NULL)
-            {
-                strncpy(datos, mensaje, sizeof(datos) - 1);
-            }
-
-            // Extraer las cartas jugadas
-            char *token = strtok(datos, ",");
+            // Formato: 21/usuario/PLAY|PASS/cantidad/[cartas separadas por coma]
+            char accion[10] = {0};
             int cantidad = 0;
+            char cartas_jugadas[10][10] = {{0}};
+            int resultados_verificacion[10] = {0};
+
+            // Extraer acción (PLAY o PASS)
+            token = strtok(NULL, "/");
             if (token != NULL)
             {
-                cantidad = atoi(token);
-            }
+                strncpy(accion, token, sizeof(accion) - 1);
 
-            char cartas_jugadas[10][10] = {{0}};   // Array para almacenar hasta 10 cartas
-            int resultados_verificacion[10] = {0}; // Para almacenar resultados individuales
-
-            // Extraer cada carta
-            int carta_index = 0;
-            for (int i = 0; i < cantidad && i < 10; i++)
-            {
-                token = strtok(NULL, ",");
+                // Extraer cantidad de cartas
+                token = strtok(NULL, "/");
                 if (token != NULL)
                 {
-                    // Asegurar que el token se copia correctamente
-                    memset(cartas_jugadas[i], 0, sizeof(cartas_jugadas[i])); // Limpiar el buffer
-                    strncpy(cartas_jugadas[i], token, sizeof(cartas_jugadas[i]) - 1);
-                    printf("[CARTA] Jugada %d: '%s' (longitud: %lu)\n",
-                           i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
+                    cantidad = atoi(token);
+
+                    // Extraer parte que contiene todas las cartas
+                    token = strtok(NULL, ""); // Esto obtiene el resto del mensaje
+                    if (token != NULL && cantidad > 0)
+                    {
+                        printf("[DEBUG] Cadena de cartas: '%s'\n", token);
+
+                        // Ahora usar una copia para tokenizar las cartas con ','
+                        char cartas_copy[256] = {0};
+                        strncpy(cartas_copy, token, sizeof(cartas_copy) - 1);
+
+                        // Tokenizar esta cadena separada por comas
+                        char *carta_token = strtok(cartas_copy, ",");
+                        int i = 0;
+
+                        while (carta_token != NULL && i < cantidad && i < 10)
+                        {
+                            printf("[DEBUG] Carta %d: '%s'\n", i + 1, carta_token);
+                            strncpy(cartas_jugadas[i], carta_token, sizeof(cartas_jugadas[i]) - 1);
+                            i++;
+                            carta_token = strtok(NULL, ",");
+                        }
+
+                        // Verificar si obtuvimos todas las cartas esperadas
+                        if (i < cantidad)
+                        {
+                            printf("[ERROR] Solo se encontraron %d cartas de %d esperadas\n", i, cantidad);
+                            strcpy(respuesta, "ERROR/Formato inválido: faltan cartas");
+                            continue; // Saltar al siguiente mensaje
+                        }
+                    }
+                    else
+                    {
+                        printf("[ERROR] No se encontraron cartas, o cantidad es 0\n");
+                        strcpy(respuesta, "ERROR/Formato inválido: no hay cartas");
+                        continue; // Saltar al siguiente mensaje
+                    }
                 }
                 else
                 {
-                    printf("[ERROR] Faltan datos para la carta %d\n", i + 1);
-                    break;
+                    strcpy(respuesta, "ERROR/Formato inválido: falta cantidad");
+                    continue;
                 }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato inválido: falta acción");
+                continue;
             }
 
             // Verificar que es el turno del jugador

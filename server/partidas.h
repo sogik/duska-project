@@ -20,7 +20,7 @@ typedef struct GameInfo
 
     char ultimo_jugador[50];
     int num_cartas_ultima_jugada;
-    char cartas_ultima_jugada[10][5];
+    char cartas_ultima_jugada[10][10];
     int resultados_verificacion[10];
 
     int jugadores_eliminados[4]; // 1 si está eliminado
