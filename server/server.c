@@ -1014,9 +1014,7 @@ void *cliente(void *socket_ptr)
         // Reemplazar todo el bloque del código 21 con esto:
         else if (codigo == 21)
         {
-            // Formato: 21/usuario/PLAY/cantidad/cartas
             printf("[DEBUG-INICIAL] ====== PROCESANDO CÓDIGO 21 ======\n");
-            printf("[DEBUG-INICIAL] Petición recibida: '%s'\n", peticion); // Cambiar buffer por peticion
             printf("[DEBUG-INICIAL] Usuario: '%s'\n", usuario);
             printf("[DEBUG-INICIAL] Contrasena: '%s'\n", contrasena);
             printf("[DEBUG-INICIAL] Mensaje: '%s'\n", mensaje ? mensaje : "NULL");
@@ -1027,84 +1025,85 @@ void *cliente(void *socket_ptr)
             int resultados_verificacion[10] = {0};
 
             // Extraer acción
-            if (contrasena != NULL)
-            {
-                strncpy(accion, contrasena, sizeof(accion) - 1);
-                printf("[DEBUG] Acción extraída: '%s'\n", accion);
-            }
+            strncpy(accion, contrasena, sizeof(accion) - 1);
+            printf("[DEBUG] Acción extraída: '%s'\n", accion);
 
-            // Procesar el campo mensaje que contiene "cantidad/cartas"
+            // SOLUCIÓN: Reconstruir la parte que falta del mensaje original
+            // El problema es que el parseo general divide incorrectamente
+            // Necesitamos obtener la cantidad y las cartas que vienen después
+
+            // Para el código 21, sabemos que el formato es: 21/usuario/PLAY/cantidad/cartas
+            // Donde mensaje actual solo contiene "cantidad" pero necesitamos "cantidad/cartas"
+
             if (mensaje != NULL && strlen(mensaje) > 0)
             {
-                printf("[DEBUG] Procesando mensaje: '%s'\n", mensaje);
+                // La cantidad está en el campo mensaje
+                cantidad = atoi(mensaje);
+                printf("[DEBUG] Cantidad extraída del mensaje: %d\n", cantidad);
 
-                // Buscar el primer '/' para separar cantidad de cartas
-                char *separador = strchr(mensaje, '/');
-                if (separador != NULL)
+                // PROBLEMA: Las cartas están en la parte que se perdió del parseo original
+                // SOLUCIÓN: Buscar en la petición original la parte que falta
+
+                // Encontrar la posición donde deberían estar las cartas en peticion
+                char patron_busqueda[100];
+                snprintf(patron_busqueda, sizeof(patron_busqueda), "%d/%s/%s/%s/",
+                         codigo, usuario, contrasena, mensaje);
+
+                printf("[DEBUG] Buscando patrón: '%s'\n", patron_busqueda);
+                printf("[DEBUG] En petición: '%s'\n", peticion);
+
+                char *pos_cartas = strstr(peticion, patron_busqueda);
+                if (pos_cartas != NULL)
                 {
-                    // Extraer cantidad (antes del '/')
-                    int pos_separador = separador - mensaje;
-                    char cantidad_str[10] = {0};
+                    // Avanzar hasta después del patrón para obtener las cartas
+                    pos_cartas += strlen(patron_busqueda);
+                    printf("[DEBUG] Cartas encontradas: '%s'\n", pos_cartas);
 
-                    if (pos_separador > 0 && pos_separador < 10)
+                    if (strlen(pos_cartas) > 0)
                     {
-                        strncpy(cantidad_str, mensaje, pos_separador);
-                        cantidad = atoi(cantidad_str);
-                        printf("[DEBUG] Cantidad encontrada: %d\n", cantidad);
-
-                        // Extraer cartas (después del '/')
-                        char *cartas_parte = separador + 1;
-                        printf("[DEBUG] Parte de cartas: '%s'\n", cartas_parte);
-
-                        if (strlen(cartas_parte) > 0)
+                        // Procesar las cartas
+                        if (cantidad == 1)
                         {
-                            // Manejar caso de una sola carta (sin comas)
-                            if (cantidad == 1)
-                            {
-                                strncpy(cartas_jugadas[0], cartas_parte, sizeof(cartas_jugadas[0]) - 1);
-                                printf("[DEBUG] Carta única procesada: '%s'\n", cartas_jugadas[0]);
-                            }
-                            // Manejar múltiples cartas (con comas)
-                            else
-                            {
-                                char cartas_copia[256] = {0};
-                                strncpy(cartas_copia, cartas_parte, sizeof(cartas_copia) - 1);
-
-                                char *token = strtok(cartas_copia, ",");
-                                int idx = 0;
-
-                                while (token != NULL && idx < cantidad && idx < 10)
-                                {
-                                    // Limpiar espacios en blanco
-                                    while (*token == ' ')
-                                        token++;
-
-                                    strncpy(cartas_jugadas[idx], token, sizeof(cartas_jugadas[idx]) - 1);
-                                    printf("[DEBUG] Carta %d procesada: '%s'\n", idx + 1, cartas_jugadas[idx]);
-
-                                    idx++;
-                                    token = strtok(NULL, ",");
-                                }
-
-                                if (idx != cantidad)
-                                {
-                                    printf("[ERROR] Esperadas %d cartas, encontradas %d\n", cantidad, idx);
-                                }
-                            }
+                            // Una sola carta
+                            strncpy(cartas_jugadas[0], pos_cartas, sizeof(cartas_jugadas[0]) - 1);
+                            printf("[DEBUG] Carta única: '%s'\n", cartas_jugadas[0]);
                         }
                         else
                         {
-                            printf("[ERROR] No hay cartas después del separador\n");
+                            // Múltiples cartas separadas por comas
+                            char cartas_temp[256];
+                            strncpy(cartas_temp, pos_cartas, sizeof(cartas_temp) - 1);
+
+                            char *token = strtok(cartas_temp, ",");
+                            int idx = 0;
+
+                            while (token != NULL && idx < cantidad && idx < 10)
+                            {
+                                // Limpiar espacios
+                                while (*token == ' ')
+                                    token++;
+
+                                strncpy(cartas_jugadas[idx], token, sizeof(cartas_jugadas[idx]) - 1);
+                                printf("[DEBUG] Carta %d: '%s'\n", idx + 1, cartas_jugadas[idx]);
+
+                                idx++;
+                                token = strtok(NULL, ",");
+                            }
+
+                            if (idx != cantidad)
+                            {
+                                printf("[ERROR] Esperadas %d cartas, encontradas %d\n", cantidad, idx);
+                            }
                         }
                     }
                     else
                     {
-                        printf("[ERROR] Posición del separador inválida: %d\n", pos_separador);
+                        printf("[ERROR] No se encontraron cartas después del patrón\n");
                     }
                 }
                 else
                 {
-                    printf("[ERROR] No se encontró separador '/' en el mensaje\n");
+                    printf("[ERROR] No se pudo encontrar el patrón en la petición\n");
                 }
             }
             else
