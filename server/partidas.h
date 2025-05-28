@@ -46,7 +46,7 @@ int finalizar_partida(int partida_id);
 // Prototipos de funciones para el sistema de rondas
 int avanzar_ronda(int partida_id);
 void generar_carta_para_ronda_actual(GameInfo *partida);
-void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][5], int num_cartas);
+void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][10], int num_cartas);
 void obtener_carta_ronda_actual(GameInfo *partida, char *carta_ronda);
 int eliminar_jugador_de_partida(GameInfo *partida, char *jugador);
 
