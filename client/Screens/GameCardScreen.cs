@@ -330,6 +330,9 @@ namespace Duska.Screens
                         ChatPanel(true, "Sistema/Abandonando partida...");
                         Debug.WriteLine("[ABANDONO] Solicitud enviada para abandonar partida");
                     }
+
+                    UserInterface.Active.Clear();
+                    ScreenManager.LoadScreen(new MainMenuScreen(Game, usuario), new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
                 }
                 catch (Exception ex)
                 {
@@ -452,7 +455,6 @@ namespace Duska.Screens
                         ChatPanel(true, "Sistema/¡ES TU TURNO! Selecciona cartas con [ESPACIO] y envíalas con [E]");
                     else
                         ChatPanel(true, $"Sistema/Turno de {jugadorConTurnoActual}. Esperando...");
-
 
                     Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
 

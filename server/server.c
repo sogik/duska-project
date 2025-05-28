@@ -1085,8 +1085,10 @@ void *cliente(void *socket_ptr)
                             }
                         }
 
-                        // Preparar mensaje de resultado
+                        // Preparar mensaje de resultado - AÑADIR DETALLE AL LOG
                         char mensaje_resultado[1024];
+                        printf("[DESAFÍO] Verificación completada. Mintiendo: %s\n",
+                               mintiendo ? "SÍ" : "NO");
 
                         // PASO 1: Determinar quién será eliminado pero NO eliminarlo todavía
                         if (mintiendo)
@@ -1095,7 +1097,7 @@ void *cliente(void *socket_ptr)
                             strcpy(partida->jugador_pendiente_eliminacion, desafiado);
 
                             // Enviar resultado del desafío
-                            sprintf(mensaje_resultado, "DESAFIO/EXITO/%s", desafiado);
+                            sprintf(mensaje_resultado, "DESAFIO/EXITO");
 
                             // Incluir solo las cartas que fallan
                             for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
@@ -1107,30 +1109,25 @@ void *cliente(void *socket_ptr)
                                     strcat(mensaje_resultado, temp);
                                 }
                             }
+
+                            printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
                         }
                         else
                         {
                             // El desafiado NO estaba mintiendo - EL DESAFIANTE SERÁ ELIMINADO
                             strcpy(partida->jugador_pendiente_eliminacion, usuario);
 
-                            // Enviar resultado del desafío
-                            sprintf(mensaje_resultado, "DESAFIO/FALLIDO/%s", desafiado);
+                            // Enviar resultado del desafío sin cartas adicionales
+                            sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
 
-                            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
-                            {
-                                if (partida->resultados_verificacion[i] == 0)
-                                {
-                                    char temp[50];
-                                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
-                                    strcat(mensaje_resultado, temp);
-                                }
-                            }
+                            printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
                         }
 
                         // Marcar que hay una eliminación pendiente
                         partida->eliminacion_pendiente = 1;
 
-                        // Enviar el resultado a todos los jugadores
+                        // Enviar el resultado a todos los jugadores - ASEGURAR QUE SE ENVÍE
+                        printf("[DESAFÍO] Enviando a grupo %d: %s\n", partida->grupo_id, mensaje_resultado);
                         broadcast_to_group(partida->grupo_id, mensaje_resultado);
 
                         strcpy(respuesta, "DESAFIO_OK");
