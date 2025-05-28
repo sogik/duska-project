@@ -267,10 +267,13 @@ namespace Duska.Screens
             Button ExitBtn = new Button("Exit", ButtonSkin.Default);
             ExitBtn.OnClick = (Entity btn) =>
             {
-                int estado = this.estado(usuario, "0");
-                Debug.WriteLine("Estado enviado: " + estado);
                 DisconnectFromServer(); // Desconectar del servidor
+
+                // Limpiar UI
                 panel.Visible = false;
+                UserInterface.Active.RemoveEntity(panel);
+
+                // Salir del juego después de asegurar que la desconexión se completó
                 Game.Exit();
             };
             panel.AddChild(ExitBtn);
@@ -849,27 +852,64 @@ namespace Duska.Screens
             try
             {
                 Debug.WriteLine("Desconectando del servidor...");
+
+                // Detener primero el hilo de escucha
+                stopMessageListener = true;
+
+                // Esperar a que el hilo termine (con timeout)
+                if (messageListenerThread != null && messageListenerThread.IsAlive)
+                {
+                    // Dar tiempo a que el hilo termine limpiamente
+                    if (!messageListenerThread.Join(1000))
+                    {
+                        Debug.WriteLine("Forzando terminación del hilo de escucha");
+                        // No llamar a Abort(), es mala práctica y está obsoleto
+                    }
+                }
+
+                // Ahora es seguro enviar el mensaje de desconexión y cerrar el socket
                 if (server != null && server.Connected)
                 {
-                    int estado = this.estado(usuario, "0"); // Enviar estado al servidor
-                    server.Shutdown(SocketShutdown.Send);
-                    server.Close();
+                    try
+                    {
+                        // Enviar mensaje de estado desconectado
+                        string mensaje = "6/" + usuario + "/0";
+                        byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                        server.Send(msg);
+                        Debug.WriteLine("Estado de desconexión enviado correctamente");
+
+                        // Cerrar socket de manera ordenada
+                        server.Shutdown(SocketShutdown.Both);
+                        server.Close();
+                        server = null; // Importante para que no intente reconectarse
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"Error al cerrar socket: {ex.Message}");
+                        // Asegurar que sea nulo incluso si hay error
+                        server = null;
+                    }
                 }
+
+                // Marcar como desconectado
                 conectado = false;
-                stopMessageListener = true; // Detener el hilo de mensajes
+
                 Debug.WriteLine("Desconexión del servidor completada.");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine("Error al desconectar del servidor: " + ex.Message);
+                // Asegurar que variables de estado queden consistentes
+                conectado = false;
+                server = null;
             }
         }
 
         private void ReconnectToServer()
         {
-            if (isReconnecting)
+            if (isReconnecting || stopMessageListener)
             {
-                Debug.WriteLine("Ya se está intentando reconectar. Ignorando llamada.");
+                Debug.WriteLine("No se intenta reconectar: ya en proceso o desconexión intencional.");
                 return;
             }
 
@@ -1141,15 +1181,26 @@ namespace Duska.Screens
 
             Debug.WriteLine($"Iniciando hilo de escucha. Conectado: {conectado}, Socket válido: {(server != null && server.Connected)}");
 
+            // Modificar este bloque en el método StartMessageListener:
+
             messageListenerThread = new Thread(() =>
             {
                 try
                 {
-                    while (conectado && !stopMessageListener)
+                    while (!stopMessageListener)
                     {
+                        if (!conectado || server == null || !server.Connected)
+                        {
+                            Debug.WriteLine("Hilo de escucha detectó desconexión, terminando...");
+                            break;
+                        }
+
                         try
                         {
                             byte[] buffer = new byte[1024];
+
+                            // Usar Receive con un timeout para poder comprobar stopMessageListener periódicamente
+                            server.ReceiveTimeout = 1000; // 1 segundo
                             int bytesReceived = server.Receive(buffer);
 
                             if (bytesReceived > 0)
@@ -1159,11 +1210,31 @@ namespace Duska.Screens
                                 ProcessServerMessage(message);
                             }
                         }
+                        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
+                        {
+                            // Timeout normal, solo para comprobar stopMessageListener
+                            continue;
+                        }
                         catch (SocketException ex)
                         {
-                            Debug.WriteLine("Error en el hilo de mensajes (SocketException): " + ex.Message);
-                            conectado = false; // Actualizar la bandera
-                            ReconnectToServer();
+                            // Solo intentar reconectar si no estamos intentando detener el hilo
+                            if (!stopMessageListener && conectado)
+                            {
+                                Debug.WriteLine("Error en el hilo de mensajes (SocketException): " + ex.Message);
+                                conectado = false;
+                                ReconnectToServer();
+                            }
+                            else
+                            {
+                                Debug.WriteLine("Socket cerrado durante desconexión controlada.");
+                                break;
+                            }
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            // Socket ya cerrado, terminar hilo
+                            Debug.WriteLine("Socket ya ha sido cerrado.");
+                            break;
                         }
                         catch (Exception ex)
                         {
@@ -1173,7 +1244,7 @@ namespace Duska.Screens
                 }
                 finally
                 {
-                    Debug.WriteLine("El hilo de mensajes se ha detenido.");
+                    Debug.WriteLine("El hilo de mensajes se ha detenido correctamente.");
                 }
             });
 
