@@ -33,6 +33,8 @@ namespace Duska
         {
             base.Initialize();
 
+            Window.Title = "Liar";
+
             int _ScreenWidth = _graphics.GraphicsDevice.Adapter.CurrentDisplayMode.Width;
             int _ScreenHeight = _graphics.GraphicsDevice.Adapter.CurrentDisplayMode.Height;
             _graphics.PreferredBackBufferWidth = (int)_ScreenWidth;

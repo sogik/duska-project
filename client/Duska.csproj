@@ -2,11 +2,16 @@
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <TargetFramework>net9.0</TargetFramework>
-        <ApplicationIcon />
         <StartupObject />
         <PublishReadyToRun>false</PublishReadyToRun>
         <TieredCompilation>false</TieredCompilation>
     </PropertyGroup>
+    <PropertyGroup>
+  <AssemblyName>Liar</AssemblyName>
+  <RootNamespace>Liar</RootNamespace>
+  <ApplicationIcon>Icon.ico</ApplicationIcon>
+  <Title>Liar</Title>
+</PropertyGroup>
     <PropertyGroup>
         <MonoGameExtendedPipelineReferencePath>$(MSBuildThisFileDirectory)pipeline-references</MonoGameExtendedPipelineReferencePath>
     </PropertyGroup>
@@ -25,4 +30,9 @@
         <PackageReference Include="MonoGame.Extended.Content.Pipeline" Version="4.0.3" />
         <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.2.1105" />
     </ItemGroup>
+      <ItemGroup>
+        <EmbeddedResource Include="Icon.ico" />
+        <EmbeddedResource Include="Icon.bmp" />
+    <Compile Remove="GeonBit.UI\**\*.cs" />
+  </ItemGroup>
 </Project>

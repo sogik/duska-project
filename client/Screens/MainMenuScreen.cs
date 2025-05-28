@@ -39,6 +39,9 @@ namespace Duska.Screens
 
         private bool conectado = false; // Indica si el cliente está conectado al servidor
 
+        // 1. Añadir una nueva variable para controlar desconexiones intencionales
+        private volatile bool desconexionIntencional = false;
+
         public MainMenuScreen(Game game, string usuario)
             : base(game)
         {
@@ -267,13 +270,17 @@ namespace Duska.Screens
             Button ExitBtn = new Button("Exit", ButtonSkin.Default);
             ExitBtn.OnClick = (Entity btn) =>
             {
-                DisconnectFromServer(); // Desconectar del servidor
+                // Marcar como desconexión intencional y desconectar
+                DisconnectFromServer();
 
                 // Limpiar UI
                 panel.Visible = false;
                 UserInterface.Active.RemoveEntity(panel);
 
-                // Salir del juego después de asegurar que la desconexión se completó
+                // Esperar un poco para asegurar que la desconexión se complete
+                Thread.Sleep(200);
+
+                // Salir del juego
                 Game.Exit();
             };
             panel.AddChild(ExitBtn);
@@ -801,6 +808,14 @@ namespace Duska.Screens
 
         private void ConnectToServer()
         {
+            // No intentar conectar si fue una desconexión intencional
+            if (desconexionIntencional)
+            {
+                Debug.WriteLine("No se intenta conectar: la desconexión fue intencional");
+                return;
+            }
+
+            // Solo intentar conectar si no hay conexión activa
             if (server == null || !server.Connected)
             {
                 try
@@ -853,7 +868,8 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("Desconectando del servidor...");
 
-                // Detener primero el hilo de escucha
+                // Marcar que es una desconexión intencional
+                desconexionIntencional = true;
                 stopMessageListener = true;
 
                 // Esperar a que el hilo termine (con timeout)
@@ -899,7 +915,6 @@ namespace Duska.Screens
             catch (Exception ex)
             {
                 Debug.WriteLine("Error al desconectar del servidor: " + ex.Message);
-                // Asegurar que variables de estado queden consistentes
                 conectado = false;
                 server = null;
             }
@@ -907,9 +922,10 @@ namespace Duska.Screens
 
         private void ReconnectToServer()
         {
-            if (isReconnecting || stopMessageListener)
+            // No reconectar si fue una desconexión intencional o ya está reconectando
+            if (isReconnecting || desconexionIntencional)
             {
-                Debug.WriteLine("No se intenta reconectar: ya en proceso o desconexión intencional.");
+                Debug.WriteLine("No se intenta reconectar: desconexión intencional o ya en proceso.");
                 return;
             }
 
@@ -1163,25 +1179,31 @@ namespace Duska.Screens
                 if (infoPanel == null)
                 {
                     // Crear panel si no existe
-                    infoPanel = new Panel(new Vector2(200, 50), PanelSkin.Simple, Anchor.TopLeft);
+                    infoPanel = new Panel(new Vector2(200, 50), PanelSkin.Simple, Anchor.BottomLeft);
                     infoPanel.Identifier = "infoPanel";
                     UserInterface.Active.Root.AddChild(infoPanel);
                 }
-
                 // Actualizar contenido del panel
                 infoPanel.ClearChildren();
-                Paragraph statusText = new Paragraph(esLider ? "Estado: LÍDER" : "Estado: MIEMBRO");
-                statusText.FillColor = esLider ? Color.Green : Color.Gray;
+                Paragraph statusText = new Paragraph(esLider ? "LÍDER" : "MIEMBRO");
+                statusText.FillColor = esLider ? Color.Green : Color.White;
                 infoPanel.AddChild(statusText);
             }
         }
+        private bool messageListenerRunning = false;
         private void StartMessageListener()
         {
+            // Evitar iniciar múltiples hilos de escucha
+            if (messageListenerRunning)
+            {
+                Debug.WriteLine("Hilo de escucha ya está en ejecución, ignorando llamada");
+                return;
+            }
+
             stopMessageListener = false;
+            messageListenerRunning = true;
 
             Debug.WriteLine($"Iniciando hilo de escucha. Conectado: {conectado}, Socket válido: {(server != null && server.Connected)}");
-
-            // Modificar este bloque en el método StartMessageListener:
 
             messageListenerThread = new Thread(() =>
             {
@@ -1244,6 +1266,7 @@ namespace Duska.Screens
                 }
                 finally
                 {
+                    messageListenerRunning = false;
                     Debug.WriteLine("El hilo de mensajes se ha detenido correctamente.");
                 }
             });

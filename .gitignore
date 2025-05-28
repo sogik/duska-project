@@ -1,6 +1,7 @@
 # Archivos y carpetas de configuración de Visual Studio
 .vscode/
 .vs/
+build/
 *.user
 *.suo
 
