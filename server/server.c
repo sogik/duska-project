@@ -1011,11 +1011,12 @@ void *cliente(void *socket_ptr)
             }
         }
         // Para código 21 (realizar acción en el juego)
+        // Reemplazar todo el bloque del código 21 con esto:
         else if (codigo == 21)
         {
             // Formato: 21/usuario/PLAY/cantidad/cartas
             printf("[DEBUG-INICIAL] ====== PROCESANDO CÓDIGO 21 ======\n");
-            printf("[DEBUG-INICIAL] Buffer recibido: '%s'\n", buffer);
+            printf("[DEBUG-INICIAL] Petición recibida: '%s'\n", peticion); // Cambiar buffer por peticion
             printf("[DEBUG-INICIAL] Usuario: '%s'\n", usuario);
             printf("[DEBUG-INICIAL] Contrasena: '%s'\n", contrasena);
             printf("[DEBUG-INICIAL] Mensaje: '%s'\n", mensaje ? mensaje : "NULL");
@@ -1024,13 +1025,6 @@ void *cliente(void *socket_ptr)
             int cantidad = 0;
             char cartas_jugadas[10][10] = {{0}};
             int resultados_verificacion[10] = {0};
-
-            // IMPORTANTE: El formato esperado es 21/usuario/PLAY/cantidad/cartas
-            // Donde:
-            // - codigo = 21
-            // - usuario = nombre del usuario
-            // - contrasena = acción (PLAY/PASS)
-            // - mensaje = "cantidad/cartas"
 
             // Extraer acción
             if (contrasena != NULL)
@@ -1144,10 +1138,10 @@ void *cliente(void *socket_ptr)
                         partida->resultados_verificacion[i] = resultados_verificacion[i];
                     }
 
-                    // Formato del mensaje: ACTION/jugador/accion/datos
+                    // Formato del mensaje: ACTION/jugador/accion/cantidad
                     char mensaje_accion[1024];
-                    snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%s",
-                             usuario, accion, datos);
+                    snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%d",
+                             usuario, accion, cantidad); // Cambiar datos por cantidad
 
                     // Notificar a todos los jugadores de la partida
                     broadcast_to_group(partida->grupo_id, mensaje_accion);
@@ -1175,6 +1169,8 @@ void *cliente(void *socket_ptr)
             {
                 strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", sizeof(respuesta));
             }
+
+            printf("[DEBUG-INICIAL] ====== FIN CÓDIGO 21 ======\n");
         }
         // Para código 22 (pasar turno)
         else if (codigo == 22)
