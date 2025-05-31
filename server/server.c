@@ -274,7 +274,7 @@ int obtener_grupo_id(const char *usuario)
 }
 
 // Función para enviar datos a todos los clientes de un grupo específico
-int broadcast_to_group(int grupo_id, char *mensaje)
+int broadcast_to_group(int grupo_id, const char *mensaje)
 {
     if (grupo_id <= 0 || mensaje == NULL)
         return -1;
