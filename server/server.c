@@ -1418,28 +1418,33 @@ void *cliente(void *socket_ptr)
                         // Si solo queda un jugador activo, terminar la partida
                         if (partida->num_jugadores_activos == 1)
                         {
-                            // Buscar al último jugador activo
+                            // Buscar al ganador...
                             char *ganador = NULL;
                             for (int i = 0; i < partida->num_jugadores; i++)
                             {
-                                if (!partida->jugadores_eliminados[i])
+                                if (partida->jugadores_eliminados[i] == 0)
                                 {
                                     ganador = partida->jugadores[i];
                                     break;
                                 }
                             }
 
-                            // Notificar fin de partida
                             if (ganador != NULL)
                             {
-                                char mensaje_fin[100];
-                                sprintf(mensaje_fin, "FIN_PARTIDA/%s", ganador);
-                                broadcast_to_group(partida->grupo_id, mensaje_fin);
-                                printf("[PARTIDA] Partida %d finalizada. Ganador: %s\n",
-                                       partida->partida_id, ganador);
-                                partida->estado = 2; // Finalizada
-                                usleep(500000);
+                                char mensaje_ganador[100];
+                                sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+                                broadcast_to_group(partida->grupo_id, mensaje_ganador);
+
+                                // DECLARAR Y USAR grupo_id correctamente:
+                                int grupo_id = partida->grupo_id; // ← Añadir esta línea
+                                partida->estado = 2;              // Finalizada
+
+                                // Esperar un momento para que se procese el mensaje de fin
+                                usleep(500000); // 0.5 segundos
+
+                                // Disolver el grupo
                                 disolver_grupo(grupo_id);
+
                                 printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
                                        partida->partida_id, grupo_id);
                             }
@@ -1512,84 +1517,85 @@ void *cliente(void *socket_ptr)
             {
                 strcpy(respuesta, "ERROR/No estás en una partida");
             }
-            else
-            {
-                strcpy(respuesta, "ERROR/Comando desconocido");
-            }
-
-            printf("Resultado: %s\n", respuesta);
-            if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
-            {
-                perror("Error al escribir en socket");
-                break;
-            }
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/Comando desconocido");
         }
 
-        mysql_close(conn);
-        close(sock_conn);
-        return NULL;
+        printf("Resultado: %s\n", respuesta);
+        if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
+        {
+            perror("Error al escribir en socket");
+            break;
+        }
     }
 
-    int main(int argc, char *argv[])
+    mysql_close(conn);
+    close(sock_conn);
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    int sock_conn, sock_listen;
+    struct sockaddr_in serv_adr;
+
+    if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
-        int sock_conn, sock_listen;
-        struct sockaddr_in serv_adr;
-
-        if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-        {
-            perror("Error creant socket");
-            exit(1);
-        }
-
-        memset(&serv_adr, 0, sizeof(serv_adr));
-        serv_adr.sin_family = AF_INET;
-        serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
-        serv_adr.sin_port = htons(50756);
-
-        if (bind(sock_listen, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) < 0)
-        {
-            perror("Error al bind");
-            close(sock_listen);
-            exit(1);
-        }
-
-        if (listen(sock_listen, 10) < 0)
-        {
-            perror("Error en el listen");
-            close(sock_listen);
-            exit(1);
-        }
-
-        printf("Servidor escuchando en el puerto 50756...\n");
-
-        srand(time(NULL)); // Para la asignación aleatoria de turnos
-
-        while (1)
-        {
-            sock_conn = accept(sock_listen, NULL, NULL);
-            if (sock_conn < 0)
-            {
-                perror("Error en accept");
-                continue;
-            }
-            printf("Nuevo cliente conectado.\n");
-
-            int *socket_ptr = malloc(sizeof(int));
-            *socket_ptr = sock_conn;
-
-            pthread_t hilo;
-            if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0)
-            {
-                perror("Error al crear hilo");
-                close(sock_conn);
-                free(socket_ptr);
-            }
-            else
-            {
-                pthread_detach(hilo);
-            }
-        }
-
-        close(sock_listen);
-        return 0;
+        perror("Error creant socket");
+        exit(1);
     }
+
+    memset(&serv_adr, 0, sizeof(serv_adr));
+    serv_adr.sin_family = AF_INET;
+    serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_adr.sin_port = htons(50756);
+
+    if (bind(sock_listen, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) < 0)
+    {
+        perror("Error al bind");
+        close(sock_listen);
+        exit(1);
+    }
+
+    if (listen(sock_listen, 10) < 0)
+    {
+        perror("Error en el listen");
+        close(sock_listen);
+        exit(1);
+    }
+
+    printf("Servidor escuchando en el puerto 50756...\n");
+
+    srand(time(NULL)); // Para la asignación aleatoria de turnos
+
+    while (1)
+    {
+        sock_conn = accept(sock_listen, NULL, NULL);
+        if (sock_conn < 0)
+        {
+            perror("Error en accept");
+            continue;
+        }
+        printf("Nuevo cliente conectado.\n");
+
+        int *socket_ptr = malloc(sizeof(int));
+        *socket_ptr = sock_conn;
+
+        pthread_t hilo;
+        if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0)
+        {
+            perror("Error al crear hilo");
+            close(sock_conn);
+            free(socket_ptr);
+        }
+        else
+        {
+            pthread_detach(hilo);
+        }
+    }
+
+    close(sock_listen);
+    return 0;
+}
