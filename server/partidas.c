@@ -201,50 +201,55 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
     printf("[PARTIDA] Jugador %s eliminado de la partida %d. Quedan %d jugadores activos.\n",
            jugador, partida->partida_id, partida->num_jugadores_activos);
 
-    // Si quedan más de 1 jugador activo, avanzar a la siguiente ronda
+    // Si quedan más de 1 jugador activo, continuar el juego
     if (partida->num_jugadores_activos > 1)
     {
-        // AVANZAR A LA SIGUIENTE RONDA
-        partida->ronda_actual++;
-
-        // Verificar si hemos excedido el número total de rondas
-        if (partida->ronda_actual >= partida->total_rondas)
+        // Si el jugador eliminado tenía el turno, avanzar al siguiente jugador activo
+        if (partida->turno_actual == indice_jugador)
         {
-            // Reiniciar al inicio si superamos el número de rondas
-            partida->ronda_actual = 0;
+            // Buscar el siguiente jugador activo
+            int nuevo_turno = (indice_jugador + 1) % partida->num_jugadores;
+            int intentos = 0;
+
+            while (partida->jugadores_eliminados[nuevo_turno] && intentos < partida->num_jugadores)
+            {
+                nuevo_turno = (nuevo_turno + 1) % partida->num_jugadores;
+                intentos++;
+            }
+
+            if (intentos < partida->num_jugadores && !partida->jugadores_eliminados[nuevo_turno])
+            {
+                partida->turno_actual = nuevo_turno;
+
+                // Notificar el nuevo turno
+                char mensaje_turno[100];
+                snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s",
+                         partida->jugadores[partida->turno_actual]);
+                broadcast_to_group(partida->grupo_id, mensaje_turno);
+
+                printf("[TURNO] Nuevo turno asignado a: %s\n",
+                       partida->jugadores[partida->turno_actual]);
+            }
         }
 
-        // Generar nueva carta para la ronda
+        // AVANZAR A LA SIGUIENTE RONDA SOLO si quedan múltiples jugadores
+        partida->ronda_actual++;
+
+        if (partida->ronda_actual >= partida->total_rondas)
+        {
+            partida->ronda_actual = 0; // Reiniciar ciclo de rondas
+        }
+
         generar_carta_para_ronda_actual(partida);
 
         printf("[RONDA] Avanzando a ronda %d, carta designada: %s\n",
                partida->ronda_actual + 1,
                partida->cartas_ronda[partida->ronda_actual]);
 
-        // Notificar a todos sobre la nueva ronda
-        // FORMATO MODIFICADO: Solo enviar el número de ronda, el cliente pedirá la carta después
         char mensaje_ronda[100];
         sprintf(mensaje_ronda, "NUEVA_RONDA/%d",
                 partida->ronda_actual + 1);
         broadcast_to_group(partida->grupo_id, mensaje_ronda);
-    }
-
-    // Si el jugador eliminado tenía el turno, avanzar al siguiente jugador activo
-    if (partida->turno_actual == indice_jugador)
-    {
-        // Buscar el siguiente jugador activo
-        int nuevo_turno = (indice_jugador + 1) % partida->num_jugadores;
-        while (partida->jugadores_eliminados[nuevo_turno] && nuevo_turno != indice_jugador)
-        {
-            nuevo_turno = (nuevo_turno + 1) % partida->num_jugadores;
-        }
-
-        partida->turno_actual = nuevo_turno;
-
-        // Notificar el nuevo turno
-        char mensaje_turno[100];
-        sprintf(mensaje_turno, "TURN/%s", partida->jugadores[partida->turno_actual]);
-        broadcast_to_group(partida->grupo_id, mensaje_turno);
     }
 
     return 0;
@@ -337,34 +342,122 @@ GameInfo *obtener_partida_por_jugador(const char *usuario)
 // Función para avanzar el turno
 int avanzar_turno(int partida_id)
 {
-    // Buscar partida
+    // Buscar la partida por ID
     GameInfo *partida = obtener_partida_por_id(partida_id);
-    if (!partida || partida->estado != 1)
+    if (!partida)
+    {
+        printf("[ERROR] No se encontró la partida con ID %d\n", partida_id);
         return -1;
+    }
 
-    // Avanzar turno
-    partida->turno_actual = (partida->turno_actual + 1) % partida->num_jugadores;
+    if (partida->estado != 1)
+    {
+        printf("[ERROR] La partida %d no está activa (estado: %d)\n", partida_id, partida->estado);
+        return -2;
+    }
 
-    // Obtener nombre del siguiente jugador
+    printf("[TURNO] Avanzando turno en partida %d. Turno actual: %d (%s)\n",
+           partida_id, partida->turno_actual, partida->jugadores[partida->turno_actual]);
+
+    // Verificar si quedan suficientes jugadores activos
+    if (partida->num_jugadores_activos <= 1)
+    {
+        printf("[TURNO] Solo queda %d jugador(es) activo(s). Finalizando partida.\n",
+               partida->num_jugadores_activos);
+
+        // Buscar al ganador (único jugador activo)
+        char *ganador = NULL;
+        for (int i = 0; i < partida->num_jugadores; i++)
+        {
+            if (partida->jugadores_eliminados[i] == 0)
+            {
+                ganador = partida->jugadores[i];
+                break;
+            }
+        }
+
+        if (ganador != NULL)
+        {
+            printf("[PARTIDA] Ganador encontrado: %s\n", ganador);
+
+            // Enviar mensaje de fin de partida
+            char mensaje_ganador[100];
+            sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+            broadcast_to_group(partida->grupo_id, mensaje_ganador);
+
+            // Marcar partida como finalizada
+            partida->estado = 2;
+
+            // Programar disolución del grupo (se hace en el servidor principal)
+            return 1; // Código especial para indicar fin de partida
+        }
+        else
+        {
+            printf("[ERROR] No se encontró ganador en partida %d\n", partida_id);
+            return -3;
+        }
+    }
+
+    // BUSCAR EL SIGUIENTE JUGADOR ACTIVO
+    int turno_original = partida->turno_actual;
+    int intentos = 0;
+
+    do
+    {
+        // Avanzar al siguiente jugador
+        partida->turno_actual = (partida->turno_actual + 1) % partida->num_jugadores;
+        intentos++;
+
+        printf("[TURNO] Probando jugador %d: %s (eliminado: %s)\n",
+               partida->turno_actual,
+               partida->jugadores[partida->turno_actual],
+               partida->jugadores_eliminados[partida->turno_actual] ? "SÍ" : "NO");
+
+        // Evitar bucle infinito
+        if (intentos > partida->num_jugadores)
+        {
+            printf("[ERROR] No se encontró ningún jugador activo después de %d intentos\n", intentos);
+            return -4;
+        }
+
+    } while (partida->jugadores_eliminados[partida->turno_actual] == 1);
+
+    // Verificar que encontramos un jugador válido
+    if (partida->jugadores_eliminados[partida->turno_actual] == 1)
+    {
+        printf("[ERROR] El jugador seleccionado %s está eliminado\n",
+               partida->jugadores[partida->turno_actual]);
+        return -5;
+    }
+
+    // Obtener nombre del siguiente jugador ACTIVO
     char *siguiente_jugador = partida->jugadores[partida->turno_actual];
     if (!siguiente_jugador)
-        return -2;
+    {
+        printf("[ERROR] El nombre del siguiente jugador es NULL\n");
+        return -6;
+    }
 
-    // Enviar mensaje de turno SEPARADO con salto de línea
+    printf("[TURNO] Turno asignado al jugador %d: %s\n",
+           partida->turno_actual, siguiente_jugador);
+
+    // Enviar mensaje de turno al grupo
     char mensaje_turno[100];
-    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n", siguiente_jugador);
+    snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s", siguiente_jugador);
+
     printf("[TURNO] Enviando mensaje de turno: '%s'\n", mensaje_turno);
 
-    // Enviar mensaje de turno
-    broadcast_to_group(partida->grupo_id, mensaje_turno);
+    int resultado_broadcast = broadcast_to_group(partida->grupo_id, mensaje_turno);
+    if (resultado_broadcast < 0)
+    {
+        printf("[ERROR] Error al enviar mensaje de turno al grupo %d\n", partida->grupo_id);
+        return -7;
+    }
 
-    // También enviar mensaje de turno como un mensaje de chat
-    /*char chat_mensaje[200];
-    snprintf(chat_mensaje, sizeof(chat_mensaje), "CHAT/SISTEMA/*** TURNO DE %s ***\n",
-             siguiente_jugador);
-    broadcast_to_group(partida->grupo_id, chat_mensaje);*/
+    printf("[TURNO] Turno avanzado exitosamente de %s a %s\n",
+           partida->jugadores[turno_original], siguiente_jugador);
 
-    return 0;
+    return 0; // Éxito
 }
 
 // Función para finalizar una partida

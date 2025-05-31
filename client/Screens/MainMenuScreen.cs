@@ -53,14 +53,15 @@ namespace Duska.Screens
         {
             base.LoadContent();
 
-            // Limpiar la interfaz de usuario antes de inicializar
-            UserInterface.Active.Clear();
-
-            // Inicializar UserInterface si no está inicializado
-            if (UserInterface.Active == null)
+            // IMPORTANTE: Limpiar y reinicializar la interfaz de usuario SIEMPRE
+            if (UserInterface.Active != null)
             {
-                InitializeThemeAndUI(BuiltinThemes.hd);
+                UserInterface.Active.Clear();
+                Debug.WriteLine("[MAIN MENU] UI existente limpiada");
             }
+
+            // Reinicializar la interfaz de usuario
+            InitializeThemeAndUI(BuiltinThemes.hd);
 
             _spriteBatch = new SpriteBatch(GraphicsDevice);
             _background = Content.Load<Texture2D>("bg2");

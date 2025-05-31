@@ -37,6 +37,9 @@ namespace Duska.Screens
 
         public string usuario;
 
+        private bool estoyEliminado = false;
+        private bool partidaTerminada = false;
+
         private string carta_ronda_actual; // Inicialmente no hay carta jugada
 
         private string[] cartas_jugadas = new string[5];
@@ -320,6 +323,9 @@ namespace Duska.Screens
             {
                 try
                 {
+                    // IMPORTANTE: Detener el hilo de escucha ANTES de enviar el mensaje
+                    stopMessageListener = true;
+
                     if (server != null && server.Connected)
                     {
                         // Enviar mensaje para abandonar partida
@@ -327,24 +333,43 @@ namespace Duska.Screens
                         byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                         server.Send(msg);
 
-                        ChatPanel(true, "Sistema/Abandonando partida...");
                         Debug.WriteLine("[ABANDONO] Solicitud enviada para abandonar partida");
                     }
 
-                    UserInterface.Active.Clear();
+                    // LIMPIAR COMPLETAMENTE LA INTERFAZ DE USUARIO
+                    if (UserInterface.Active != null)
+                    {
+                        UserInterface.Active.Clear();
+                        Debug.WriteLine("[UI] Interfaz de usuario limpiada antes de cambiar pantalla");
+                    }
 
-                    // Volver al menú principal
-                    ScreenManager.LoadScreen(new MainMenuScreen(Game, usuario), new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
+                    // Esperar un momento para que se procese el mensaje
+                    System.Threading.Tasks.Task.Delay(200).ContinueWith(_ =>
+                    {
+                        // Crear nueva instancia del menú principal con socket limpio
+                        var mainMenuScreen = new MainMenuScreen(Game, usuario);
+
+                        // IMPORTANTE: No pasar el socket existente para que se cree una nueva conexión
+                        // mainMenuScreen.SetExistingSocket(server); // NO hacer esto
+
+                        // Cambiar a la pantalla del menú principal
+                        ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
+                    });
                 }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[ERROR] Error al abandonar partida: {ex.Message}");
-                    ChatPanel(true, $"Sistema/Error al abandonar partida: {ex.Message}");
-                }
 
-                // Ocultar el panel de confirmación
-                panel.Visible = false;
-                UserInterface.Active.RemoveEntity(panel);
+                    // Asegurar limpieza incluso si hay error
+                    if (UserInterface.Active != null)
+                    {
+                        UserInterface.Active.Clear();
+                    }
+
+                    // Ir al menú principal de todas formas
+                    var mainMenuScreen = new MainMenuScreen(Game, usuario);
+                    ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
+                }
             };
             panel.AddChild(acceptBtn);
 
@@ -611,22 +636,54 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("JUGADOR_ELIMINADO/"))
                 {
-                    // Formato: JUGADOR_ELIMINADO/nombre_usuario
                     string jugadorEliminado = message.Substring(17).Trim();
 
-                    // Mostrar mensaje de eliminación
-                    ChatPanel(true, $"Sistema/¡El jugador {jugadorEliminado} ha sido eliminado!");
-
-                    // Si el jugador eliminado soy yo
                     if (jugadorEliminado.Equals(usuario, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Deshabilitar controles de juego
+                        // Soy yo el eliminado
+                        estoyEliminado = true;
                         _permitirAccionesJuego = false;
                         esMiTurno = false;
 
-                        ChatPanel(true, "Sistema/¡Has sido eliminado! Ya no puedes realizar acciones.");
+                        ChatPanel(true, "Sistema/¡Has sido eliminado de la partida!");
+
+                        // Mostrar panel de opciones para el jugador eliminado
+                        MostrarPanelEliminacion();
+                    }
+                    else
+                    {
+                        ChatPanel(true, $"Sistema/El jugador {jugadorEliminado} ha sido eliminado");
+                    }
+                    return;
+                }
+                else if (message.StartsWith("FIN_PARTIDA/"))
+                {
+                    string ganador = message.Substring(12).Trim();
+                    partidaTerminada = true;
+                    _permitirAccionesJuego = false;
+
+                    if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ChatPanel(true, "Sistema/¡FELICIDADES! ¡HAS GANADO LA PARTIDA!");
+                    }
+                    else
+                    {
+                        ChatPanel(true, $"Sistema/Fin de partida. Ganador: {ganador}");
                     }
 
+                    // Mostrar panel de fin de partida
+                    MostrarPanelFinPartida(ganador);
+                    return;
+                }
+                else if (message.StartsWith("GRUPO_DISUELTO/"))
+                {
+                    ChatPanel(true, "Sistema/El grupo ha sido disuelto. Regresando al menú principal...");
+
+                    // Esperar un momento y regresar al menú principal
+                    System.Threading.Tasks.Task.Delay(2000).ContinueWith(_ =>
+                    {
+                        RegresarAlMenuPrincipal();
+                    });
                     return;
                 }
                 else if (message.StartsWith("ERROR/"))
@@ -641,6 +698,141 @@ namespace Duska.Screens
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SERVER] Error procesando mensaje: {ex.Message}");
+            }
+        }
+
+        private void MostrarPanelEliminacion()
+        {
+            // Limpiar UI anterior
+            if (UserInterface.Active != null)
+            {
+                UserInterface.Active.Clear();
+            }
+
+            // Crear panel principal
+            Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
+            panel.Visible = true;
+            UserInterface.Active.AddEntity(panel);
+
+            // Título
+            panel.AddChild(new Header("¡HAS SIDO ELIMINADO!"));
+            panel.AddChild(new HorizontalLine());
+
+            // Mensaje informativo
+            panel.AddChild(new Paragraph("Has sido eliminado de la partida."));
+            panel.AddChild(new Paragraph("¿Qué deseas hacer?"));
+            panel.AddChild(new HorizontalLine());
+
+            // Botón para quedarse como espectador
+            Button espectadorBtn = new Button("Quedar como Espectador", ButtonSkin.Default);
+            espectadorBtn.OnClick = (Entity btn) =>
+            {
+                try
+                {
+                    if (server != null && server.Connected)
+                    {
+                        string mensaje = $"28/{usuario}/ESPECTADOR";
+                        byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                        server.Send(msg);
+
+                        panel.Visible = false;
+                        UserInterface.Active.RemoveEntity(panel);
+
+                        // Mostrar chat con mensaje de espectador
+                        ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ERROR] Error al quedarse como espectador: {ex.Message}");
+                }
+            };
+            panel.AddChild(espectadorBtn);
+
+            // Botón para salir de la partida
+            Button salirBtn = new Button("Salir de la Partida", ButtonSkin.Default);
+            salirBtn.OnClick = (Entity btn) =>
+            {
+                try
+                {
+                    if (server != null && server.Connected)
+                    {
+                        string mensaje = $"28/{usuario}/SALIR";
+                        byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                        server.Send(msg);
+                    }
+
+                    // Regresar inmediatamente al menú principal
+                    RegresarAlMenuPrincipal();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ERROR] Error al salir de partida: {ex.Message}");
+                    RegresarAlMenuPrincipal(); // Salir aunque haya error
+                }
+            };
+            panel.AddChild(salirBtn);
+        }
+
+        private void MostrarPanelFinPartida(string ganador)
+        {
+            // Limpiar UI anterior
+            if (UserInterface.Active != null)
+            {
+                UserInterface.Active.Clear();
+            }
+
+            // Crear panel principal
+            Panel panel = new Panel(new Vector2(400, 200), PanelSkin.Default, Anchor.Center);
+            panel.Visible = true;
+            UserInterface.Active.AddEntity(panel);
+
+            // Título
+            panel.AddChild(new Header("¡PARTIDA TERMINADA!"));
+            panel.AddChild(new HorizontalLine());
+
+            // Mensaje del ganador
+            if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+            {
+                panel.AddChild(new Paragraph("¡FELICIDADES!"));
+                panel.AddChild(new Paragraph("¡HAS GANADO LA PARTIDA!"));
+            }
+            else
+            {
+                panel.AddChild(new Paragraph($"Ganador: {ganador}"));
+                panel.AddChild(new Paragraph("¡Mejor suerte la próxima vez!"));
+            }
+
+            panel.AddChild(new HorizontalLine());
+
+            // Botón para regresar al menú
+            Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
+            regresarBtn.OnClick = (Entity btn) =>
+            {
+                RegresarAlMenuPrincipal();
+            };
+            panel.AddChild(regresarBtn);
+        }
+
+        private void RegresarAlMenuPrincipal()
+        {
+            try
+            {
+                // Detener escucha de mensajes
+                stopMessageListener = true;
+
+                // Regresar al menú principal reutilizando el socket
+                var mainMenuScreen = new MainMenuScreen(Game, usuario);
+                if (server != null && server.Connected)
+                {
+                    mainMenuScreen.SetExistingSocket(server);
+                }
+
+                ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al regresar al menú: {ex.Message}");
             }
         }
 

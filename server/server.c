@@ -192,6 +192,38 @@ int agregar_a_grupo(const char *usuario, int grupo_id)
     return exito;
 }
 
+void disolver_grupo(int grupo_id)
+{
+    if (grupo_id <= 0)
+        return;
+
+    printf("[GRUPO] Disolviendo grupo %d\n", grupo_id);
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    // Notificar a todos los miembros que el grupo se disuelve
+    char mensaje_disolucion[100];
+    snprintf(mensaje_disolucion, sizeof(mensaje_disolucion), "GRUPO_DISUELTO/%d", grupo_id);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            // Enviar notificación
+            write(current->socket, mensaje_disolucion, strlen(mensaje_disolucion));
+
+            // Remover del grupo
+            current->grupo_id = 0;
+
+            printf("[GRUPO] Usuario %s removido del grupo %d\n", current->usuario, grupo_id);
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+}
+
 // Función para obtener el ID de grupo de un usuario
 int obtener_grupo_id(const char *usuario)
 {
@@ -1406,6 +1438,10 @@ void *cliente(void *socket_ptr)
                                 printf("[PARTIDA] Partida %d finalizada. Ganador: %s\n",
                                        partida->partida_id, ganador);
                                 partida->estado = 2; // Finalizada
+                                usleep(500000);
+                                disolver_grupo(grupo_id);
+                                printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
+                                       partida->partida_id, grupo_id);
                             }
                         }
 
@@ -1426,84 +1462,134 @@ void *cliente(void *socket_ptr)
                 strcpy(respuesta, "ERROR/No estás en una partida");
             }
         }
-        else
+        else if (codigo == 28) // Salir de partida después de eliminación
         {
-            strcpy(respuesta, "ERROR/Comando desconocido");
+            // Formato: 28/usuario/accion (donde accion puede ser "ESPECTADOR" o "SALIR")
+
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                if (strcmp(contrasena, "SALIR") == 0)
+                {
+                    // El jugador quiere salir del grupo completamente
+                    int grupo_id = obtener_grupo_id(usuario);
+
+                    if (grupo_id > 0)
+                    {
+                        // Notificar salida del grupo
+                        char mensaje_salida[256];
+                        snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
+                        broadcast_to_group(grupo_id, mensaje_salida);
+
+                        // Remover del grupo
+                        pthread_mutex_lock(&client_list_mutex);
+                        ClientNode *current = client_list;
+                        while (current != NULL)
+                        {
+                            if (strcmp(current->usuario, usuario) == 0)
+                            {
+                                current->grupo_id = 0;
+                                break;
+                            }
+                            current = current->next;
+                        }
+                        pthread_mutex_unlock(&client_list_mutex);
+
+                        printf("[PARTIDA] Jugador %s salió del grupo %d después de eliminación\n",
+                               usuario, grupo_id);
+
+                        strcpy(respuesta, "SALIDA_OK");
+                    }
+                }
+                else if (strcmp(contrasena, "ESPECTADOR") == 0)
+                {
+                    // El jugador se queda como espectador
+                    printf("[PARTIDA] Jugador %s se queda como espectador\n", usuario);
+                    strcpy(respuesta, "ESPECTADOR_OK");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida");
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Comando desconocido");
+            }
+
+            printf("Resultado: %s\n", respuesta);
+            if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
+            {
+                perror("Error al escribir en socket");
+                break;
+            }
         }
 
-        printf("Resultado: %s\n", respuesta);
-        if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
+        mysql_close(conn);
+        close(sock_conn);
+        return NULL;
+    }
+
+    int main(int argc, char *argv[])
+    {
+        int sock_conn, sock_listen;
+        struct sockaddr_in serv_adr;
+
+        if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         {
-            perror("Error al escribir en socket");
-            break;
+            perror("Error creant socket");
+            exit(1);
         }
-    }
 
-    mysql_close(conn);
-    close(sock_conn);
-    return NULL;
-}
+        memset(&serv_adr, 0, sizeof(serv_adr));
+        serv_adr.sin_family = AF_INET;
+        serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
+        serv_adr.sin_port = htons(50756);
 
-int main(int argc, char *argv[])
-{
-    int sock_conn, sock_listen;
-    struct sockaddr_in serv_adr;
+        if (bind(sock_listen, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) < 0)
+        {
+            perror("Error al bind");
+            close(sock_listen);
+            exit(1);
+        }
 
-    if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        perror("Error creant socket");
-        exit(1);
-    }
+        if (listen(sock_listen, 10) < 0)
+        {
+            perror("Error en el listen");
+            close(sock_listen);
+            exit(1);
+        }
 
-    memset(&serv_adr, 0, sizeof(serv_adr));
-    serv_adr.sin_family = AF_INET;
-    serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serv_adr.sin_port = htons(50756);
+        printf("Servidor escuchando en el puerto 50756...\n");
 
-    if (bind(sock_listen, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) < 0)
-    {
-        perror("Error al bind");
+        srand(time(NULL)); // Para la asignación aleatoria de turnos
+
+        while (1)
+        {
+            sock_conn = accept(sock_listen, NULL, NULL);
+            if (sock_conn < 0)
+            {
+                perror("Error en accept");
+                continue;
+            }
+            printf("Nuevo cliente conectado.\n");
+
+            int *socket_ptr = malloc(sizeof(int));
+            *socket_ptr = sock_conn;
+
+            pthread_t hilo;
+            if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0)
+            {
+                perror("Error al crear hilo");
+                close(sock_conn);
+                free(socket_ptr);
+            }
+            else
+            {
+                pthread_detach(hilo);
+            }
+        }
+
         close(sock_listen);
-        exit(1);
+        return 0;
     }
-
-    if (listen(sock_listen, 10) < 0)
-    {
-        perror("Error en el listen");
-        close(sock_listen);
-        exit(1);
-    }
-
-    printf("Servidor escuchando en el puerto 50756...\n");
-
-    srand(time(NULL)); // Para la asignación aleatoria de turnos
-
-    while (1)
-    {
-        sock_conn = accept(sock_listen, NULL, NULL);
-        if (sock_conn < 0)
-        {
-            perror("Error en accept");
-            continue;
-        }
-        printf("Nuevo cliente conectado.\n");
-
-        int *socket_ptr = malloc(sizeof(int));
-        *socket_ptr = sock_conn;
-
-        pthread_t hilo;
-        if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0)
-        {
-            perror("Error al crear hilo");
-            close(sock_conn);
-            free(socket_ptr);
-        }
-        else
-        {
-            pthread_detach(hilo);
-        }
-    }
-
-    close(sock_listen);
-    return 0;
-}
