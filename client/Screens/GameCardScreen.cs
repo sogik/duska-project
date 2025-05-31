@@ -752,40 +752,43 @@ namespace Duska.Screens
         {
             try
             {
-                Debug.WriteLine("[UI] Iniciando MostrarPanelEliminacion");
+                Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacion ***");
 
-                // IMPORTANTE: Limpiar la UI actual pero mantener lo esencial
-                // No usar Clear() porque puede eliminar elementos necesarios
+                // NO limpiar la UI completamente, solo añadir el panel encima
+                if (UserInterface.Active == null)
+                {
+                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
+                    return;
+                }
 
-                // Crear panel principal con tamaño fijo
-                Panel panel = new Panel(new Vector2(500, 300), PanelSkin.Default, Anchor.Center);
+                // Crear panel principal
+                Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
 
-                UserInterface.Active.AddEntity(panel);
+                Debug.WriteLine("[UI] Panel creado");
 
-                // Título con color rojo para destacar
+                // Título destacado
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
                 titulo.FillColor = Color.Red;
                 panel.AddChild(titulo);
 
                 panel.AddChild(new HorizontalLine());
 
-                // Mensaje informativo
+                // Mensajes informativos
                 panel.AddChild(new Paragraph("Has sido eliminado de la partida."));
+                panel.AddChild(new Paragraph(""));
                 panel.AddChild(new Paragraph("¿Qué deseas hacer?"));
                 panel.AddChild(new Paragraph(""));
 
                 panel.AddChild(new HorizontalLine());
 
-                // Crear un panel horizontal para los botones
-                Panel panelBotones = new Panel(new Vector2(-1, 80), PanelSkin.None, Anchor.Auto);
-
                 // Botón para quedarse como espectador
                 Button espectadorBtn = new Button("Quedar como Espectador", ButtonSkin.Default);
-                espectadorBtn.Size = new Vector2(200, 50);
+                espectadorBtn.Size = new Vector2(220, 60);
+                espectadorBtn.FillColor = Color.LightBlue;
                 espectadorBtn.OnClick = (Entity btn) =>
                 {
-                    Debug.WriteLine("[ELIMINACIÓN] Botón espectador clickeado");
+                    Debug.WriteLine("[ELIMINACIÓN] *** Botón espectador clickeado ***");
 
                     try
                     {
@@ -805,25 +808,25 @@ namespace Duska.Screens
                         // Mostrar mensaje en chat
                         ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
 
-                        Debug.WriteLine("[ELIMINACIÓN] Configurado como espectador");
+                        Debug.WriteLine("[ELIMINACIÓN] Configurado como espectador exitosamente");
                     }
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"[ERROR] Error al quedarse como espectador: {ex.Message}");
                     }
                 };
-                panelBotones.AddChild(espectadorBtn);
+                panel.AddChild(espectadorBtn);
 
-                // Espacio entre botones
-                panelBotones.AddChild(new Paragraph(""));
+                // Espacio
+                panel.AddChild(new Paragraph(""));
 
                 // Botón para salir de la partida
                 Button salirBtn = new Button("Salir de la Partida", ButtonSkin.Default);
-                salirBtn.Size = new Vector2(200, 50);
+                salirBtn.Size = new Vector2(220, 60);
                 salirBtn.FillColor = Color.Orange;
                 salirBtn.OnClick = (Entity btn) =>
                 {
-                    Debug.WriteLine("[ELIMINACIÓN] Botón salir clickeado");
+                    Debug.WriteLine("[ELIMINACIÓN] *** Botón salir clickeado ***");
 
                     try
                     {
@@ -848,27 +851,35 @@ namespace Duska.Screens
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"[ERROR] Error al salir de partida: {ex.Message}");
-                        // Salir aunque haya error
-                        RegresarAlMenuPrincipal();
+                        RegresarAlMenuPrincipal(); // Salir aunque haya error
                     }
                 };
-                panelBotones.AddChild(salirBtn);
+                panel.AddChild(salirBtn);
 
-                panel.AddChild(panelBotones);
+                // IMPORTANTE: Añadir al UserInterface
+                UserInterface.Active.AddEntity(panel);
 
-                Debug.WriteLine("[UI] Panel de eliminación creado exitosamente");
+                Debug.WriteLine("[UI] *** Panel de eliminación añadido a UserInterface ***");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] Error en MostrarPanelEliminacion: {ex.Message}");
+                Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelEliminacion: {ex.Message} ***");
+                Debug.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
 
-                // Plan de respaldo: Mostrar mensaje simple y regresar al menú
-                ChatPanel(true, "Sistema/Has sido eliminado. Regresando al menú principal...");
-
-                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                // Plan de respaldo: Mostrar mensaje y regresar al menú
+                try
                 {
-                    RegresarAlMenuPrincipal();
-                });
+                    ChatPanel(true, "Sistema/Has sido eliminado. Regresando al menú principal en 3 segundos...");
+
+                    System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                    {
+                        RegresarAlMenuPrincipal();
+                    });
+                }
+                catch (Exception ex2)
+                {
+                    Debug.WriteLine($"[ERROR] Error en plan de respaldo: {ex2.Message}");
+                }
             }
         }
 
@@ -1633,13 +1644,15 @@ namespace Duska.Screens
                                 if (bytesReceived > 0)
                                 {
                                     string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
-                                    Debug.WriteLine($"[RED] Mensaje recibido: {message}");
+                                    Debug.WriteLine($"[SOCKET] *** Mensaje crudo recibido: '{message}' ***");
 
-                                    // Procesar el mensaje de forma segura
+                                    // Verificar específicamente mensajes de eliminación
+                                    if (message.Contains("JUGADOR_ELIMINADO"))
+                                    {
+                                        Debug.WriteLine($"[SOCKET] *** MENSAJE DE ELIMINACIÓN DETECTADO: '{message}' ***");
+                                    }
+
                                     ProcessServerMessage(message);
-
-                                    // IMPORTANTE: NO hacer break o return aquí
-                                    // El hilo debe seguir ejecutándose para recibir más mensajes
                                 }
                             }
                             else
