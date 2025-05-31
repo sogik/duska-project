@@ -1347,8 +1347,8 @@ void *cliente(void *socket_ptr)
                         sprintf(mensaje_abandono, "JUGADOR_ABANDONO/%s", usuario);
                         broadcast_to_group(partida->grupo_id, mensaje_abandono);
 
-                        printf("[PARTIDA] Jugador %s abandonó la partida %d\n",
-                               usuario, partida->partida_id);
+                        printf("[PARTIDA] Jugador %s abandonó la partida %d. Quedan %d jugadores activos\n",
+                               usuario, partida->partida_id, partida->num_jugadores_activos);
 
                         // Si era el turno de este jugador, avanzar el turno
                         if (partida->turno_actual == indice_jugador)
@@ -1356,39 +1356,78 @@ void *cliente(void *socket_ptr)
                             avanzar_turno(partida->partida_id);
                         }
 
-                        // Si solo queda un jugador activo, terminar la partida
-                        if (partida->num_jugadores_activos == 1)
+                        // SOLO finalizar si queda 1 jugador activo o menos
+                        if (partida->num_jugadores_activos <= 1)
                         {
-                            // Buscar al ganador...
+                            printf("[PARTIDA] Solo queda %d jugador(es) activo(s). Finalizando partida.\n",
+                                   partida->num_jugadores_activos);
+
+                            // Buscar al ganador (si queda alguno)
                             char *ganador = NULL;
-                            for (int i = 0; i < partida->num_jugadores; i++)
+                            if (partida->num_jugadores_activos == 1)
                             {
-                                if (partida->jugadores_eliminados[i] == 0)
+                                for (int i = 0; i < partida->num_jugadores; i++)
                                 {
-                                    ganador = partida->jugadores[i];
-                                    break;
+                                    if (partida->jugadores_eliminados[i] == 0)
+                                    {
+                                        ganador = partida->jugadores[i];
+                                        break;
+                                    }
                                 }
                             }
 
                             if (ganador != NULL)
                             {
+                                // HAY UN GANADOR - Finalizar partida normalmente
                                 char mensaje_ganador[100];
                                 sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
                                 broadcast_to_group(partida->grupo_id, mensaje_ganador);
 
-                                // DECLARAR Y USAR grupo_id correctamente:
-                                int grupo_id = partida->grupo_id; // ← Añadir esta línea
-                                partida->estado = 2;              // Finalizada
-
-                                // Esperar un momento para que se procese el mensaje de fin
-                                usleep(500000); // 0.5 segundos
-
-                                // Disolver el grupo
-                                disolver_grupo(grupo_id);
-
-                                printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
-                                       partida->partida_id, grupo_id);
+                                printf("[PARTIDA] Partida finalizada. Ganador: %s\n", ganador);
                             }
+                            else
+                            {
+                                // NO HAY GANADOR (todos abandonaron) - Partida cancelada
+                                char mensaje_cancelada[100];
+                                sprintf(mensaje_cancelada, "PARTIDA_CANCELADA/Todos los jugadores abandonaron");
+                                broadcast_to_group(partida->grupo_id, mensaje_cancelada);
+
+                                printf("[PARTIDA] Partida cancelada - Todos los jugadores abandonaron\n");
+                            }
+
+                            // MARCAR PARTIDA COMO FINALIZADA
+                            partida->estado = 2; // Finalizada
+
+                            // AHORA SÍ disolver el grupo después de finalizar
+                            int grupo_id = partida->grupo_id;
+                            usleep(500000); // 0.5 segundos para que se procese el mensaje
+                            disolver_grupo(grupo_id);
+
+                            printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
+                                   partida->partida_id, grupo_id);
+                        }
+                        else
+                        {
+                            // AÚN QUEDAN JUGADORES - La partida continúa
+                            printf("[PARTIDA] La partida continúa con %d jugadores activos\n",
+                                   partida->num_jugadores_activos);
+
+                            // NO disolver el grupo, solo notificar que el jugador salió
+                            // El jugador que abandonó sale del grupo pero los demás siguen
+                            pthread_mutex_lock(&client_list_mutex);
+                            ClientNode *current = client_list;
+                            while (current != NULL)
+                            {
+                                if (strcmp(current->usuario, usuario) == 0)
+                                {
+                                    current->grupo_id = 0; // Solo sacar al que abandonó
+                                    break;
+                                }
+                                current = current->next;
+                            }
+                            pthread_mutex_unlock(&client_list_mutex);
+
+                            printf("[PARTIDA] Jugador %s removido del grupo. Los demás continúan jugando.\n", usuario);
                         }
 
                         strcpy(respuesta, "ABANDONO_OK");

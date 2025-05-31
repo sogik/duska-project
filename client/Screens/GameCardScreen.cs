@@ -668,6 +668,32 @@ namespace Duska.Screens
                     });
                     return;
                 }
+                else if (message.StartsWith("PARTIDA_CANCELADA/"))
+                {
+                    string razon = message.Substring(17).Trim();
+                    partidaTerminada = true;
+                    _permitirAccionesJuego = false;
+
+                    ChatPanel(true, $"Sistema/Partida cancelada: {razon}");
+
+                    // Mostrar panel de partida cancelada
+                    MostrarPanelPartidaCancelada(razon);
+                    return;
+                }
+                else if (message.StartsWith("JUGADOR_ABANDONO/"))
+                {
+                    string jugadorQueAbandono = message.Substring(16).Trim();
+
+                    ChatPanel(true, $"Sistema/El jugador {jugadorQueAbandono} ha abandonado la partida");
+
+                    // Si era el que tenía el turno, el turno debería cambiar automáticamente
+                    if (jugadorQueAbandono.Equals(jugadorConTurnoActual, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ChatPanel(true, "Sistema/Esperando nuevo turno...");
+                    }
+
+                    return;
+                }
                 else if (message.StartsWith("ERROR/"))
                 {
                     // Mensaje de error del servidor
@@ -681,6 +707,37 @@ namespace Duska.Screens
             {
                 Debug.WriteLine($"[SERVER] Error procesando mensaje: {ex.Message}");
             }
+        }
+
+        private void MostrarPanelPartidaCancelada(string razon)
+        {
+            // Limpiar UI anterior
+            if (UserInterface.Active != null)
+            {
+                UserInterface.Active.Clear();
+            }
+
+            // Crear panel principal
+            Panel panel = new Panel(new Vector2(400, 200), PanelSkin.Default, Anchor.Center);
+            panel.Visible = true;
+            UserInterface.Active.AddEntity(panel);
+
+            // Título
+            panel.AddChild(new Header("PARTIDA CANCELADA"));
+            panel.AddChild(new HorizontalLine());
+
+            // Mensaje
+            panel.AddChild(new Paragraph("La partida ha sido cancelada"));
+            panel.AddChild(new Paragraph($"Razón: {razon}"));
+            panel.AddChild(new HorizontalLine());
+
+            // Botón para regresar al menú
+            Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
+            regresarBtn.OnClick = (Entity btn) =>
+            {
+                RegresarAlMenuPrincipal();
+            };
+            panel.AddChild(regresarBtn);
         }
 
         private void MostrarPanelEliminacion()
