@@ -761,9 +761,6 @@ namespace Duska.Screens
                 Panel panel = new Panel(new Vector2(500, 300), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
 
-                // Asegurar que el panel esté al frente
-                panel.Priority = 1000;
-
                 UserInterface.Active.AddEntity(panel);
 
                 // Título con color rojo para destacar
