@@ -537,67 +537,49 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("DESAFIO/"))
                 {
-                    string mensaje = message.Substring(8).Trim(); // mensaje = "EXITO//"
+                    string mensaje = message.Substring(8).Trim(); // mensaje = "EXITO/carta1/carta2" o "FALLIDO/carta1/carta2"
 
                     if (mensaje.StartsWith("EXITO"))
                     {
-                        string[] mensaje2 = mensaje.Split('/');
-                        // mensaje2[0] = "EXITO"
-                        // mensaje2[1] = "" (vacío)
-                        // mensaje2[2] = "" (vacío)
+                        string[] partes = mensaje.Split('/');
+                        // partes[0] = "EXITO"
+                        // partes[1..n] = cartas jugadas
 
-                        // Verificar que hay suficientes partes antes de acceder
-                        if (mensaje2.Length >= 2)
+                        // Extraer las cartas para mostrar
+                        List<string> cartas = new List<string>();
+                        for (int i = 1; i < partes.Length; i++)
                         {
-                            // Las cartas empiezan desde el índice 1 (después de "EXITO")
-                            List<string> cartas = new List<string>();
-                            for (int i = 1; i < mensaje2.Length; i++)
+                            if (!string.IsNullOrEmpty(partes[i].Trim()))
                             {
-                                if (!string.IsNullOrEmpty(mensaje2[i].Trim()))
-                                {
-                                    cartas.Add(mensaje2[i].Trim());
-                                }
+                                cartas.Add(partes[i].Trim());
                             }
-
-                            // Convertir a array
-                            string[] cartasArray = cartas.ToArray();
-
-                            for (int i = 0; i < cartasArray.Length && i < cartas_jugadas.Length; i++)
-                            {
-                                cartas_jugadas[i] = cartasArray[i];
-                            }
-
-                            PrepararCartasDesafio(cartas_jugadas);
-
-                            ChatPanel(true, $"Sistema/¡Desafío exitoso! El jugador desafiado mintió y será eliminado.");
                         }
+
+                        // Usar TU función existente
+                        PrepararCartasDesafio(cartas.ToArray());
+
+                        ChatPanel(true, $"Sistema/¡Desafío exitoso! El jugador desafiado mintió y será eliminado.");
+                        ChatPanel(true, $"Sistema/Cartas reveladas: {string.Join(", ", cartas)}");
                     }
                     else if (mensaje.StartsWith("FALLIDO"))
                     {
-                        string[] mensaje2 = mensaje.Split('/');
+                        string[] partes = mensaje.Split('/');
 
-                        if (mensaje2.Length >= 2)
+                        // Extraer las cartas para mostrar
+                        List<string> cartas = new List<string>();
+                        for (int i = 1; i < partes.Length; i++)
                         {
-                            List<string> cartas = new List<string>();
-                            for (int i = 1; i < mensaje2.Length; i++)
+                            if (!string.IsNullOrEmpty(partes[i].Trim()))
                             {
-                                if (!string.IsNullOrEmpty(mensaje2[i].Trim()))
-                                {
-                                    cartas.Add(mensaje2[i].Trim());
-                                }
+                                cartas.Add(partes[i].Trim());
                             }
-
-                            string[] cartasArray = cartas.ToArray();
-
-                            for (int i = 0; i < cartasArray.Length && i < cartas_jugadas.Length; i++)
-                            {
-                                cartas_jugadas[i] = cartasArray[i];
-                            }
-
-                            PrepararCartasDesafio(cartas_jugadas);
-
-                            ChatPanel(true, $"Sistema/Desafío fallido. El desafiante será eliminado.");
                         }
+
+                        // Usar TU función existente
+                        PrepararCartasDesafio(cartas.ToArray());
+
+                        ChatPanel(true, $"Sistema/Desafío fallido. Las cartas eran válidas y el desafiante será eliminado.");
+                        ChatPanel(true, $"Sistema/Cartas reveladas: {string.Join(", ", cartas)}");
                     }
                     return;
                 }

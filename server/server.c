@@ -1208,96 +1208,37 @@ void *cliente(void *socket_ptr)
                 strcpy(respuesta, "ERROR/Error al obtener el turno");
             }
         }
-        else if (codigo == 24) // Desafiar último jugador por mentiroso
+        private void PrepararCartasDesafio(string[] cartasJugadas)
         {
-            // Formato: 24/usuario_desafiante
-            // No se envía el desafiado, siempre es el último jugador que jugó
+            // Limpiar listas previas
+            cartasDesafio.Clear();
+            cartasDesafioValidas.Clear();
 
-            // Verificar que estamos en una partida
-            GameInfo *partida = obtener_partida_por_jugador(usuario);
-            if (partida != NULL)
+            Debug.WriteLine($ "[DESAFÍO] Preparando {cartasJugadas.Length} cartas para visualización");
+
+            // Para cada carta jugada, determinar si es válida según la carta de ronda
+            foreach (string nombreCarta in cartasJugadas)
             {
-                // Obtener automáticamente el desafiado (último jugador que jugó)
-                char *desafiado = partida->ultimo_jugador;
+                if (string.IsNullOrEmpty(nombreCarta))
+                    continue;
 
-                // Verificar que hay un último jugador
-                if (desafiado[0] != '\0')
+                // Cargar la textura adecuada según el nombre
+                Texture2D textura = ObtenerTexturaParaCarta(nombreCarta);
+                if (textura != null)
                 {
-                    // Verificar que el desafiante no es el mismo que el desafiado
-                    if (strcmp(usuario, desafiado) != 0)
-                    {
-                        // Verificar si hay al menos una carta inválida en la última jugada
-                        int mintiendo = 0;
-                        for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
-                        {
-                            if (partida->resultados_verificacion[i] == 0)
-                            {
-                                mintiendo = 1;
-                                break;
-                            }
-                        }
+                    cartasDesafio.Add(textura);
 
-                        // Preparar mensaje de resultado - AÑADIR DETALLE AL LOG
-                        char mensaje_resultado[1024];
-                        printf("[DESAFÍO] Verificación completada. Mintiendo: %s\n",
-                               mintiendo ? "SÍ" : "NO");
+                    // Verificar si coincide con la carta de ronda
+                    bool esValida = EsCartaValidaParaRonda(nombreCarta, carta_ronda_actual);
+                    cartasDesafioValidas.Add(esValida);
 
-                        // PASO 1: Determinar quién será eliminado pero NO eliminarlo todavía
-                        if (mintiendo)
-                        {
-                            // El desafiado estaba mintiendo - SERÁ ELIMINADO POSTERIORMENTE
-                            strcpy(partida->jugador_pendiente_eliminacion, desafiado);
-
-                            // Enviar resultado del desafío
-                            sprintf(mensaje_resultado, "DESAFIO/EXITO");
-
-                            // Incluir solo las cartas que fallan
-                            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
-                            {
-                                if (partida->resultados_verificacion[i] == 0)
-                                {
-                                    char temp[50];
-                                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
-                                    strcat(mensaje_resultado, temp);
-                                }
-                            }
-
-                            printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
-                        }
-                        else
-                        {
-                            // El desafiado NO estaba mintiendo - EL DESAFIANTE SERÁ ELIMINADO
-                            strcpy(partida->jugador_pendiente_eliminacion, usuario);
-
-                            // Enviar resultado del desafío sin cartas adicionales
-                            sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
-
-                            printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
-                        }
-
-                        // Marcar que hay una eliminación pendiente
-                        partida->eliminacion_pendiente = 1;
-
-                        // Enviar el resultado a todos los jugadores - ASEGURAR QUE SE ENVÍE
-                        printf("[DESAFÍO] Enviando a grupo %d: %s\n", partida->grupo_id, mensaje_resultado);
-                        broadcast_to_group(partida->grupo_id, mensaje_resultado);
-
-                        strcpy(respuesta, "DESAFIO_OK");
-                    }
-                    else
-                    {
-                        strcpy(respuesta, "ERROR/No puedes desafiarte a ti mismo");
-                    }
-                }
-                else
-                {
-                    strcpy(respuesta, "ERROR/No hay un jugador anterior para desafiar");
+                    Debug.WriteLine($ "[DESAFÍO] Carta {nombreCarta}: {(esValida ? " VÁLIDA " : " INVÁLIDA ")}");
                 }
             }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en una partida activa");
-            }
+
+            // Activar la visualización y reiniciar el temporizador
+            mostrandoDesafio = true;
+            tiempoDesafio = 0f;
         }
         else if (codigo == 25) // Confirmar eliminación después de desafío
         {
