@@ -12,6 +12,7 @@
 #include "auth.h"
 #include "generarcartas.h"
 #include "partidas.h"
+#include <signal.h>
 
 // Estructura para mantener los clientes conectados
 typedef struct ClientNode
@@ -201,52 +202,51 @@ void disolver_grupo(int grupo_id)
 
     pthread_mutex_lock(&client_list_mutex);
 
-    // Crear mensaje de disolución
     char mensaje_disolucion[100];
     snprintf(mensaje_disolucion, sizeof(mensaje_disolucion), "GRUPO_DISUELTO/%d", grupo_id);
 
     ClientNode *current = client_list;
-    ClientNode *previous = NULL;
+    int usuarios_notificados = 0;
 
     while (current != NULL)
     {
-        ClientNode *next = current->next;
-
         if (current->grupo_id == grupo_id)
         {
-            // Intentar enviar notificación de disolución
-            ssize_t resultado = send(current->socket, mensaje_disolucion, strlen(mensaje_disolucion), MSG_NOSIGNAL);
-
-            if (resultado < 0)
+            // Verificar que el socket sea válido antes de enviar
+            if (current->socket > 0)
             {
-                printf("[GRUPO] No se pudo notificar disolución a %s (socket cerrado)\n",
-                       current->usuario ? current->usuario : "desconocido");
+                ssize_t resultado = send(current->socket, mensaje_disolucion,
+                                         strlen(mensaje_disolucion), MSG_NOSIGNAL);
+
+                if (resultado >= 0)
+                {
+                    printf("[GRUPO] Notificación de disolución enviada a %s\n",
+                           current->usuario ? current->usuario : "desconocido");
+                    usuarios_notificados++;
+                }
+                else
+                {
+                    printf("[GRUPO] No se pudo notificar a %s (socket cerrado)\n",
+                           current->usuario ? current->usuario : "desconocido");
+                }
             }
             else
             {
-                printf("[GRUPO] Notificación de disolución enviada a %s\n",
+                printf("[GRUPO] Socket inválido para usuario %s, saltando notificación\n",
                        current->usuario ? current->usuario : "desconocido");
             }
 
-            // Remover del grupo (establecer grupo_id a 0)
+            // Remover del grupo independientemente del resultado del envío
             current->grupo_id = 0;
-
             printf("[GRUPO] Usuario %s removido del grupo %d\n",
                    current->usuario ? current->usuario : "desconocido", grupo_id);
-
-            previous = current;
         }
-        else
-        {
-            previous = current;
-        }
-
-        current = next;
+        current = current->next;
     }
 
     pthread_mutex_unlock(&client_list_mutex);
 
-    printf("[GRUPO] Grupo %d disuelto completamente\n", grupo_id);
+    printf("[GRUPO] Grupo %d disuelto. %d usuarios notificados.\n", grupo_id, usuarios_notificados);
 }
 
 // Función para obtener el ID de grupo de un usuario
@@ -282,6 +282,8 @@ int broadcast_to_group(int grupo_id, const char *mensaje)
     int enviados = 0;
     int errores = 0;
 
+    printf("[BROADCAST] Intentando enviar a grupo %d: '%s'\n", grupo_id, mensaje);
+
     pthread_mutex_lock(&client_list_mutex);
 
     ClientNode *current = client_list;
@@ -293,61 +295,87 @@ int broadcast_to_group(int grupo_id, const char *mensaje)
 
         if (current->grupo_id == grupo_id)
         {
-            // Verificar si el socket está válido antes de enviar
-            int socket_valido = 1;
+            // Verificar si el socket está realmente activo
+            int socket_activo = 1;
 
-            // Usar send con MSG_NOSIGNAL para evitar SIGPIPE
-            ssize_t resultado = send(current->socket, mensaje, strlen(mensaje), MSG_NOSIGNAL);
-
-            if (resultado < 0)
+            // Primero verificar si el socket es válido
+            if (current->socket <= 0)
             {
-                // Error al enviar - el socket probablemente está cerrado
-                if (errno == EPIPE || errno == ECONNRESET || errno == EBADF)
-                {
-                    printf("[BROADCAST] Socket cerrado detectado para usuario %s. Removiendo del grupo.\n",
-                           current->usuario ? current->usuario : "desconocido");
-
-                    // Remover cliente de la lista
-                    if (previous == NULL)
-                    {
-                        client_list = current->next;
-                    }
-                    else
-                    {
-                        previous->next = current->next;
-                    }
-
-                    // Cerrar socket y liberar memoria
-                    close(current->socket);
-                    if (current->usuario)
-                        free(current->usuario);
-                    free(current);
-
-                    errores++;
-                    socket_valido = 0;
-                }
-                else
-                {
-                    printf("[BROADCAST] Error temporal al enviar a %s: %s\n",
-                           current->usuario ? current->usuario : "desconocido", strerror(errno));
-                    errores++;
-                }
+                printf("[BROADCAST] Socket inválido (%d) para usuario %s. Removiendo.\n",
+                       current->socket, current->usuario ? current->usuario : "desconocido");
+                socket_activo = 0;
             }
             else
             {
-                enviados++;
-                printf("[BROADCAST] Mensaje enviado exitosamente a %s\n",
-                       current->usuario ? current->usuario : "desconocido");
+                // Intentar enviar el mensaje con MSG_NOSIGNAL
+                ssize_t resultado = send(current->socket, mensaje, strlen(mensaje), MSG_NOSIGNAL);
+
+                if (resultado < 0)
+                {
+                    int error_codigo = errno;
+                    printf("[BROADCAST] Error al enviar a %s (socket %d): %s (código: %d)\n",
+                           current->usuario ? current->usuario : "desconocido",
+                           current->socket, strerror(error_codigo), error_codigo);
+
+                    // Errores que indican socket cerrado
+                    if (error_codigo == EPIPE || error_codigo == ECONNRESET ||
+                        error_codigo == EBADF || error_codigo == ENOTCONN)
+                    {
+                        socket_activo = 0;
+                    }
+                    else
+                    {
+                        errores++;
+                    }
+                }
+                else
+                {
+                    enviados++;
+                    printf("[BROADCAST] Mensaje enviado exitosamente a %s\n",
+                           current->usuario ? current->usuario : "desconocido");
+                }
             }
 
-            // Solo avanzar previous si no eliminamos el nodo actual
-            if (socket_valido)
+            // Si el socket no está activo, remover el cliente
+            if (!socket_activo)
             {
+                printf("[BROADCAST] Removiendo cliente inactivo: %s (socket %d)\n",
+                       current->usuario ? current->usuario : "desconocido", current->socket);
+
+                // Remover de la lista enlazada
+                if (previous == NULL)
+                {
+                    client_list = current->next;
+                }
+                else
+                {
+                    previous->next = current->next;
+                }
+
+                // Cerrar socket si aún está abierto
+                if (current->socket > 0)
+                {
+                    close(current->socket);
+                }
+
+                // Liberar memoria
+                if (current->usuario)
+                {
+                    free(current->usuario);
+                }
+                free(current);
+
+                // No actualizar previous porque eliminamos current
+            }
+            else
+            {
+                // Socket válido, actualizar previous
                 previous = current;
             }
         }
         else
         {
+            // No es del grupo, simplemente continuar
             previous = current;
         }
 
@@ -1656,29 +1684,29 @@ void *cliente(void *socket_ptr)
     // CLIENTE SE DESCONECTÓ - Limpiar recursos
     printf("[DESCONEXIÓN] Cliente desconectado (socket %d)\n", sock_conn);
 
-    // Remover cliente de la lista global
+    // Actualizar estado en base de datos si corresponde
+    if (strlen(usuario) > 0)
+    {
+        actualizarEstado(conn, usuario, 0);
+        printf("[DESCONEXIÓN] Estado de %s actualizado a desconectado\n", usuario);
+    }
+
+    // Limpiar cliente de la lista global de forma segura
     pthread_mutex_lock(&client_list_mutex);
 
     ClientNode *current = client_list;
     ClientNode *previous = NULL;
+    int grupo_usuario = 0;
 
     while (current != NULL)
     {
         if (current->socket == sock_conn)
         {
-            // Notificar al grupo si estaba en uno
-            if (current->grupo_id > 0)
-            {
-                char mensaje_desconexion[256];
-                snprintf(mensaje_desconexion, sizeof(mensaje_desconexion),
-                         "JUGADOR_DESCONECTADO/%s", current->usuario ? current->usuario : "desconocido");
+            // Guardar información del grupo antes de eliminar
+            grupo_usuario = current->grupo_id;
 
-                // Broadcast sin incluir al usuario desconectado
-                broadcast_to_group_except(current->grupo_id, mensaje_desconexion, sock_conn);
-
-                printf("[DESCONEXIÓN] Usuario %s desconectado del grupo %d\n",
-                       current->usuario ? current->usuario : "desconocido", current->grupo_id);
-            }
+            printf("[DESCONEXIÓN] Removiendo usuario %s del grupo %d\n",
+                   current->usuario ? current->usuario : "desconocido", grupo_usuario);
 
             // Remover de la lista
             if (previous == NULL)
@@ -1692,7 +1720,9 @@ void *cliente(void *socket_ptr)
 
             // Liberar memoria
             if (current->usuario)
+            {
                 free(current->usuario);
+            }
             free(current);
             break;
         }
@@ -1703,16 +1733,41 @@ void *cliente(void *socket_ptr)
 
     pthread_mutex_unlock(&client_list_mutex);
 
-    // Cerrar socket
-    close(sock_conn);
+    // Notificar al grupo DESPUÉS de liberar el mutex
+    if (grupo_usuario > 0 && strlen(usuario) > 0)
+    {
+        char mensaje_desconexion[256];
+        snprintf(mensaje_desconexion, sizeof(mensaje_desconexion),
+                 "JUGADOR_DESCONECTADO/%s", usuario);
 
-    printf("[DESCONEXIÓN] Recursos liberados para socket %d\n", sock_conn);
+        printf("[DESCONEXIÓN] Notificando desconexión al grupo %d\n", grupo_usuario);
+
+        // Esta llamada ya no incluirá al socket cerrado porque lo removimos de la lista
+        broadcast_to_group(grupo_usuario, mensaje_desconexion);
+    }
+
+    // Cerrar socket de forma segura
+    if (sock_conn > 0)
+    {
+        shutdown(sock_conn, SHUT_RDWR);
+        close(sock_conn);
+        printf("[DESCONEXIÓN] Socket %d cerrado correctamente\n", sock_conn);
+    }
+
+    // Cerrar conexión MySQL
+    if (conn)
+    {
+        mysql_close(conn);
+    }
+
+    printf("[DESCONEXIÓN] Limpieza completa para socket %d\n", sock_conn);
 
     return NULL;
 }
 
 int main(int argc, char *argv[])
 {
+    signal(SIGPIPE, SIG_IGN);
     int sock_conn, sock_listen;
     struct sockaddr_in serv_adr;
 
