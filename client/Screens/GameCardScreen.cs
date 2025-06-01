@@ -879,37 +879,34 @@ namespace Duska.Screens
 
         private void MostrarPanelEliminacion()
         {
-            // Panel principal centrado
+            // Panel principal centrado - usando solo el tema por defecto
             var panelEliminacion = new GeonBit.UI.Entities.Panel(
                 new Vector2(500, 300),
-                PanelSkin.Simple,
+                PanelSkin.Default,
                 Anchor.Center
             );
 
             // Título del panel
-            var titulo = new Header("¡ELIMINADO!",
-                Anchor.TopCenter);
+            var titulo = new GeonBit.UI.Entities.Header("¡ELIMINADO!");
+            titulo.Anchor = Anchor.TopCenter;
             titulo.FillColor = Color.Red;
             panelEliminacion.AddChild(titulo);
 
             // Mensaje explicativo
-            var mensaje = new Paragraph(
-                "Has sido eliminado de la partida.\nLa partida ha terminado para ti.",
-                Anchor.Center
+            var mensaje = new GeonBit.UI.Entities.Paragraph(
+                "Has sido eliminado de la partida.\nLa partida ha terminado para ti."
             );
+            mensaje.Anchor = Anchor.Center;
             mensaje.Scale = 0.8f;
             panelEliminacion.AddChild(mensaje);
 
             // Botón para continuar
-            var botonContinuar = new Button(
-                "Regresar al Menú",
-                ButtonSkin.Default,
-                Anchor.BottomCenter,
-                new Vector2(250, 60)
-            );
+            var botonContinuar = new GeonBit.UI.Entities.Button("Regresar al Menú");
+            botonContinuar.Anchor = Anchor.BottomCenter;
+            botonContinuar.Size = new Vector2(250, 60);
 
             // Evento del botón
-            botonContinuar.OnClick = (Entity entity) =>
+            botonContinuar.OnClick = (GeonBit.UI.Entities.Entity entity) =>
             {
                 Debug.WriteLine("[PANEL] Botón presionado - regresando al menú");
 
