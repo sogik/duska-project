@@ -194,45 +194,115 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
         return -1;
     }
 
-    // Marcar al jugador como eliminado
-    partida->jugadores_eliminados[indice_jugador] = 1;
-    partida->num_jugadores_activos--;
-
-    printf("[PARTIDA] Jugador %s eliminado de la partida %d. Quedan %d jugadores activos.\n",
-           jugador, partida->partida_id, partida->num_jugadores_activos);
-
-    // Si quedan más de 1 jugador activo, continuar el juego
-    if (partida->num_jugadores_activos > 1)
+    // Marcar al jugador como eliminado SOLO si no estaba ya eliminado
+    if (partida->jugadores_eliminados[indice_jugador] == 0)
     {
-        // Si el jugador eliminado tenía el turno, avanzar al siguiente jugador activo
-        if (partida->turno_actual == indice_jugador)
+        partida->jugadores_eliminados[indice_jugador] = 1;
+        partida->num_jugadores_activos--;
+
+        printf("[PARTIDA] Jugador %s eliminado de la partida %d. Quedan %d jugadores activos.\n",
+               jugador, partida->partida_id, partida->num_jugadores_activos);
+    }
+    else
+    {
+        printf("[PARTIDA] Jugador %s ya estaba eliminado\n", jugador);
+        return 0; // No hacer nada más si ya estaba eliminado
+    }
+
+    // VERIFICAR INMEDIATAMENTE SI LA PARTIDA DEBE TERMINAR
+    if (partida->num_jugadores_activos <= 1)
+    {
+        printf("[PARTIDA] Solo queda %d jugador(es) activo(s). FINALIZANDO PARTIDA.\n",
+               partida->num_jugadores_activos);
+
+        // Buscar al ganador (único jugador activo)
+        char *ganador = NULL;
+        for (int i = 0; i < partida->num_jugadores; i++)
         {
-            // Buscar el siguiente jugador activo
-            int nuevo_turno = (indice_jugador + 1) % partida->num_jugadores;
-            int intentos = 0;
-
-            while (partida->jugadores_eliminados[nuevo_turno] && intentos < partida->num_jugadores)
+            if (partida->jugadores_eliminados[i] == 0)
             {
-                nuevo_turno = (nuevo_turno + 1) % partida->num_jugadores;
-                intentos++;
-            }
-
-            if (intentos < partida->num_jugadores && !partida->jugadores_eliminados[nuevo_turno])
-            {
-                partida->turno_actual = nuevo_turno;
-
-                // Notificar el nuevo turno
-                char mensaje_turno[100];
-                snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s",
-                         partida->jugadores[partida->turno_actual]);
-                broadcast_to_group(partida->grupo_id, mensaje_turno);
-
-                printf("[TURNO] Nuevo turno asignado a: %s\n",
-                       partida->jugadores[partida->turno_actual]);
+                ganador = partida->jugadores[i];
+                printf("[PARTIDA] Ganador encontrado: %s\n", ganador);
+                break;
             }
         }
 
-        // AVANZAR A LA SIGUIENTE RONDA SOLO si quedan múltiples jugadores
+        if (ganador != NULL)
+        {
+            // HAY UN GANADOR - Finalizar partida
+            char mensaje_ganador[100];
+            sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+            broadcast_to_group(partida->grupo_id, mensaje_ganador);
+
+            printf("[PARTIDA] Mensaje de fin enviado: %s\n", mensaje_ganador);
+
+            // Marcar partida como finalizada
+            partida->estado = 2;
+
+            // Programar disolución del grupo
+            int grupo_id = partida->grupo_id;
+            usleep(1000000); // 1 segundo para procesamiento
+            disolver_grupo(grupo_id);
+
+            printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
+                   partida->partida_id, grupo_id);
+
+            return 1; // Código especial: partida terminada
+        }
+        else
+        {
+            // NO HAY GANADOR (caso raro)
+            char mensaje_cancelada[100];
+            sprintf(mensaje_cancelada, "PARTIDA_CANCELADA/No hay jugadores activos");
+            broadcast_to_group(partida->grupo_id, mensaje_cancelada);
+
+            partida->estado = 2;
+
+            int grupo_id = partida->grupo_id;
+            usleep(1000000);
+            disolver_grupo(grupo_id);
+
+            printf("[PARTIDA] Partida cancelada - No hay jugadores activos\n");
+            return 2; // Código especial: partida cancelada
+        }
+    }
+
+    // SI QUEDAN MÚLTIPLES JUGADORES, CONTINUAR EL JUEGO
+    printf("[PARTIDA] La partida continúa con %d jugadores activos\n", partida->num_jugadores_activos);
+
+    // Si el jugador eliminado tenía el turno, avanzar al siguiente jugador activo
+    if (partida->turno_actual == indice_jugador)
+    {
+        printf("[PARTIDA] El jugador eliminado tenía el turno, avanzando...\n");
+
+        // Buscar el siguiente jugador activo
+        int nuevo_turno = (indice_jugador + 1) % partida->num_jugadores;
+        int intentos = 0;
+
+        while (partida->jugadores_eliminados[nuevo_turno] && intentos < partida->num_jugadores)
+        {
+            nuevo_turno = (nuevo_turno + 1) % partida->num_jugadores;
+            intentos++;
+        }
+
+        if (intentos < partida->num_jugadores && !partida->jugadores_eliminados[nuevo_turno])
+        {
+            partida->turno_actual = nuevo_turno;
+
+            // Notificar el nuevo turno
+            char mensaje_turno[100];
+            snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s",
+                     partida->jugadores[partida->turno_actual]);
+            broadcast_to_group(partida->grupo_id, mensaje_turno);
+
+            printf("[TURNO] Nuevo turno asignado a: %s\n",
+                   partida->jugadores[partida->turno_actual]);
+        }
+    }
+
+    // AVANZAR RONDA solo si la partida continúa
+    if (partida->num_jugadores_activos > 1)
+    {
         partida->ronda_actual++;
 
         if (partida->ronda_actual >= partida->total_rondas)
@@ -252,7 +322,7 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
         broadcast_to_group(partida->grupo_id, mensaje_ronda);
     }
 
-    return 0;
+    return 0; // Éxito, partida continúa
 }
 
 // Generar las cartas designadas para cada ronda

@@ -363,7 +363,11 @@ namespace Duska.Screens
                 string[] friendsArray = usuarios.Split('/');
                 foreach (string friend in friendsArray)
                 {
-                    usuariosList.AddItem(friend);
+                    if (!string.IsNullOrWhiteSpace(friend) && friend != usuario) // Evitar agregar el propio usuario
+                    {
+                        Debug.WriteLine($"Agregando usuario a la lista: {friend}");
+                        usuariosList.AddItem(friend);
+                    }
                 }
             }
 
@@ -400,11 +404,19 @@ namespace Duska.Screens
                 string[] friendsArray = partidas.Split('/');
                 foreach (string friend in friendsArray)
                 {
-                    partidasList.AddItem(friend);
+                    if (!string.IsNullOrWhiteSpace(friend)) // Evitar agregar entradas vacías
+                    {
+                        Debug.WriteLine($"Agregando partida a la lista: {friend}");
+                        // Aquí podrías agregar lógica para formatear o procesar el nombre de la partida si es necesario
+                        // Por ejemplo, podrías dividir por comas o espacios si es necesario
+                        // string[] parts = friend.Split(',');
+                        // string formattedFriend = parts[0].Trim(); // Solo tomar el primer elemento si hay varios
+                        partidasList.AddItem(friend);
+                    }
                 }
-            }
 
-            panel.Visible = visible;
+                panel.Visible = visible;
+            }
         }
 
         private void ListaPartidasGanadasPanel(bool visible, string partidasGanadas)
