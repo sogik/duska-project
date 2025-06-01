@@ -639,7 +639,6 @@ namespace Duska.Screens
                         // PROCESAR EN EL HILO PRINCIPAL USANDO LA COLA DE MENSAJES
                         if (System.Threading.Thread.CurrentThread.IsBackground)
                         {
-                            // Si estamos en hilo background, encolar para procesamiento en hilo principal
                             lock (mensajesLock)
                             {
                                 mensajesPendientes.Add("MOSTRAR_PANEL_ELIMINACION");
@@ -649,7 +648,6 @@ namespace Duska.Screens
                         }
                         else
                         {
-                            // Si estamos en hilo principal, mostrar directamente
                             Debug.WriteLine("[ELIMINACIÓN] Mostrando panel directamente en hilo principal");
                             MostrarPanelEliminacion();
                         }
@@ -667,6 +665,8 @@ namespace Duska.Screens
                     partidaTerminada = true;
                     _permitirAccionesJuego = false;
 
+                    Debug.WriteLine($"[FIN_PARTIDA] *** PARTIDA TERMINADA - GANADOR: {ganador} ***");
+
                     if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
                     {
                         ChatPanel(true, "Sistema/¡FELICIDADES! ¡HAS GANADO LA PARTIDA!");
@@ -676,8 +676,21 @@ namespace Duska.Screens
                         ChatPanel(true, $"Sistema/Fin de partida. Ganador: {ganador}");
                     }
 
-                    // Mostrar panel de fin de partida
-                    MostrarPanelFinPartida(ganador);
+                    // PROCESAR EN EL HILO PRINCIPAL
+                    if (System.Threading.Thread.CurrentThread.IsBackground)
+                    {
+                        lock (mensajesLock)
+                        {
+                            mensajesPendientes.Add($"MOSTRAR_PANEL_FIN_PARTIDA/{ganador}");
+                            hayNuevosMensajes = true;
+                            Debug.WriteLine("[FIN_PARTIDA] Panel encolado para mostrar en hilo principal");
+                        }
+                    }
+                    else
+                    {
+                        Debug.WriteLine("[FIN_PARTIDA] Mostrando panel directamente en hilo principal");
+                        MostrarPanelFinPartida(ganador);
+                    }
                     return;
                 }
                 else if (message.StartsWith("GRUPO_DISUELTO/"))
@@ -699,8 +712,20 @@ namespace Duska.Screens
 
                     ChatPanel(true, $"Sistema/Partida cancelada: {razon}");
 
-                    // Mostrar panel de partida cancelada
-                    MostrarPanelPartidaCancelada(razon);
+                    // PROCESAR EN EL HILO PRINCIPAL
+                    if (System.Threading.Thread.CurrentThread.IsBackground)
+                    {
+                        lock (mensajesLock)
+                        {
+                            mensajesPendientes.Add($"MOSTRAR_PANEL_CANCELADA/{razon}");
+                            hayNuevosMensajes = true;
+                            Debug.WriteLine("[PARTIDA_CANCELADA] Panel encolado para mostrar en hilo principal");
+                        }
+                    }
+                    else
+                    {
+                        MostrarPanelPartidaCancelada(razon);
+                    }
                     return;
                 }
                 else if (message.StartsWith("JUGADOR_ABANDONO/"))
@@ -769,16 +794,17 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacion ***");
 
-                // Verificar que UserInterface esté disponible
+                // NO limpiar la UI aquí, solo añadir el panel encima
                 if (UserInterface.Active == null)
                 {
-                    Debug.WriteLine("[ERROR] UserInterface.Active es null - no se puede mostrar panel");
+                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
                     return;
                 }
 
                 // Crear panel principal con alta prioridad
                 Panel panel = new Panel(new Vector2(500, 400), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
+                panel.Priority = 1000; // Alta prioridad
 
                 // Título destacado en rojo
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
@@ -859,59 +885,103 @@ namespace Duska.Screens
                 Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelEliminacion: {ex.Message} ***");
 
                 // Plan de respaldo
-                try
+                ChatPanel(true, "Sistema/Has sido eliminado. Regresando al menú principal en 3 segundos...");
+                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
                 {
-                    ChatPanel(true, "Sistema/Has sido eliminado. Regresando al menú principal en 3 segundos...");
-                    System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
-                    {
-                        RegresarAlMenuPrincipal();
-                    });
-                }
-                catch (Exception ex2)
-                {
-                    Debug.WriteLine($"[ERROR] Error en plan de respaldo: {ex2.Message}");
-                }
+                    RegresarAlMenuPrincipal();
+                });
             }
         }
 
         private void MostrarPanelFinPartida(string ganador)
         {
-            // Limpiar UI anterior
-            if (UserInterface.Active != null)
+            try
             {
-                UserInterface.Active.Clear();
+                Debug.WriteLine("[UI] *** INICIANDO MostrarPanelFinPartida ***");
+
+                // NO limpiar la UI aquí, solo añadir el panel encima
+                if (UserInterface.Active == null)
+                {
+                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
+                    return;
+                }
+
+                // Crear panel principal con alta prioridad para que aparezca encima
+                Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
+                panel.Visible = true;
+                panel.Priority = 1000; // Alta prioridad
+
+                // Título destacado
+                Header titulo = new Header("¡PARTIDA TERMINADA!");
+                if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                {
+                    titulo.FillColor = Color.Gold;
+                }
+                else
+                {
+                    titulo.FillColor = Color.Orange;
+                }
+                panel.AddChild(titulo);
+
+                panel.AddChild(new HorizontalLine());
+
+                // Mensaje del ganador
+                if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                {
+                    panel.AddChild(new Paragraph("¡FELICIDADES!"));
+                    panel.AddChild(new Paragraph("¡HAS GANADO LA PARTIDA!"));
+                }
+                else
+                {
+                    panel.AddChild(new Paragraph($"Ganador: {ganador}"));
+                    panel.AddChild(new Paragraph("¡Mejor suerte la próxima vez!"));
+                }
+
+                panel.AddChild(new HorizontalLine());
+
+                // Botón para regresar al menú (con retraso)
+                Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
+                regresarBtn.Size = new Vector2(220, 60);
+                regresarBtn.FillColor = Color.LightGreen;
+                regresarBtn.OnClick = (Entity btn) =>
+                {
+                    Debug.WriteLine("[FIN_PARTIDA] Botón regresar clickeado");
+
+                    // Cerrar panel
+                    panel.Visible = false;
+                    UserInterface.Active.RemoveEntity(panel);
+
+                    // Regresar al menú principal
+                    RegresarAlMenuPrincipal();
+                };
+                panel.AddChild(regresarBtn);
+
+                // Añadir al UserInterface
+                UserInterface.Active.AddEntity(panel);
+
+                Debug.WriteLine("[UI] *** Panel fin de partida creado y añadido exitosamente ***");
+
+                // OPCIONAL: Auto-regresar después de 10 segundos si el usuario no hace clic
+                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                {
+                    if (panel.Visible) // Solo si el panel aún está visible
+                    {
+                        Debug.WriteLine("[FIN_PARTIDA] Auto-regreso al menú después de 10 segundos");
+                        RegresarAlMenuPrincipal();
+                    }
+                });
             }
-
-            // Crear panel principal
-            Panel panel = new Panel(new Vector2(400, 200), PanelSkin.Default, Anchor.Center);
-            panel.Visible = true;
-            UserInterface.Active.AddEntity(panel);
-
-            // Título
-            panel.AddChild(new Header("¡PARTIDA TERMINADA!"));
-            panel.AddChild(new HorizontalLine());
-
-            // Mensaje del ganador
-            if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+            catch (Exception ex)
             {
-                panel.AddChild(new Paragraph("¡FELICIDADES!"));
-                panel.AddChild(new Paragraph("¡HAS GANADO LA PARTIDA!"));
+                Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelFinPartida: {ex.Message} ***");
+
+                // Plan de respaldo
+                ChatPanel(true, "Sistema/Partida terminada. Regresando al menú principal en 3 segundos...");
+                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                {
+                    RegresarAlMenuPrincipal();
+                });
             }
-            else
-            {
-                panel.AddChild(new Paragraph($"Ganador: {ganador}"));
-                panel.AddChild(new Paragraph("¡Mejor suerte la próxima vez!"));
-            }
-
-            panel.AddChild(new HorizontalLine());
-
-            // Botón para regresar al menú
-            Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
-            regresarBtn.OnClick = (Entity btn) =>
-            {
-                RegresarAlMenuPrincipal();
-            };
-            panel.AddChild(regresarBtn);
         }
 
         private void RegresarAlMenuPrincipal()
@@ -1826,7 +1896,6 @@ namespace Duska.Screens
                     {
                         Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {mensajePendiente}");
 
-                        // AÑADIR ESTA CONDICIÓN ESPECIAL:
                         if (mensajePendiente == "MOSTRAR_PANEL_ELIMINACION")
                         {
                             Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN ***");
@@ -1837,6 +1906,32 @@ namespace Duska.Screens
                             catch (Exception ex)
                             {
                                 Debug.WriteLine($"[ERROR] Error al mostrar panel de eliminación: {ex.Message}");
+                            }
+                        }
+                        else if (mensajePendiente.StartsWith("MOSTRAR_PANEL_FIN_PARTIDA/"))
+                        {
+                            string ganador = mensajePendiente.Substring(26); // "MOSTRAR_PANEL_FIN_PARTIDA/".Length = 26
+                            Debug.WriteLine($"[UPDATE] *** MOSTRANDO PANEL FIN DE PARTIDA - GANADOR: {ganador} ***");
+                            try
+                            {
+                                MostrarPanelFinPartida(ganador);
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[ERROR] Error al mostrar panel fin de partida: {ex.Message}");
+                            }
+                        }
+                        else if (mensajePendiente.StartsWith("MOSTRAR_PANEL_CANCELADA/"))
+                        {
+                            string razon = mensajePendiente.Substring(24); // "MOSTRAR_PANEL_CANCELADA/".Length = 24
+                            Debug.WriteLine($"[UPDATE] *** MOSTRANDO PANEL PARTIDA CANCELADA ***");
+                            try
+                            {
+                                MostrarPanelPartidaCancelada(razon);
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[ERROR] Error al mostrar panel partida cancelada: {ex.Message}");
                             }
                         }
                         else
@@ -1852,7 +1947,6 @@ namespace Duska.Screens
                         hayNuevosMensajes = false;
                     }
                 }
-
                 // Obtener estados de entrada actuales
                 KeyboardState estadoTeclado = Keyboard.GetState();
                 var keyboardState = KeyboardExtended.GetState();
