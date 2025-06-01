@@ -859,20 +859,40 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacion ***");
 
-                // LIMPIAR UI COMPLETAMENTE para asegurar que el panel sea visible
+                // IMPORTANTE: Verificar que no estemos ya mostrando un panel
                 if (UserInterface.Active != null)
                 {
+                    // Buscar si ya existe un panel de eliminación
+                    var panelExistente = UserInterface.Active.Root.Find("PanelEliminacion");
+                    if (panelExistente != null)
+                    {
+                        Debug.WriteLine("[UI] Panel de eliminación ya existe, no crear duplicado");
+                        return;
+                    }
+
+                    // Limpiar SOLO si no hay paneles importantes
                     UserInterface.Active.Clear();
                 }
                 else
                 {
-                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
-                    return;
+                    Debug.WriteLine("[ERROR] UserInterface.Active es null - Intentando reinicializar");
+
+                    // Reinicializar UI si es necesario
+                    try
+                    {
+                        UserInterface.Initialize(Content, _currTheme);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] No se pudo reinicializar UI: {ex.Message}");
+                        return;
+                    }
                 }
 
-                // Crear panel principal
+                // Crear panel principal con identificador único
                 Panel panel = new Panel(new Vector2(500, 400), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
+                panel.Identifier = "PanelEliminacion"; // Identificador único
 
                 // Título destacado en rojo
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
@@ -890,7 +910,7 @@ namespace Duska.Screens
                 espectadorBtn.FillColor = Color.LightBlue;
                 espectadorBtn.OnClick = (Entity btn) =>
                 {
-                    Debug.WriteLine("[ELIMINACIÓN] Botón espectador clickeado");
+                    Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN ESPECTADOR CLICKEADO ***");
 
                     try
                     {
@@ -899,12 +919,13 @@ namespace Duska.Screens
                             string mensaje = $"28/{usuario}/ESPECTADOR";
                             byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                             server.Send(msg);
+                            Debug.WriteLine("[ELIMINACIÓN] Mensaje espectador enviado");
                         }
 
                         // Limpiar panel y regenerar UI de juego como espectador
                         UserInterface.Active.Clear();
-                        InicializarUIJuego(); // Recrear UI del juego
                         ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
+                        Debug.WriteLine("[ELIMINACIÓN] Configurado como espectador exitosamente");
                     }
                     catch (Exception ex)
                     {
@@ -921,7 +942,7 @@ namespace Duska.Screens
                 salirBtn.FillColor = Color.Orange;
                 salirBtn.OnClick = (Entity btn) =>
                 {
-                    Debug.WriteLine("[ELIMINACIÓN] Botón salir clickeado");
+                    Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN SALIR CLICKEADO ***");
 
                     try
                     {
@@ -930,9 +951,11 @@ namespace Duska.Screens
                             string mensaje = $"28/{usuario}/SALIR";
                             byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                             server.Send(msg);
+                            Debug.WriteLine("[ELIMINACIÓN] Mensaje salir enviado");
                         }
 
                         RegresarAlMenuPrincipal();
+                        Debug.WriteLine("[ELIMINACIÓN] Regresando al menú principal");
                     }
                     catch (Exception ex)
                     {
@@ -942,21 +965,48 @@ namespace Duska.Screens
                 };
                 panel.AddChild(salirBtn);
 
-                // Añadir al UserInterface
+                // Añadir al UserInterface con verificación adicional
                 UserInterface.Active.AddEntity(panel);
 
                 Debug.WriteLine("[UI] *** Panel de eliminación creado y añadido exitosamente ***");
+
+                // Verificación adicional: Asegurar que el panel es visible
+                if (panel.Visible && UserInterface.Active.Root.Children.Contains(panel))
+                {
+                    Debug.WriteLine("[UI] *** CONFIRMADO: Panel de eliminación está visible y añadido ***");
+                }
+                else
+                {
+                    Debug.WriteLine("[ERROR] *** FALLO: Panel de eliminación NO está visible ***");
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelEliminacion: {ex.Message} ***");
+                Debug.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
 
-                // Plan de respaldo
-                ChatPanel(true, "Sistema/Has sido eliminado. Regresando al menú principal en 3 segundos...");
-                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                // Plan de respaldo más agresivo
+                try
                 {
-                    RegresarAlMenuPrincipal();
-                });
+                    // Forzar la parada de todo procesamiento
+                    stopMessageListener = true;
+                    _permitirAccionesJuego = false;
+
+                    // Mensaje directo sin depender de ChatPanel
+                    Debug.WriteLine("[RESPALDO] Iniciando regreso forzado al menú principal");
+
+                    System.Threading.Tasks.Task.Delay(1000).ContinueWith(_ =>
+                    {
+                        RegresarAlMenuPrincipal();
+                    });
+                }
+                catch (Exception ex2)
+                {
+                    Debug.WriteLine($"[ERROR] Error en plan de respaldo: {ex2.Message}");
+
+                    // Último recurso: salir del juego
+                    Environment.Exit(1);
+                }
             }
         }
 
@@ -1753,7 +1803,6 @@ namespace Duska.Screens
                                 try
                                 {
                                     bytesReceived = server.Receive(buffer);
-                                    // ¡AQUÍ ESTÁ EL PROBLEMA! No debemos salir después de recibir un mensaje
                                 }
                                 catch (SocketException se)
                                 {
@@ -1763,7 +1812,7 @@ namespace Duska.Screens
                                     }
                                     Debug.WriteLine($"[RED] Error de socket: {se.Message}");
                                     Thread.Sleep(500);
-                                    continue; // Seguir intentando en vez de salir
+                                    continue;
                                 }
 
                                 if (bytesReceived > 0)
@@ -1771,25 +1820,34 @@ namespace Duska.Screens
                                     string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
                                     Debug.WriteLine($"[SOCKET] *** Mensaje crudo recibido: '{message}' ***");
 
-                                    // Verificar específicamente mensajes de eliminación
-                                    if (message.Contains("JUGADOR_ELIMINADO"))
-                                    {
-                                        Debug.WriteLine($"[SOCKET] *** MENSAJE DE ELIMINACIÓN DETECTADO: '{message}' ***");
-                                    }
+                                    // SEPARAR MENSAJES CONCATENADOS
+                                    string[] mensajesIndividuales = SepararMensajesConcatenados(message);
 
-                                    ProcessServerMessage(message);
+                                    foreach (string mensajeIndividual in mensajesIndividuales)
+                                    {
+                                        if (!string.IsNullOrEmpty(mensajeIndividual.Trim()))
+                                        {
+                                            Debug.WriteLine($"[SOCKET] Procesando mensaje individual: '{mensajeIndividual}'");
+
+                                            // Verificar específicamente mensajes de eliminación
+                                            if (mensajeIndividual.Contains("JUGADOR_ELIMINADO"))
+                                            {
+                                                Debug.WriteLine($"[SOCKET] *** MENSAJE DE ELIMINACIÓN DETECTADO: '{mensajeIndividual}' ***");
+                                            }
+
+                                            ProcessServerMessage(mensajeIndividual);
+                                        }
+                                    }
                                 }
                             }
                             else
                             {
-                                // No salir del bucle, solo esperar
                                 Debug.WriteLine("[RED] Socket no conectado, esperando...");
                                 Thread.Sleep(1000);
                             }
                         }
                         catch (Exception ex)
                         {
-                            // Capturar cualquier excepción pero NO salir del bucle
                             Debug.WriteLine($"[RED] Error en hilo de escucha: {ex.Message}");
                             Thread.Sleep(1000);
                         }
@@ -1805,25 +1863,61 @@ namespace Duska.Screens
                 }
                 finally
                 {
-                    Debug.WriteLine("[RED] Hilo de escucha finalizado. Reconexión automática iniciada...");
-
-                    // Reiniciar el hilo automáticamente si no fue una detención intencional
-                    if (!stopMessageListener)
-                    {
-                        // Usar un timer para reiniciar desde el hilo principal
-                        System.Threading.Timer restartTimer = null;
-                        restartTimer = new System.Threading.Timer((state) =>
-                        {
-                            Debug.WriteLine("[RED] Intentando reiniciar hilo de escucha...");
-                            StartMessageListener();
-                            restartTimer?.Dispose();
-                        }, null, 2000, Timeout.Infinite);
-                    }
+                    Debug.WriteLine("[RED] Hilo de escucha finalizado.");
                 }
             });
 
             messageListenerThread.IsBackground = true;
             messageListenerThread.Start();
+        }
+
+        // Método para separar mensajes concatenados
+        private string[] SepararMensajesConcatenados(string mensajeCrudo)
+        {
+            List<string> mensajes = new List<string>();
+
+            // Patrones comunes de inicio de mensaje
+            string[] patrones = {
+        "CARDS/", "TURN/", "ACTION/", "CHAT/", "DESAFIO/", "JUGADOR_ELIMINADO/",
+        "FIN_PARTIDA/", "GRUPO_DISUELTO/", "PARTIDA_CANCELADA/", "NUEVA_RONDA/",
+        "ERROR/", "ACTION_OK/", "CARTA_RONDA"
+    };
+
+            int inicio = 0;
+
+            for (int i = 1; i < mensajeCrudo.Length; i++)
+            {
+                foreach (string patron in patrones)
+                {
+                    if (i + patron.Length <= mensajeCrudo.Length &&
+                        mensajeCrudo.Substring(i, patron.Length) == patron)
+                    {
+                        // Encontramos el inicio de un nuevo mensaje
+                        string mensajeAnterior = mensajeCrudo.Substring(inicio, i - inicio).Trim();
+                        if (!string.IsNullOrEmpty(mensajeAnterior))
+                        {
+                            mensajes.Add(mensajeAnterior);
+                        }
+                        inicio = i;
+                        break;
+                    }
+                }
+            }
+
+            // Añadir el último mensaje
+            string ultimoMensaje = mensajeCrudo.Substring(inicio).Trim();
+            if (!string.IsNullOrEmpty(ultimoMensaje))
+            {
+                mensajes.Add(ultimoMensaje);
+            }
+
+            // Si no se encontraron patrones, devolver el mensaje original
+            if (mensajes.Count == 0)
+            {
+                mensajes.Add(mensajeCrudo.Trim());
+            }
+
+            return mensajes.ToArray();
         }
 
         private void EnviarCartasSeleccionadas()
@@ -1910,23 +2004,14 @@ namespace Duska.Screens
 
         private void LimpiarCartasEnviadas()
         {
-            // Crear una nueva lista para las cartas que se mantienen
-            List<Texture2D> nuevasCartasDisponibles = new List<Texture2D>();
-            List<bool> nuevosFiltros = new List<bool>();
+            // NO ELIMINAR LAS CARTAS - Solo resetear los filtros
+            // El servidor debería enviar nuevas cartas cuando sea necesario
 
-            // Guardar solo las cartas que no tienen filtro (no fueron enviadas)
-            for (int i = 0; i < _cartasDisponibles.Count; i++)
+            // Simplemente resetear los filtros sin eliminar cartas
+            for (int i = 0; i < _cartasConFiltro.Count; i++)
             {
-                if (!_cartasConFiltro[i])
-                {
-                    nuevasCartasDisponibles.Add(_cartasDisponibles[i]);
-                    nuevosFiltros.Add(false);
-                }
+                _cartasConFiltro[i] = false;
             }
-
-            // Actualizar las listas
-            _cartasDisponibles = nuevasCartasDisponibles;
-            _cartasConFiltro = nuevosFiltros;
 
             // Resetear el índice de carta seleccionada
             if (_cartasDisponibles.Count > 0)
@@ -1934,7 +2019,7 @@ namespace Duska.Screens
             else
                 _cartaSeleccionadaIndex = -1;
 
-            Debug.WriteLine($"[CARTAS] Cartas restantes después de enviar: {_cartasDisponibles.Count}");
+            Debug.WriteLine($"[CARTAS] Filtros reseteados. Cartas disponibles: {_cartasDisponibles.Count}");
         }
 
         public override void Update(GameTime gameTime)
@@ -2181,7 +2266,7 @@ namespace Duska.Screens
         {
             try
             {
-                GraphicsDevice.Clear(Color.CornflowerBlue); // Color claro para ver mejor
+                GraphicsDevice.Clear(Color.CornflowerBlue);
 
                 if (_spriteBatch == null)
                 {
@@ -2190,131 +2275,162 @@ namespace Duska.Screens
 
                 _spriteBatch.Begin();
 
-                // Mostrar información de depuración
-                Debug.WriteLine($"[Draw] Cartas disponibles: {_cartasDisponibles.Count}");
-
-                // Dibujar cartas
-                if (_mostrarTodas && _cartasDisponibles != null)
+                // Solo mostrar cartas si existen y las texturas son válidas
+                if (_mostrarTodas && _cartasDisponibles != null && _cartasDisponibles.Count > 0)
                 {
                     float escalaActual = _cartasAcercadas ? _escalaCartasAcercadas : _escalaCartasNormal;
-                    Vector2 posicionBase = _cartasAcercadas ? _posicionCartasAcercadas : _posicionCartasNormal;
 
-                    // Recalcular posición base para centrar basado en la cantidad de cartas
-                    float anchoTotal = _cartasDisponibles.Count * (150 * escalaActual * 0.8f); // 0.8 para espaciado
-                    float posX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
-
+                    // Verificar que todas las texturas sean válidas antes de dibujar
+                    List<Texture2D> cartasValidas = new List<Texture2D>();
                     for (int i = 0; i < _cartasDisponibles.Count; i++)
                     {
-                        if (_cartasDisponibles[i] != null)
+                        if (_cartasDisponibles[i] != null && !_cartasDisponibles[i].IsDisposed)
                         {
-                            int x = (int)(posX + (i * 150 * escalaActual * 0.8f));
-                            int y = _cartasAcercadas ? GraphicsDevice.Viewport.Height / 2 - 112
-                                                     : GraphicsDevice.Viewport.Height - 150;
-
-                            int ancho = (int)(150 * escalaActual);
-                            int alto = (int)(225 * escalaActual);
-
-
-                            // Determinar el color a aplicar
-                            Color colorTextura = Color.White;
-
-                            // Si esta carta tiene filtro aplicado
-                            if (_cartasConFiltro.Count > i && _cartasConFiltro[i])
-                            {
-                                colorTextura = _colorFiltro;
-                            }
-
-                            // Si esta es la carta seleccionada (para el borde amarillo)
-                            if (i == _cartaSeleccionadaIndex && _cartasAcercadas)
-                            {
-                                // Dibujar un borde alrededor de la carta seleccionada
-                                Texture2D bordeTextura = GetOrCreatePlainTexture(Color.Yellow);
-                                int bordeGrosor = 3;
-
-                                // Borde superior
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
-                                // Borde inferior
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y + alto, ancho + bordeGrosor * 2, bordeGrosor), Color.Yellow);
-                                // Borde izquierdo
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
-                                // Borde derecho
-                                _spriteBatch.Draw(bordeTextura, new Rectangle(x + ancho, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), Color.Yellow);
-                            }
-
-                            // Dibujar la carta con el color apropiado (filtrado o no)
-                            _spriteBatch.Draw(
-                                _cartasDisponibles[i],
-                                new Rectangle(x, y, ancho, alto),
-                                colorTextura
-                            );
+                            cartasValidas.Add(_cartasDisponibles[i]);
                         }
                     }
-                }
-                else if (_cartaSeleccionada != null)
-                {
-                    int centerX = GraphicsDevice.Viewport.Width / 2 - 75;
-                    int centerY = GraphicsDevice.Viewport.Height / 2 - 112;
 
-                    _spriteBatch.Draw(
-                        _cartaSeleccionada,
-                        new Rectangle(centerX, centerY, 150, 225),
-                        Color.White
-                    );
-                }
-
-                if (mostrandoDesafio)
-                {
-                    // Dibujar un fondo semitransparente
-                    Texture2D fondoTextura = GetOrCreatePlainTexture(new Color(0, 0, 0, 180));
-                    _spriteBatch.Draw(fondoTextura, new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), Color.White);
-
-                    // Si hay cartas para mostrar
-                    if (cartasDesafio.Count > 0)
+                    if (cartasValidas.Count > 0)
                     {
-                        // Calcular posición central para las cartas
-                        int anchoTotal = cartasDesafio.Count * 160; // 150px por carta + 10px espacio
-                        int inicioX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
-                        int posY = GraphicsDevice.Viewport.Height / 2 - 150; // Centrado vertical
+                        // Recalcular posición base para centrar
+                        float anchoTotal = cartasValidas.Count * (150 * escalaActual * 0.8f);
+                        float posX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
 
-                        // Dibujar cada carta con su filtro
-                        for (int i = 0; i < cartasDesafio.Count; i++)
+                        for (int i = 0; i < cartasValidas.Count; i++)
                         {
-                            int posX = inicioX + (i * 160);
+                            try
+                            {
+                                int x = (int)(posX + (i * 150 * escalaActual * 0.8f));
+                                int y = _cartasAcercadas ? GraphicsDevice.Viewport.Height / 2 - 112
+                                                         : GraphicsDevice.Viewport.Height - 150;
 
-                            // Determinar color de filtro según validez
-                            Color colorFiltro = cartasDesafioValidas[i] ?
-                                new Color(0, 255, 0, 100) :  // Verde semitransparente
-                                new Color(255, 0, 0, 100);   // Rojo semitransparente
+                                int ancho = (int)(150 * escalaActual);
+                                int alto = (int)(225 * escalaActual);
 
-                            // Dibujar la carta
-                            _spriteBatch.Draw(
-                                cartasDesafio[i],
-                                new Rectangle(posX, posY, 150, 225),
-                                Color.White
-                            );
+                                // Verificar límites del rectángulo
+                                if (x >= 0 && y >= 0 && ancho > 0 && alto > 0 &&
+                                    x + ancho <= GraphicsDevice.Viewport.Width &&
+                                    y + alto <= GraphicsDevice.Viewport.Height)
+                                {
+                                    Color colorTextura = Color.White;
 
-                            // Dibujar el filtro
-                            Texture2D filtroTextura = GetOrCreatePlainTexture(colorFiltro);
-                            _spriteBatch.Draw(
-                                filtroTextura,
-                                new Rectangle(posX, posY, 150, 225),
-                                colorFiltro
-                            );
+                                    // Aplicar filtro si corresponde
+                                    if (_cartasConFiltro.Count > i && _cartasConFiltro[i])
+                                    {
+                                        colorTextura = _colorFiltro;
+                                    }
+
+                                    // Dibujar borde si es la carta seleccionada
+                                    if (i == _cartaSeleccionadaIndex && _cartasAcercadas)
+                                    {
+                                        DibujarBordeCarta(x, y, ancho, alto, Color.Yellow);
+                                    }
+
+                                    // Dibujar la carta
+                                    _spriteBatch.Draw(
+                                        cartasValidas[i],
+                                        new Rectangle(x, y, ancho, alto),
+                                        colorTextura
+                                    );
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[DRAW] Error dibujando carta {i}: {ex.Message}");
+                            }
                         }
                     }
+                }
+
+                // Dibujar sistema de desafío si está activo
+                if (mostrandoDesafio && cartasDesafio.Count > 0)
+                {
+                    DibujarPanelDesafio();
                 }
 
                 _spriteBatch.End();
 
                 // Dibujar la interfaz de usuario
-                if (UserInterface.Active != null)
+                try
                 {
-                    UserInterface.Active.Draw(_spriteBatch);
+                    if (UserInterface.Active != null)
+                    {
+                        UserInterface.Active.Draw(_spriteBatch);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[DRAW] Error dibujando UI: {ex.Message}");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Draw] Error: {ex.Message}");
+                Debug.WriteLine($"[DRAW] Error general: {ex.Message}");
+            }
+        }
+
+        private void DibujarBordeCarta(int x, int y, int ancho, int alto, Color color)
+        {
+            try
+            {
+                Texture2D bordeTextura = GetOrCreatePlainTexture(color);
+                int bordeGrosor = 3;
+
+                // Dibujar bordes con verificación de límites
+                if (bordeTextura != null)
+                {
+                    _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, ancho + bordeGrosor * 2, bordeGrosor), color);
+                    _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y + alto, ancho + bordeGrosor * 2, bordeGrosor), color);
+                    _spriteBatch.Draw(bordeTextura, new Rectangle(x - bordeGrosor, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), color);
+                    _spriteBatch.Draw(bordeTextura, new Rectangle(x + ancho, y - bordeGrosor, bordeGrosor, alto + bordeGrosor * 2), color);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DRAW] Error dibujando borde: {ex.Message}");
+            }
+        }
+
+        private void DibujarPanelDesafio()
+        {
+            try
+            {
+                // Dibujar fondo semitransparente
+                Texture2D fondoTextura = GetOrCreatePlainTexture(new Color(0, 0, 0, 180));
+                _spriteBatch.Draw(fondoTextura, new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), Color.White);
+
+                // Calcular posición central para las cartas
+                int anchoTotal = cartasDesafio.Count * 160;
+                int inicioX = GraphicsDevice.Viewport.Width / 2 - anchoTotal / 2;
+                int posY = GraphicsDevice.Viewport.Height / 2 - 150;
+
+                // Dibujar cada carta con su filtro
+                for (int i = 0; i < cartasDesafio.Count; i++)
+                {
+                    if (cartasDesafio[i] != null && !cartasDesafio[i].IsDisposed)
+                    {
+                        int posX = inicioX + (i * 160);
+
+                        // Verificar límites
+                        if (posX >= 0 && posY >= 0 && posX + 150 <= GraphicsDevice.Viewport.Width)
+                        {
+                            Color colorFiltro = cartasDesafioValidas[i] ?
+                                new Color(0, 255, 0, 100) :  // Verde
+                                new Color(255, 0, 0, 100);   // Rojo
+
+                            // Dibujar la carta
+                            _spriteBatch.Draw(cartasDesafio[i], new Rectangle(posX, posY, 150, 225), Color.White);
+
+                            // Dibujar el filtro
+                            Texture2D filtroTextura = GetOrCreatePlainTexture(colorFiltro);
+                            _spriteBatch.Draw(filtroTextura, new Rectangle(posX, posY, 150, 225), colorFiltro);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DRAW] Error dibujando panel desafío: {ex.Message}");
             }
         }
 
