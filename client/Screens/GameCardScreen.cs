@@ -2028,11 +2028,10 @@ namespace Duska.Screens
                 if (_mostrandoPanelEliminacion && _panelEliminacionActivo != null)
                 {
                     // Solo procesar input para el panel de eliminación
-                    var keyboardState = Keyboard.GetState();
-                    var keyboardStateExtended = KeyboardStateExtended.GetState();
+                    var keyboardStateExtended = KeyboardExtended.GetState();
 
                     // Detectar teclas presionadas
-                    if (keyboardStateExtended.WasKeyJustDown(Keys.E))
+                    if (keyboardStateExtended.WasKeyReleased(Keys.E))
                     {
                         Debug.WriteLine("[INPUT] Tecla E presionada - Espectador");
                         ConfigurarComoEspectador();
@@ -2040,7 +2039,7 @@ namespace Duska.Screens
                         return;
                     }
 
-                    if (keyboardStateExtended.WasKeyJustDown(Keys.S))
+                    if (keyboardStateExtended.WasKeyReleased(Keys.S))
                     {
                         Debug.WriteLine("[INPUT] Tecla S presionada - Salir");
                         SalirDeLaPartida();
@@ -2048,7 +2047,7 @@ namespace Duska.Screens
                         return;
                     }
 
-                    if (keyboardStateExtended.WasKeyJustDown(Keys.Escape))
+                    if (keyboardStateExtended.WasKeyReleased(Keys.Escape))
                     {
                         Debug.WriteLine("[INPUT] Tecla ESC presionada - Menú");
                         RegresarAlMenuPrincipal();
@@ -2137,9 +2136,10 @@ namespace Duska.Screens
                         hayNuevosMensajes = false;
                     }
                 }
-                // Obtener estados de entrada actuales
+
+                // Obtener estados de entrada actuales - USAR NOMBRES ÚNICOS
                 KeyboardState estadoTeclado = Keyboard.GetState();
-                var keyboardState = KeyboardExtended.GetState();
+                var keyboardExtended = KeyboardExtended.GetState(); // ← CAMBIAR NOMBRE
                 var mouseState = MouseExtended.GetState();
 
                 // Permitir que UserInterface procese la entrada
@@ -2177,14 +2177,14 @@ namespace Duska.Screens
                 // Solo procesar teclas de juego si el ratón no está sobre la UI
                 if (!ratónSobreUI)
                 {
-                    if (keyboardState.WasKeyReleased(Keys.Escape))
+                    if (keyboardExtended.WasKeyReleased(Keys.Escape)) // ← USAR keyboardExtended
                     {
                         Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
                         EscMenu(usuario, true);
                     }
 
                     // Tecla Q para acercar/alejar SIEMPRE disponible
-                    if (keyboardState.WasKeyReleased(Keys.Q))
+                    if (keyboardExtended.WasKeyReleased(Keys.Q)) // ← USAR keyboardExtended
                     {
                         _cartasAcercadas = !_cartasAcercadas;
 
@@ -2201,7 +2201,7 @@ namespace Duska.Screens
                     // Navegación con flechas SIEMPRE disponible cuando las cartas están acercadas
                     if (_cartasAcercadas)
                     {
-                        if (keyboardState.WasKeyReleased(Keys.Left))
+                        if (keyboardExtended.WasKeyReleased(Keys.Left)) // ← USAR keyboardExtended
                         {
                             if (_cartasDisponibles.Count > 0)
                             {
@@ -2212,7 +2212,7 @@ namespace Duska.Screens
                                 Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex}");
                             }
                         }
-                        else if (keyboardState.WasKeyReleased(Keys.Right))
+                        else if (keyboardExtended.WasKeyReleased(Keys.Right)) // ← USAR keyboardExtended
                         {
                             if (_cartasDisponibles.Count > 0)
                             {
@@ -2222,7 +2222,7 @@ namespace Duska.Screens
                             }
                         }
 
-                        if (keyboardState.WasKeyReleased(Keys.F8))
+                        if (keyboardExtended.WasKeyReleased(Keys.F8)) // ← USAR keyboardExtended
                         {
                             _permitirAccionesJuego = true;
                             esMiTurno = true;
@@ -2234,7 +2234,7 @@ namespace Duska.Screens
                         if (_permitirAccionesJuego == true)
                         {
                             // Espacio para seleccionar/aplicar filtro a la carta
-                            if (keyboardState.WasKeyReleased(Keys.Space))
+                            if (keyboardExtended.WasKeyReleased(Keys.Space)) // ← USAR keyboardExtended
                             {
                                 // Solo aplicar filtro si hay una carta seleccionada
                                 if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
@@ -2253,29 +2253,29 @@ namespace Duska.Screens
                             }
 
                             // Tecla E para enviar cartas seleccionadas
-                            if (keyboardState.WasKeyReleased(Keys.E))
+                            if (keyboardExtended.WasKeyReleased(Keys.E)) // ← USAR keyboardExtended
                             {
                                 EnviarCartasSeleccionadas();
                             }
 
-                            if (keyboardState.WasKeyReleased(Keys.F))
+                            if (keyboardExtended.WasKeyReleased(Keys.F)) // ← USAR keyboardExtended
                             {
                                 // Forzar la eliminación de cartas seleccionadas
                                 DesafiarJugador();
                             }
                         }
-                        else if (keyboardState.WasKeyReleased(Keys.Space) || keyboardState.WasKeyReleased(Keys.E) || keyboardState.WasKeyReleased(Keys.F))
+                        else if (keyboardExtended.WasKeyReleased(Keys.Space) ||
+                                 keyboardExtended.WasKeyReleased(Keys.E) ||
+                                 keyboardExtended.WasKeyReleased(Keys.F)) // ← USAR keyboardExtended
                         {
                             // Si no se permiten acciones de juego, mostrar mensaje
                             Debug.WriteLine("[INPUT] Intento de acción de juego fuera de turno");
-                            {
-                                ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
-                            }
+                            ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
                         }
                     }
 
                     // IMPORTANTE: Actualizar el estado anterior del teclado al final
-                    _estadoTecladoAnterior = keyboardState;
+                    _estadoTecladoAnterior = keyboardExtended; // ← USAR keyboardExtended
                 }
             }
             catch (Exception ex)
