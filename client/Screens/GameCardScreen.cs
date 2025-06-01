@@ -16,6 +16,7 @@ using GeonBit.UI.Utils;
 using System.Diagnostics;
 using System.Net;
 using MonoGame.Extended.Particles.Profiles;
+using System.Linq;
 
 namespace Duska.Screens
 {
@@ -862,8 +863,11 @@ namespace Duska.Screens
                 // IMPORTANTE: Verificar que no estemos ya mostrando un panel
                 if (UserInterface.Active != null)
                 {
-                    // Buscar si ya existe un panel de eliminación
-                    var panelExistente = UserInterface.Active.Root.Find("PanelEliminacion");
+                    // CORREGIR: Buscar si ya existe un panel de eliminación usando LINQ
+                    var panelExistente = UserInterface.Active.Root.Children
+                        .OfType<Panel>()
+                        .FirstOrDefault(p => p.Identifier == "PanelEliminacion");
+
                     if (panelExistente != null)
                     {
                         Debug.WriteLine("[UI] Panel de eliminación ya existe, no crear duplicado");
@@ -970,8 +974,12 @@ namespace Duska.Screens
 
                 Debug.WriteLine("[UI] *** Panel de eliminación creado y añadido exitosamente ***");
 
-                // Verificación adicional: Asegurar que el panel es visible
-                if (panel.Visible && UserInterface.Active.Root.Children.Contains(panel))
+                // CORREGIR: Verificación adicional usando LINQ
+                var panelVerificacion = UserInterface.Active.Root.Children
+                    .OfType<Panel>()
+                    .FirstOrDefault(p => p.Identifier == "PanelEliminacion");
+
+                if (panelVerificacion != null && panelVerificacion.Visible)
                 {
                     Debug.WriteLine("[UI] *** CONFIRMADO: Panel de eliminación está visible y añadido ***");
                 }
