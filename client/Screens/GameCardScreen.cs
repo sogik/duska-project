@@ -37,6 +37,8 @@ namespace Duska.Screens
         private bool conectado = false;
         private bool _mostrandoPanelEliminacion = false;
         private Panel _panelEliminacionActivo = null;
+        private bool mostrarPanelEliminacion = false;
+        private float tiempoMostrarPanel = 0f;
 
         public string usuario;
 
@@ -74,6 +76,8 @@ namespace Duska.Screens
         private bool esMiTurno = false;
         private bool _permitirAccionesJuego = false;
 
+        private SpriteFont arial; // Fuente para dibujar texto
+
         // Variables para el sistema de desafío
         private bool mostrandoDesafio = false;
         private float tiempoDesafio = 0f;
@@ -88,14 +92,17 @@ namespace Duska.Screens
             _cartas = new Texture2D[5];
             _random = new Random();
             _mostrarTodas = true;
-        }
-
         public override void LoadContent()
         {
             try
             {
                 base.LoadContent();
 
+                // Cargar la fuente Arial (SpriteFont)
+                arial = Content.Load<SpriteFont>("arial");
+
+                // Inicializar la interfaz de usuario con un tema
+                InitializeThemeAndUI(BuiltinThemes.hd);
                 // Inicializar la interfaz de usuario con un tema
                 InitializeThemeAndUI(BuiltinThemes.hd);
 
@@ -623,11 +630,13 @@ namespace Duska.Screens
 
                 // Busca la sección que maneja "JUGADOR_ELIMINADO" en ProcessServerMessage y reemplázala:
 
-                if (mensaje.StartsWith("JUGADOR_ELIMINADO/"))
+                // En ProcessServerMessage, busca la sección JUGADOR_ELIMINADO y reemplázala por:
+
+                if (message.StartsWith("JUGADOR_ELIMINADO/"))
                 {
                     Debug.WriteLine("[ELIMINACIÓN] *** MENSAJE DE ELIMINACIÓN RECIBIDO ***");
 
-                    string[] partes = mensaje.Split('/');
+                    string[] partes = message.Split('/');
                     if (partes.Length >= 2)
                     {
                         string jugadorEliminado = partes[1];
@@ -646,24 +655,24 @@ namespace Duska.Screens
 
                         if (sonIguales)
                         {
-                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO - PARANDO PROCESAMIENTO ***");
+                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO ***");
 
-                            // IMPORTANTE: Detener procesamiento para que FIN_PARTIDA no interfiera
+                            // Marcar como eliminado y detener procesamiento
+                            estoyEliminado = true;
                             stopMessageListener = true;
 
                             // Mostrar mensaje en chat
-                            ChatPanel(true, "Sistema/Has sido eliminado de la partida");
+                            ChatPanel(true, "Sistema/¡Has sido eliminado de la partida!");
 
-                            // ESPERAR 3 segundos antes de regresar al menú
-                            System.Threading.Tasks.Task.Delay(3000).ContinueWith(t =>
+                            // Agregar a mensajes pendientes para mostrar panel
+                            lock (mensajesLock)
                             {
-                                Debug.WriteLine("[ELIMINACIÓN] Regresando al menú después de 3 segundos");
-                                var mainMenuScreen = new MainMenuScreen(Game, usuario);
-                                ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
-                            });
+                                mensajesPendientes.Add("JUGADOR_ELIMINADO_YO");
+                                hayNuevosMensajes = true;
+                            }
 
-                            // No procesar más mensajes
-                            return;
+                            Debug.WriteLine("[ELIMINACIÓN] Panel de eliminación encolado");
+                            return; // No procesar más mensajes
                         }
                         else
                         {
@@ -2142,6 +2151,9 @@ namespace Duska.Screens
                     }
 
                     // Limpiar la bandera
+                    // En el método Update, después de procesar otros mensajes pendientes, agregar:
+
+                    // Procesar mensajes pendientes
                     lock (mensajesLock)
                     {
                         if (hayNuevosMensajes && mensajesPendientes.Count > 0)
@@ -2150,51 +2162,20 @@ namespace Duska.Screens
                             {
                                 Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {mensaje}");
 
-                                if (mensaje == "MOSTRAR_PANEL_ELIMINACION")
+                                if (mensaje == "JUGADOR_ELIMINADO_YO")
                                 {
-                                    Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN ***");
-                                    // Mostrar panel modal de eliminación
-                                    var panelEliminacion = new Panel
+                                    Debug.WriteLine("[UPDATE] *** PANEL DE ELIMINACIÓN - ESPERANDO 3 SEGUNDOS ***");
+
+                                    // Mostrar texto grande en pantalla por 3 segundos
+                                    mostrarPanelEliminacion = true;
+                                    tiempoMostrarPanel = 3.0f; // 3 segundos
+
+                                    // Después de 3 segundos, regresar al menú
+                                    System.Threading.Tasks.Task.Delay(3000).ContinueWith(t =>
                                     {
-                                        Background = new ColorBrush(Color.Black * 0.8f),
-                                        Width = 400,
-                                        Height = 300,
-                                        HorizontalAlignment = HorizontalAlignment.Center,
-                                        VerticalAlignment = VerticalAlignment.Center
-                                    };
-
-                                    var textoEliminacion = new TextBlock
-                                    {
-                                        Text = "Has sido eliminado de la partida",
-                                        TextColor = Color.White,
-                                        Font = game.Content.Load<SpriteFont>("Fonts/Arial"),
-                                        HorizontalAlignment = HorizontalAlignment.Center,
-                                        VerticalAlignment = VerticalAlignment.Center
-                                    };
-
-                                    var botonContinuar = new TextButton
-                                    {
-                                        Text = "Continuar",
-                                        Width = 150,
-                                        Height = 50,
-                                        HorizontalAlignment = HorizontalAlignment.Center,
-                                        VerticalAlignment = VerticalAlignment.Bottom,
-                                        Margin = new Thickness(0, 0, 0, 20)
-                                    };
-
-                                    botonContinuar.Click += (s, e) =>
-                                    {
-                                        Debug.WriteLine("[PANEL] Botón continuar presionado - regresando al menú");
-                                        game.ChangeScreen(new MainMenuScreen(game));
-                                    };
-
-                                    panelEliminacion.Widgets.Add(textoEliminacion);
-                                    panelEliminacion.Widgets.Add(botonContinuar);
-
-                                    desktop.Widgets.Add(panelEliminacion);
-
-                                    Debug.WriteLine("[UPDATE] Panel de eliminación añadido al desktop");
-                                    break; // Solo procesar el primer mensaje de eliminación
+                                        Debug.WriteLine("[ELIMINACIÓN] Tiempo cumplido - regresando al menú");
+                                        this.game.ChangeScreen(new MainMenuScreen(this.game));
+                                    });
                                 }
                                 else
                                 {
@@ -2565,6 +2546,25 @@ namespace Duska.Screens
                 if (mostrandoDesafio && cartasDesafio.Count > 0)
                 {
                     DibujarPanelDesafio();
+                }
+
+                if (mostrarPanelEliminacion && tiempoMostrarPanel > 0)
+                {
+                    // Fondo semi-transparente
+                    Texture2D fondoNegro = GetOrCreatePlainTexture(Color.White);
+                    _spriteBatch.Draw(fondoNegro, new Rectangle(0, 0, 1920, 1080), Color.Black * 0.7f);
+
+                    // Texto grande centrado
+                    Vector2 tamanoTexto = arial.MeasureString("¡HAS SIDO ELIMINADO!");
+                    Vector2 posicion = new Vector2(
+                        (1920 - tamanoTexto.X) / 2,
+                        (1080 - tamanoTexto.Y) / 2
+                    );
+
+                    _spriteBatch.DrawString(arial, "¡HAS SIDO ELIMINADO!", posicion, Color.Red, 0f, Vector2.Zero, 2.0f, SpriteEffects.None, 0f);
+
+                    // Reducir tiempo
+                    tiempoMostrarPanel -= (float)gameTime.ElapsedGameTime.TotalSeconds;
                 }
 
                 _spriteBatch.End();
