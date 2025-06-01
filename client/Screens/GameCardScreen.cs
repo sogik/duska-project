@@ -759,33 +759,98 @@ namespace Duska.Screens
 
         private void MostrarPanelPartidaCancelada(string razon)
         {
-            // Limpiar UI anterior
-            if (UserInterface.Active != null)
+            try
             {
-                UserInterface.Active.Clear();
+                Debug.WriteLine("[UI] *** INICIANDO MostrarPanelPartidaCancelada ***");
+
+                // LIMPIAR UI COMPLETAMENTE
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                }
+                else
+                {
+                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
+                    return;
+                }
+
+                // Crear panel principal
+                Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
+                panel.Visible = true;
+
+                // Título
+                Header titulo = new Header("PARTIDA CANCELADA");
+                titulo.FillColor = Color.Orange;
+                panel.AddChild(titulo);
+
+                panel.AddChild(new HorizontalLine());
+
+                // Mensaje
+                panel.AddChild(new Paragraph("La partida ha sido cancelada"));
+                panel.AddChild(new Paragraph($"Razón: {razon}"));
+                panel.AddChild(new HorizontalLine());
+
+                // Botón para regresar al menú
+                Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
+                regresarBtn.Size = new Vector2(200, 50);
+                regresarBtn.FillColor = Color.LightBlue;
+                regresarBtn.OnClick = (Entity btn) =>
+                {
+                    Debug.WriteLine("[PARTIDA_CANCELADA] Botón regresar clickeado");
+                    RegresarAlMenuPrincipal();
+                };
+                panel.AddChild(regresarBtn);
+
+                // Añadir al UserInterface
+                UserInterface.Active.AddEntity(panel);
+
+                Debug.WriteLine("[UI] *** Panel partida cancelada creado exitosamente ***");
+
+                // Auto-regresar después de 10 segundos
+                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                {
+                    if (panel.Visible)
+                    {
+                        Debug.WriteLine("[PARTIDA_CANCELADA] Auto-regreso al menú después de 10 segundos");
+                        RegresarAlMenuPrincipal();
+                    }
+                });
             }
-
-            // Crear panel principal
-            Panel panel = new Panel(new Vector2(400, 200), PanelSkin.Default, Anchor.Center);
-            panel.Visible = true;
-            UserInterface.Active.AddEntity(panel);
-
-            // Título
-            panel.AddChild(new Header("PARTIDA CANCELADA"));
-            panel.AddChild(new HorizontalLine());
-
-            // Mensaje
-            panel.AddChild(new Paragraph("La partida ha sido cancelada"));
-            panel.AddChild(new Paragraph($"Razón: {razon}"));
-            panel.AddChild(new HorizontalLine());
-
-            // Botón para regresar al menú
-            Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
-            regresarBtn.OnClick = (Entity btn) =>
+            catch (Exception ex)
             {
-                RegresarAlMenuPrincipal();
-            };
-            panel.AddChild(regresarBtn);
+                Debug.WriteLine($"[ERROR] Error en MostrarPanelPartidaCancelada: {ex.Message}");
+
+                // Plan de respaldo
+                ChatPanel(true, "Sistema/Partida cancelada. Regresando al menú principal en 3 segundos...");
+                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                {
+                    RegresarAlMenuPrincipal();
+                });
+            }
+        }
+
+        private void InicializarUIJuego()
+        {
+            try
+            {
+                Debug.WriteLine("[UI] Regenerando UI del juego...");
+
+                // Recrear elementos básicos de la UI del juego
+                // Solo si necesitas mantener elementos visibles como espectador
+
+                // Por ejemplo, recrear el panel de chat:
+                Panel chatPanel = new Panel(new Vector2(300, 200), PanelSkin.Default, Anchor.BottomLeft);
+                chatPanel.Visible = true;
+                UserInterface.Active.AddEntity(chatPanel);
+
+                // Añadir otros elementos de UI que necesites mantener visibles
+
+                Debug.WriteLine("[UI] UI del juego regenerada");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al regenerar UI: {ex.Message}");
+            }
         }
 
         private void MostrarPanelEliminacion()
@@ -794,7 +859,7 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacion ***");
 
-                // LIMPIAR UI COMPLETAMENTE para paneles críticos
+                // LIMPIAR UI COMPLETAMENTE para asegurar que el panel sea visible
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Clear();
@@ -836,7 +901,9 @@ namespace Duska.Screens
                             server.Send(msg);
                         }
 
-                        // Regenerar chat después de elegir espectador
+                        // Limpiar panel y regenerar UI de juego como espectador
+                        UserInterface.Active.Clear();
+                        InicializarUIJuego(); // Recrear UI del juego
                         ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
                     }
                     catch (Exception ex)
@@ -899,17 +966,20 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelFinPartida ***");
 
-                // NO limpiar la UI aquí, solo añadir el panel encima
-                if (UserInterface.Active == null)
+                // LIMPIAR UI COMPLETAMENTE para asegurar que el panel sea visible
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                }
+                else
                 {
                     Debug.WriteLine("[ERROR] UserInterface.Active es null");
                     return;
                 }
 
-                // Crear panel principal SIN usar Priority
+                // Crear panel principal
                 Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
-                // Eliminar esta línea: panel.Priority = 1000;
 
                 // Título destacado
                 Header titulo = new Header("¡PARTIDA TERMINADA!");
@@ -946,37 +1016,21 @@ namespace Duska.Screens
                 regresarBtn.OnClick = (Entity btn) =>
                 {
                     Debug.WriteLine("[FIN_PARTIDA] Botón regresar clickeado");
-
-                    // Cerrar panel
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-
-                    // Regresar al menú principal
                     RegresarAlMenuPrincipal();
                 };
                 panel.AddChild(regresarBtn);
 
-                // ALTERNATIVA A Priority: Añadir al final y enfocar
+                // Añadir al UserInterface
                 UserInterface.Active.AddEntity(panel);
-
-                // TRUCO: Enfocar el panel para que aparezca encima
-                try
-                {
-                    panel.Focused = true;
-                }
-                catch (Exception)
-                {
-                    // Si no funciona, ignorar
-                }
 
                 Debug.WriteLine("[UI] *** Panel fin de partida creado y añadido exitosamente ***");
 
-                // OPCIONAL: Auto-regresar después de 10 segundos si el usuario no hace clic
-                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                // OPCIONAL: Auto-regresar después de 15 segundos si el usuario no hace clic
+                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
                 {
                     if (panel.Visible) // Solo si el panel aún está visible
                     {
-                        Debug.WriteLine("[FIN_PARTIDA] Auto-regreso al menú después de 10 segundos");
+                        Debug.WriteLine("[FIN_PARTIDA] Auto-regreso al menú después de 15 segundos");
                         RegresarAlMenuPrincipal();
                     }
                 });
