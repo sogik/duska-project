@@ -2012,22 +2012,48 @@ namespace Duska.Screens
 
         private void LimpiarCartasEnviadas()
         {
-            // NO ELIMINAR LAS CARTAS - Solo resetear los filtros
-            // El servidor debería enviar nuevas cartas cuando sea necesario
+            if (_cartasConFiltro == null || _cartasDisponibles == null)
+                return;
 
-            // Simplemente resetear los filtros sin eliminar cartas
-            for (int i = 0; i < _cartasConFiltro.Count; i++)
+            Debug.WriteLine($"[CARTAS] Antes de limpiar: {_cartasDisponibles.Count} cartas disponibles");
+
+            // Crear listas temporales para las cartas que NO tienen filtro
+            List<Texture2D> cartasRestantes = new List<Texture2D>();
+            List<bool> filtrosRestantes = new List<bool>();
+
+            // Recorrer todas las cartas y conservar solo las que NO tienen filtro
+            for (int i = 0; i < Math.Min(_cartasDisponibles.Count, _cartasConFiltro.Count); i++)
             {
-                _cartasConFiltro[i] = false;
+                if (!_cartasConFiltro[i]) // Si NO tiene filtro (no fue enviada)
+                {
+                    cartasRestantes.Add(_cartasDisponibles[i]);
+                    filtrosRestantes.Add(false); // Resetear filtro
+                    Debug.WriteLine($"[CARTAS] Carta {i} conservada: {GetNombreCartaPorTextura(_cartasDisponibles[i])}");
+                }
+                else
+                {
+                    Debug.WriteLine($"[CARTAS] Carta {i} eliminada: {GetNombreCartaPorTextura(_cartasDisponibles[i])}");
+                }
             }
+
+            // Actualizar las listas principales
+            _cartasDisponibles = cartasRestantes;
+            _cartasConFiltro = filtrosRestantes;
 
             // Resetear el índice de carta seleccionada
             if (_cartasDisponibles.Count > 0)
+            {
                 _cartaSeleccionadaIndex = 0;
+            }
             else
+            {
                 _cartaSeleccionadaIndex = -1;
+            }
 
-            Debug.WriteLine($"[CARTAS] Filtros reseteados. Cartas disponibles: {_cartasDisponibles.Count}");
+            // Actualizar posiciones
+            ActualizarPosicionesCartas();
+
+            Debug.WriteLine($"[CARTAS] Después de limpiar: {_cartasDisponibles.Count} cartas restantes");
         }
 
         public override void Update(GameTime gameTime)
