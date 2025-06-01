@@ -621,44 +621,42 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("JUGADOR_ELIMINADO/"))
                 {
-                    string jugadorEliminado = message.Substring(17).Trim();
+                    string[] partes = message.Split('/');
 
-                    Debug.WriteLine($"[ELIMINACIÓN] *** MENSAJE DE ELIMINACIÓN RECIBIDO ***");
-                    Debug.WriteLine($"[ELIMINACIÓN] Jugador eliminado: '{jugadorEliminado}'");
-                    Debug.WriteLine($"[ELIMINACIÓN] Mi usuario: '{usuario}'");
-                    Debug.WriteLine($"[ELIMINACIÓN] ¿Son iguales? {jugadorEliminado.Equals(usuario, StringComparison.OrdinalIgnoreCase)}");
-
-                    if (jugadorEliminado.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                    if (partes.Length >= 2)
                     {
-                        // SOY YO EL ELIMINADO
-                        estoyEliminado = true;
-                        _permitirAccionesJuego = false;
-                        esMiTurno = false;
+                        string jugadorEliminado = partes[1];
+                        Debug.WriteLine($"[ELIMINACIÓN] Jugador eliminado: '{jugadorEliminado}'");
+                        Debug.WriteLine($"[ELIMINACIÓN] Mi usuario: '{usuario}'");
 
-                        Debug.WriteLine("[ELIMINACIÓN] *** HE SIDO ELIMINADO - PROCESANDO ***");
+                        // CORREGIR: Limpiar barras y espacios extra
+                        string jugadorLimpio = jugadorEliminado.Trim().TrimStart('/');
+                        string miUsuarioLimpio = usuario.Trim().TrimStart('/');
 
-                        ChatPanel(true, "Sistema/¡Has sido eliminado de la partida!");
+                        Debug.WriteLine($"[ELIMINACIÓN] Jugador limpio: '{jugadorLimpio}'");
+                        Debug.WriteLine($"[ELIMINACIÓN] Mi usuario limpio: '{miUsuarioLimpio}'");
 
-                        // PROCESAR EN EL HILO PRINCIPAL USANDO LA COLA DE MENSAJES
-                        if (System.Threading.Thread.CurrentThread.IsBackground)
+                        bool sonIguales = string.Equals(jugadorLimpio, miUsuarioLimpio, StringComparison.OrdinalIgnoreCase);
+                        Debug.WriteLine($"[ELIMINACIÓN] ¿Son iguales? {sonIguales}");
+
+                        if (sonIguales)
                         {
+                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO - MOSTRANDO PANEL ***");
+
+                            // Encolar para mostrar en el hilo principal
                             lock (mensajesLock)
                             {
                                 mensajesPendientes.Add("MOSTRAR_PANEL_ELIMINACION");
                                 hayNuevosMensajes = true;
-                                Debug.WriteLine("[ELIMINACIÓN] Panel encolado para mostrar en hilo principal");
                             }
+
+                            ChatPanel(true, "Sistema/Has sido eliminado de la partida");
                         }
                         else
                         {
-                            Debug.WriteLine("[ELIMINACIÓN] Mostrando panel directamente en hilo principal");
-                            MostrarPanelEliminacion();
+                            Debug.WriteLine($"[ELIMINACIÓN] Otro jugador eliminado: {jugadorLimpio}");
+                            ChatPanel(true, $"Sistema/{jugadorLimpio} ha sido eliminado de la partida");
                         }
-                    }
-                    else
-                    {
-                        ChatPanel(true, $"Sistema/El jugador {jugadorEliminado} ha sido eliminado");
-                        Debug.WriteLine($"[ELIMINACIÓN] Otro jugador eliminado: {jugadorEliminado}");
                     }
                     return;
                 }
