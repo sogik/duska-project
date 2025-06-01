@@ -37,8 +37,6 @@ namespace Duska.Screens
         private bool conectado = false;
         private bool _mostrandoPanelEliminacion = false;
         private Panel _panelEliminacionActivo = null;
-        private bool mostrarPanelEliminacion = false;
-        private float tiempoMostrarPanel = 0f;
 
         public string usuario;
 
@@ -74,9 +72,7 @@ namespace Duska.Screens
 
         private string jugadorConTurnoActual = "";
         private bool esMiTurno = false;
-        private bool _permitirAccionesJuego = false;
-
-        private SpriteFont arial; // Fuente para dibujar texto
+        private bool _permitirAccionesJuego = false; // Fuente para dibujar texto
 
         // Variables para el sistema de desafío
         private bool mostrandoDesafio = false;
@@ -98,9 +94,6 @@ namespace Duska.Screens
             try
             {
                 base.LoadContent();
-
-                // Cargar la fuente Arial (SpriteFont)
-                arial = Content.Load<SpriteFont>("arial");
 
                 // Inicializar la interfaz de usuario con un tema
                 InitializeThemeAndUI(BuiltinThemes.hd);
@@ -2067,49 +2060,18 @@ namespace Duska.Screens
                                 Debug.WriteLine($"[ERROR] Error al mostrar panel partida cancelada: {ex.Message}");
                             }
                         }
+                        if (mensajePendiente == "JUGADOR_ELIMINADO_YO")
+                        {
+                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN GEONBIT ***");
+
+                            // Crear y mostrar panel modal de eliminación con Geonbit
+                            MostrarPanelEliminacionGeonbit();
+                        }
+
                         else
                         {
                             // Procesar otros mensajes normalmente
                             ProcessServerMessage(mensajePendiente);
-                        }
-                    }
-
-                    // Limpiar la bandera
-                    // En el método Update, después de procesar otros mensajes pendientes, agregar:
-
-                    // Procesar mensajes pendientes
-                    lock (mensajesLock)
-                    {
-                        if (hayNuevosMensajes && mensajesPendientes.Count > 0)
-                        {
-                            foreach (string mensaje in mensajesPendientes)
-                            {
-                                Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {mensaje}");
-
-                                if (mensaje == "JUGADOR_ELIMINADO_YO")
-                                {
-                                    Debug.WriteLine("[UPDATE] *** PANEL DE ELIMINACIÓN - ESPERANDO 3 SEGUNDOS ***");
-
-                                    // Mostrar texto grande en pantalla por 3 segundos
-                                    mostrarPanelEliminacion = true;
-                                    tiempoMostrarPanel = 3.0f; // 3 segundos
-
-                                    // Después de 3 segundos, regresar al menú
-                                    System.Threading.Tasks.Task.Delay(3000).ContinueWith(t =>
-                                    {
-                                        Debug.WriteLine("[ELIMINACIÓN] Tiempo cumplido - regresando al menú");
-                                        var mainMenuScreen = new MainMenuScreen(Game, usuario);
-                                        ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
-                                    });
-                                }
-                                else
-                                {
-                                    ProcessServerMessage(mensaje);
-                                }
-                            }
-
-                            mensajesPendientes.Clear();
-                            hayNuevosMensajes = false;
                         }
                     }
                 }
@@ -2473,25 +2435,6 @@ namespace Duska.Screens
                     DibujarPanelDesafio();
                 }
 
-                if (mostrarPanelEliminacion && tiempoMostrarPanel > 0)
-                {
-                    // Fondo semi-transparente
-                    Texture2D fondoNegro = GetOrCreatePlainTexture(Color.White);
-                    _spriteBatch.Draw(fondoNegro, new Rectangle(0, 0, 1920, 1080), Color.Black * 0.7f);
-
-                    // Texto grande centrado
-                    Vector2 tamanoTexto = arial.MeasureString("¡HAS SIDO ELIMINADO!");
-                    Vector2 posicion = new Vector2(
-                        (1920 - tamanoTexto.X) / 2,
-                        (1080 - tamanoTexto.Y) / 2
-                    );
-
-                    _spriteBatch.DrawString(kenney - rocket - square, "¡HAS SIDO ELIMINADO!", posicion, Color.Red, 0f, Vector2.Zero, 2.0f, SpriteEffects.None, 0f);
-
-                    // Reducir tiempo
-                    tiempoMostrarPanel -= (float)gameTime.ElapsedGameTime.TotalSeconds;
-                }
-
                 _spriteBatch.End();
 
                 // Dibujar la interfaz de usuario
@@ -2511,6 +2454,64 @@ namespace Duska.Screens
             {
                 Debug.WriteLine($"[DRAW] Error general: {ex.Message}");
             }
+        }
+
+        private void MostrarPanelEliminacionGeonbit()
+        {
+            Debug.WriteLine("[GEONBIT] Creando panel de eliminación");
+
+            // Panel principal centrado con fondo oscuro
+            var panelEliminacion = new GeonBit.UI.Entities.Panel(
+                new Vector2(600, 400),
+                GeonBit.UI.Entities.PanelSkin.Default,
+                GeonBit.UI.Entities.Anchor.Center
+            );
+
+            // Hacer el panel más visible
+            panelEliminacion.FillColor = Color.Black * 0.9f;
+            panelEliminacion.OutlineColor = Color.Red;
+            panelEliminacion.OutlineWidth = 4;
+
+            // Título grande y rojo
+            var titulo = new GeonBit.UI.Entities.Header("¡HAS SIDO ELIMINADO!");
+            titulo.Anchor = GeonBit.UI.Entities.Anchor.TopCenter;
+            titulo.FillColor = Color.Red;
+            titulo.Scale = 1.5f; // Hacer el texto más grande
+            panelEliminacion.AddChild(titulo);
+
+            // Mensaje explicativo
+            var mensaje = new GeonBit.UI.Entities.Paragraph(
+                "Has sido eliminado de la partida.\n\nLa partida ha terminado para ti.\nSerás devuelto al menú principal."
+            );
+            mensaje.Anchor = GeonBit.UI.Entities.Anchor.Center;
+            mensaje.FillColor = Color.White;
+            mensaje.Scale = 1.1f;
+            panelEliminacion.AddChild(mensaje);
+
+            // Botón para continuar
+            var botonContinuar = new GeonBit.UI.Entities.Button("Continuar al Menú");
+            botonContinuar.Anchor = GeonBit.UI.Entities.Anchor.BottomCenter;
+            botonContinuar.Size = new Vector2(300, 70);
+
+            // Evento del botón
+            botonContinuar.OnClick = (GeonBit.UI.Entities.Entity entity) =>
+            {
+                Debug.WriteLine("[PANEL] Botón continuar presionado");
+
+                // Remover el panel
+                UserInterface.Active.RemoveEntity(panelEliminacion);
+
+                // Regresar al menú principal
+                var mainMenuScreen = new MainMenuScreen(Game, usuario);
+                ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
+            };
+
+            panelEliminacion.AddChild(botonContinuar);
+
+            // Agregar el panel a la interfaz (esto lo hace modal automáticamente)
+            UserInterface.Active.AddEntity(panelEliminacion);
+
+            Debug.WriteLine("[GEONBIT] Panel de eliminación añadido a la UI");
         }
 
         private void DibujarBordeCarta(int x, int y, int ancho, int alto, Color color)
