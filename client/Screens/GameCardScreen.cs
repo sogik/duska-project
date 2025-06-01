@@ -35,6 +35,8 @@ namespace Duska.Screens
         private bool isReconnecting = false;
         private volatile bool stopMessageListener = false;
         private bool conectado = false;
+        private bool _mostrandoPanelEliminacion = false;
+        private Panel _panelEliminacionActivo = null;
 
         public string usuario;
 
@@ -860,28 +862,18 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacion ***");
 
-                // IMPORTANTE: Verificar que no estemos ya mostrando un panel
+                // PAUSAR todas las acciones del juego
+                _permitirAccionesJuego = false;
+                stopMessageListener = true; // Pausar procesamiento de mensajes temporalmente
+
+                // Limpiar UI completamente
                 if (UserInterface.Active != null)
                 {
-                    // CORREGIR: Buscar si ya existe un panel de eliminación usando LINQ
-                    var panelExistente = UserInterface.Active.Root.Children
-                        .OfType<Panel>()
-                        .FirstOrDefault(p => p.Identifier == "PanelEliminacion");
-
-                    if (panelExistente != null)
-                    {
-                        Debug.WriteLine("[UI] Panel de eliminación ya existe, no crear duplicado");
-                        return;
-                    }
-
-                    // Limpiar SOLO si no hay paneles importantes
                     UserInterface.Active.Clear();
                 }
                 else
                 {
                     Debug.WriteLine("[ERROR] UserInterface.Active es null - Intentando reinicializar");
-
-                    // Reinicializar UI si es necesario
                     try
                     {
                         UserInterface.Initialize(Content, _currTheme);
@@ -893,128 +885,100 @@ namespace Duska.Screens
                     }
                 }
 
-                // Crear panel principal con identificador único
-                Panel panel = new Panel(new Vector2(500, 400), PanelSkin.Default, Anchor.Center);
+                // Crear panel principal MÁS GRANDE y MÁS VISIBLE
+                Panel panel = new Panel(new Vector2(600, 500), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
-                panel.Identifier = "PanelEliminacion"; // Identificador único
+                panel.Identifier = "PanelEliminacion";
 
-                // Título destacado en rojo
+                // Fondo más visible
+                panel.FillColor = new Color(50, 50, 50, 240); // Fondo más oscuro
+
+                // Título MÁS GRANDE y destacado
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
                 titulo.FillColor = Color.Red;
+                titulo.Scale = 1.5f; // Hacer el título más grande
                 panel.AddChild(titulo);
 
                 panel.AddChild(new HorizontalLine());
-                panel.AddChild(new Paragraph("Has sido eliminado de la partida."));
-                panel.AddChild(new Paragraph("¿Qué deseas hacer?"));
+
+                // Mensaje más claro
+                Paragraph mensaje1 = new Paragraph("Has sido eliminado de la partida.");
+                mensaje1.Scale = 1.2f;
+                panel.AddChild(mensaje1);
+
+                Paragraph mensaje2 = new Paragraph("Elige una opción para continuar:");
+                mensaje2.Scale = 1.2f;
+                mensaje2.FillColor = Color.Yellow;
+                panel.AddChild(mensaje2);
+
                 panel.AddChild(new HorizontalLine());
 
-                // Botón espectador
-                Button espectadorBtn = new Button("Quedar como Espectador", ButtonSkin.Default);
-                espectadorBtn.Size = new Vector2(250, 60);
+                // INSTRUCCIONES PARA EL USUARIO
+                Paragraph instrucciones = new Paragraph("Usa los botones o presiona:");
+                instrucciones.FillColor = Color.LightGray;
+                panel.AddChild(instrucciones);
+
+                Paragraph teclas = new Paragraph("E = Espectador | S = Salir | ESC = Menú");
+                teclas.FillColor = Color.LightBlue;
+                panel.AddChild(teclas);
+
+                panel.AddChild(new HorizontalLine());
+
+                // Botón espectador MÁS GRANDE
+                Button espectadorBtn = new Button("Quedar como Espectador (E)", ButtonSkin.Default);
+                espectadorBtn.Size = new Vector2(300, 80);
                 espectadorBtn.FillColor = Color.LightBlue;
                 espectadorBtn.OnClick = (Entity btn) =>
                 {
                     Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN ESPECTADOR CLICKEADO ***");
-
-                    try
-                    {
-                        if (server != null && server.Connected)
-                        {
-                            string mensaje = $"28/{usuario}/ESPECTADOR";
-                            byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                            server.Send(msg);
-                            Debug.WriteLine("[ELIMINACIÓN] Mensaje espectador enviado");
-                        }
-
-                        // Limpiar panel y regenerar UI de juego como espectador
-                        UserInterface.Active.Clear();
-                        ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
-                        Debug.WriteLine("[ELIMINACIÓN] Configurado como espectador exitosamente");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error al quedarse como espectador: {ex.Message}");
-                    }
+                    ConfigurarComoEspectador();
+                    CerrarPanelEliminacion(panel);
                 };
                 panel.AddChild(espectadorBtn);
 
-                panel.AddChild(new Paragraph(""));
+                panel.AddChild(new Paragraph("")); // Espaciado
 
-                // Botón salir
-                Button salirBtn = new Button("Salir de la Partida", ButtonSkin.Default);
-                salirBtn.Size = new Vector2(250, 60);
+                // Botón salir MÁS GRANDE
+                Button salirBtn = new Button("Salir de la Partida (S)", ButtonSkin.Default);
+                salirBtn.Size = new Vector2(300, 80);
                 salirBtn.FillColor = Color.Orange;
                 salirBtn.OnClick = (Entity btn) =>
                 {
                     Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN SALIR CLICKEADO ***");
-
-                    try
-                    {
-                        if (server != null && server.Connected)
-                        {
-                            string mensaje = $"28/{usuario}/SALIR";
-                            byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                            server.Send(msg);
-                            Debug.WriteLine("[ELIMINACIÓN] Mensaje salir enviado");
-                        }
-
-                        RegresarAlMenuPrincipal();
-                        Debug.WriteLine("[ELIMINACIÓN] Regresando al menú principal");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error al salir: {ex.Message}");
-                        RegresarAlMenuPrincipal();
-                    }
+                    SalirDeLaPartida();
+                    CerrarPanelEliminacion(panel);
                 };
                 panel.AddChild(salirBtn);
 
-                // Añadir al UserInterface con verificación adicional
+                panel.AddChild(new Paragraph("")); // Espaciado
+
+                // Botón menú
+                Button menuBtn = new Button("Regresar al Menú (ESC)", ButtonSkin.Default);
+                menuBtn.Size = new Vector2(300, 80);
+                menuBtn.FillColor = Color.Gray;
+                menuBtn.OnClick = (Entity btn) =>
+                {
+                    Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN MENÚ CLICKEADO ***");
+                    RegresarAlMenuPrincipal();
+                };
+                panel.AddChild(menuBtn);
+
+                // Añadir al UserInterface
                 UserInterface.Active.AddEntity(panel);
 
-                Debug.WriteLine("[UI] *** Panel de eliminación creado y añadido exitosamente ***");
+                // ACTIVAR FLAG PARA PROCESAMIENTO ESPECIAL DE INPUT
+                _mostrandoPanelEliminacion = true;
+                _panelEliminacionActivo = panel;
 
-                // CORREGIR: Verificación adicional usando LINQ
-                var panelVerificacion = UserInterface.Active.Root.Children
-                    .OfType<Panel>()
-                    .FirstOrDefault(p => p.Identifier == "PanelEliminacion");
-
-                if (panelVerificacion != null && panelVerificacion.Visible)
-                {
-                    Debug.WriteLine("[UI] *** CONFIRMADO: Panel de eliminación está visible y añadido ***");
-                }
-                else
-                {
-                    Debug.WriteLine("[ERROR] *** FALLO: Panel de eliminación NO está visible ***");
-                }
+                Debug.WriteLine("[UI] *** Panel de eliminación creado y configurado para esperar input ***");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelEliminacion: {ex.Message} ***");
-                Debug.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
 
-                // Plan de respaldo más agresivo
-                try
-                {
-                    // Forzar la parada de todo procesamiento
-                    stopMessageListener = true;
-                    _permitirAccionesJuego = false;
-
-                    // Mensaje directo sin depender de ChatPanel
-                    Debug.WriteLine("[RESPALDO] Iniciando regreso forzado al menú principal");
-
-                    System.Threading.Tasks.Task.Delay(1000).ContinueWith(_ =>
-                    {
-                        RegresarAlMenuPrincipal();
-                    });
-                }
-                catch (Exception ex2)
-                {
-                    Debug.WriteLine($"[ERROR] Error en plan de respaldo: {ex2.Message}");
-
-                    // Último recurso: salir del juego
-                    Environment.Exit(1);
-                }
+                // Plan de respaldo
+                _permitirAccionesJuego = false;
+                RegresarAlMenuPrincipal();
             }
         }
 
@@ -2060,6 +2024,49 @@ namespace Duska.Screens
         {
             try
             {
+                // *** MANEJAR PANEL DE ELIMINACIÓN PRIMERO ***
+                if (_mostrandoPanelEliminacion && _panelEliminacionActivo != null)
+                {
+                    // Solo procesar input para el panel de eliminación
+                    var keyboardState = Keyboard.GetState();
+                    var keyboardStateExtended = KeyboardStateExtended.GetState();
+
+                    // Detectar teclas presionadas
+                    if (keyboardStateExtended.WasKeyJustDown(Keys.E))
+                    {
+                        Debug.WriteLine("[INPUT] Tecla E presionada - Espectador");
+                        ConfigurarComoEspectador();
+                        CerrarPanelEliminacion(_panelEliminacionActivo);
+                        return;
+                    }
+
+                    if (keyboardStateExtended.WasKeyJustDown(Keys.S))
+                    {
+                        Debug.WriteLine("[INPUT] Tecla S presionada - Salir");
+                        SalirDeLaPartida();
+                        CerrarPanelEliminacion(_panelEliminacionActivo);
+                        return;
+                    }
+
+                    if (keyboardStateExtended.WasKeyJustDown(Keys.Escape))
+                    {
+                        Debug.WriteLine("[INPUT] Tecla ESC presionada - Menú");
+                        RegresarAlMenuPrincipal();
+                        return;
+                    }
+
+                    // NO procesar nada más mientras el panel esté activo
+                    UserInterface.Active?.Update(gameTime);
+                    return;
+                }
+
+                // *** RESTO DEL UPDATE NORMAL SOLO SI NO HAY PANEL ***
+                if (!_permitirAccionesJuego)
+                {
+                    UserInterface.Active?.Update(gameTime);
+                    return;
+                }
+
                 // Procesar mensajes pendientes primero
                 List<string> mensajesAhora = null;
                 lock (mensajesLock)
@@ -2274,6 +2281,113 @@ namespace Duska.Screens
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error en Update: {ex.Message}");
+            }
+        }
+
+        private void ConfigurarComoEspectador()
+        {
+            try
+            {
+                if (server != null && server.Connected)
+                {
+                    string mensaje = $"28/{usuario}/ESPECTADOR";
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+                    Debug.WriteLine("[ELIMINACIÓN] Mensaje espectador enviado");
+                }
+
+                // Reactivar procesamiento de mensajes
+                stopMessageListener = false;
+
+                // Regenerar UI básica del juego como espectador
+                InicializarUIEspectador();
+
+                Debug.WriteLine("[ELIMINACIÓN] Configurado como espectador exitosamente");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al configurarse como espectador: {ex.Message}");
+            }
+        }
+
+        private void SalirDeLaPartida()
+        {
+            try
+            {
+                if (server != null && server.Connected)
+                {
+                    string mensaje = $"28/{usuario}/SALIR";
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+                    Debug.WriteLine("[ELIMINACIÓN] Mensaje salir enviado");
+                }
+
+                RegresarAlMenuPrincipal();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al salir: {ex.Message}");
+                RegresarAlMenuPrincipal();
+            }
+        }
+
+        private void CerrarPanelEliminacion(Panel panel)
+        {
+            try
+            {
+                Debug.WriteLine("[UI] Cerrando panel de eliminación");
+
+                // Desactivar flags
+                _mostrandoPanelEliminacion = false;
+                _panelEliminacionActivo = null;
+
+                // Limpiar UI
+                if (UserInterface.Active != null && panel != null)
+                {
+                    UserInterface.Active.RemoveEntity(panel);
+                }
+
+                Debug.WriteLine("[UI] Panel de eliminación cerrado correctamente");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error cerrando panel: {ex.Message}");
+            }
+        }
+
+        private void InicializarUIEspectador()
+        {
+            try
+            {
+                Debug.WriteLine("[UI] Inicializando UI para espectador");
+
+                // Limpiar UI actual
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                }
+
+                // Crear UI básica para espectador (solo chat y mensaje)
+                Panel panelEspectador = new Panel(new Vector2(400, 100), PanelSkin.Default, Anchor.TopCenter);
+                panelEspectador.Offset = new Vector2(0, 50);
+
+                Header mensajeEspectador = new Header("MODO ESPECTADOR");
+                mensajeEspectador.FillColor = Color.LightBlue;
+                panelEspectador.AddChild(mensajeEspectador);
+
+                Paragraph infoEspectador = new Paragraph("Observando la partida...");
+                panelEspectador.AddChild(infoEspectador);
+
+                UserInterface.Active.AddEntity(panelEspectador);
+
+                // Reinicializar chat
+                ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
+
+                Debug.WriteLine("[UI] UI de espectador inicializada");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error inicializando UI espectador: {ex.Message}");
             }
         }
 
