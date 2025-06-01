@@ -619,10 +619,11 @@ namespace Duska.Screens
                     }
                     return;
                 }
-                else if (message.StartsWith("JUGADOR_ELIMINADO/"))
+                if (mensaje.StartsWith("JUGADOR_ELIMINADO/"))
                 {
-                    string[] partes = message.Split('/');
+                    Debug.WriteLine("[ELIMINACIÓN] *** MENSAJE DE ELIMINACIÓN RECIBIDO ***");
 
+                    string[] partes = mensaje.Split('/');
                     if (partes.Length >= 2)
                     {
                         string jugadorEliminado = partes[1];
