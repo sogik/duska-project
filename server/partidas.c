@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <time.h>
 #include "partidas.h"
+#include <unistd.h>
+#include "server.h"
 
 // Implementación para la lista global de partidas
 GameInfo *partidas_lista = NULL;

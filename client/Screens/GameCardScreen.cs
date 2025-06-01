@@ -779,7 +779,6 @@ namespace Duska.Screens
                 // Crear panel principal con alta prioridad
                 Panel panel = new Panel(new Vector2(500, 400), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
-                panel.Priority = 1000; // Alta prioridad
 
                 // Título destacado en rojo
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
