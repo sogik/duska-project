@@ -619,6 +619,10 @@ namespace Duska.Screens
                     }
                     return;
                 }
+                // En el método ProcessServerMessage, busca la sección JUGADOR_ELIMINADO y cámbiala por:
+
+                // Busca la sección que maneja "JUGADOR_ELIMINADO" en ProcessServerMessage y reemplázala:
+
                 if (mensaje.StartsWith("JUGADOR_ELIMINADO/"))
                 {
                     Debug.WriteLine("[ELIMINACIÓN] *** MENSAJE DE ELIMINACIÓN RECIBIDO ***");
@@ -630,7 +634,7 @@ namespace Duska.Screens
                         Debug.WriteLine($"[ELIMINACIÓN] Jugador eliminado: '{jugadorEliminado}'");
                         Debug.WriteLine($"[ELIMINACIÓN] Mi usuario: '{usuario}'");
 
-                        // CORREGIR: Limpiar barras y espacios extra
+                        // Limpiar barras y espacios extra
                         string jugadorLimpio = jugadorEliminado.Trim().TrimStart('/');
                         string miUsuarioLimpio = usuario.Trim().TrimStart('/');
 
@@ -642,16 +646,24 @@ namespace Duska.Screens
 
                         if (sonIguales)
                         {
-                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO - MOSTRANDO PANEL ***");
+                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO - PARANDO PROCESAMIENTO ***");
 
-                            // Encolar para mostrar en el hilo principal
-                            lock (mensajesLock)
-                            {
-                                mensajesPendientes.Add("MOSTRAR_PANEL_ELIMINACION");
-                                hayNuevosMensajes = true;
-                            }
+                            // IMPORTANTE: Detener procesamiento para que FIN_PARTIDA no interfiera
+                            stopMessageListener = true;
 
+                            // Mostrar mensaje en chat
                             ChatPanel(true, "Sistema/Has sido eliminado de la partida");
+
+                            // ESPERAR 3 segundos antes de regresar al menú
+                            System.Threading.Tasks.Task.Delay(3000).ContinueWith(t =>
+                            {
+                                Debug.WriteLine("[ELIMINACIÓN] Regresando al menú después de 3 segundos");
+                                var mainMenuScreen = new MainMenuScreen(Game, usuario);
+                                ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
+                            });
+
+                            // No procesar más mensajes
+                            return;
                         }
                         else
                         {
@@ -2132,7 +2144,67 @@ namespace Duska.Screens
                     // Limpiar la bandera
                     lock (mensajesLock)
                     {
-                        hayNuevosMensajes = false;
+                        if (hayNuevosMensajes && mensajesPendientes.Count > 0)
+                        {
+                            foreach (string mensaje in mensajesPendientes)
+                            {
+                                Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {mensaje}");
+
+                                if (mensaje == "MOSTRAR_PANEL_ELIMINACION")
+                                {
+                                    Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN ***");
+                                    // Mostrar panel modal de eliminación
+                                    var panelEliminacion = new Panel
+                                    {
+                                        Background = new ColorBrush(Color.Black * 0.8f),
+                                        Width = 400,
+                                        Height = 300,
+                                        HorizontalAlignment = HorizontalAlignment.Center,
+                                        VerticalAlignment = VerticalAlignment.Center
+                                    };
+
+                                    var textoEliminacion = new TextBlock
+                                    {
+                                        Text = "Has sido eliminado de la partida",
+                                        TextColor = Color.White,
+                                        Font = game.Content.Load<SpriteFont>("Fonts/Arial"),
+                                        HorizontalAlignment = HorizontalAlignment.Center,
+                                        VerticalAlignment = VerticalAlignment.Center
+                                    };
+
+                                    var botonContinuar = new TextButton
+                                    {
+                                        Text = "Continuar",
+                                        Width = 150,
+                                        Height = 50,
+                                        HorizontalAlignment = HorizontalAlignment.Center,
+                                        VerticalAlignment = VerticalAlignment.Bottom,
+                                        Margin = new Thickness(0, 0, 0, 20)
+                                    };
+
+                                    botonContinuar.Click += (s, e) =>
+                                    {
+                                        Debug.WriteLine("[PANEL] Botón continuar presionado - regresando al menú");
+                                        game.ChangeScreen(new MainMenuScreen(game));
+                                    };
+
+                                    panelEliminacion.Widgets.Add(textoEliminacion);
+                                    panelEliminacion.Widgets.Add(botonContinuar);
+
+                                    desktop.Widgets.Add(panelEliminacion);
+
+                                    Debug.WriteLine("[UPDATE] Panel de eliminación añadido al desktop");
+                                    break; // Solo procesar el primer mensaje de eliminación
+                                }
+                                else
+                                {
+                                    ProcessServerMessage(mensaje);
+                                }
+                            }
+
+                            mensajesPendientes.Clear();
+                            hayNuevosMensajes = false;
+                        }
                     }
                 }
 
