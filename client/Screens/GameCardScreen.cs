@@ -104,8 +104,6 @@ namespace Duska.Screens
 
                 // Inicializar la interfaz de usuario con un tema
                 InitializeThemeAndUI(BuiltinThemes.hd);
-                // Inicializar la interfaz de usuario con un tema
-                InitializeThemeAndUI(BuiltinThemes.hd);
 
                 _spriteBatch = new SpriteBatch(GraphicsDevice);
 
@@ -877,130 +875,58 @@ namespace Duska.Screens
             }
         }
 
+        // Agregar este método nuevo a la clase:
+
         private void MostrarPanelEliminacion()
         {
-            try
+            // Panel principal centrado
+            var panelEliminacion = new GeonBit.UI.Entities.Panel(
+                new Vector2(500, 300),
+                PanelSkin.Simple,
+                Anchor.Center
+            );
+
+            // Título del panel
+            var titulo = new Header("¡ELIMINADO!",
+                Anchor.TopCenter);
+            titulo.FillColor = Color.Red;
+            panelEliminacion.AddChild(titulo);
+
+            // Mensaje explicativo
+            var mensaje = new Paragraph(
+                "Has sido eliminado de la partida.\nLa partida ha terminado para ti.",
+                Anchor.Center
+            );
+            mensaje.Scale = 0.8f;
+            panelEliminacion.AddChild(mensaje);
+
+            // Botón para continuar
+            var botonContinuar = new Button(
+                "Regresar al Menú",
+                ButtonSkin.Default,
+                Anchor.BottomCenter,
+                new Vector2(250, 60)
+            );
+
+            // Evento del botón
+            botonContinuar.OnClick = (Entity entity) =>
             {
-                Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacion ***");
+                Debug.WriteLine("[PANEL] Botón presionado - regresando al menú");
 
-                // PAUSAR todas las acciones del juego
-                _permitirAccionesJuego = false;
-                stopMessageListener = true; // Pausar procesamiento de mensajes temporalmente
+                // Remover el panel
+                UserInterface.Active.RemoveEntity(panelEliminacion);
 
-                // Limpiar UI completamente
-                if (UserInterface.Active != null)
-                {
-                    UserInterface.Active.Clear();
-                }
-                else
-                {
-                    Debug.WriteLine("[ERROR] UserInterface.Active es null - Intentando reinicializar");
-                    try
-                    {
-                        UserInterface.Initialize(Content, _currTheme);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] No se pudo reinicializar UI: {ex.Message}");
-                        return;
-                    }
-                }
+                // Regresar al menú principal
+                var mainMenuScreen = new MainMenuScreen(Game, usuario);
+                ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
+            };
 
-                // Crear panel principal MÁS GRANDE y MÁS VISIBLE
-                Panel panel = new Panel(new Vector2(600, 500), PanelSkin.Default, Anchor.Center);
-                panel.Visible = true;
-                panel.Identifier = "PanelEliminacion";
+            panelEliminacion.AddChild(botonContinuar);
 
-                // Fondo más visible
-                panel.FillColor = new Color(50, 50, 50, 240); // Fondo más oscuro
+            // Agregar el panel a la interfaz
+            UserInterface.Active.AddEntity(panelEliminacion);
 
-                // Título MÁS GRANDE y destacado
-                Header titulo = new Header("¡HAS SIDO ELIMINADO!");
-                titulo.FillColor = Color.Red;
-                titulo.Scale = 1.5f; // Hacer el título más grande
-                panel.AddChild(titulo);
-
-                panel.AddChild(new HorizontalLine());
-
-                // Mensaje más claro
-                Paragraph mensaje1 = new Paragraph("Has sido eliminado de la partida.");
-                mensaje1.Scale = 1.2f;
-                panel.AddChild(mensaje1);
-
-                Paragraph mensaje2 = new Paragraph("Elige una opción para continuar:");
-                mensaje2.Scale = 1.2f;
-                mensaje2.FillColor = Color.Yellow;
-                panel.AddChild(mensaje2);
-
-                panel.AddChild(new HorizontalLine());
-
-                // INSTRUCCIONES PARA EL USUARIO
-                Paragraph instrucciones = new Paragraph("Usa los botones o presiona:");
-                instrucciones.FillColor = Color.LightGray;
-                panel.AddChild(instrucciones);
-
-                Paragraph teclas = new Paragraph("E = Espectador | S = Salir | ESC = Menú");
-                teclas.FillColor = Color.LightBlue;
-                panel.AddChild(teclas);
-
-                panel.AddChild(new HorizontalLine());
-
-                // Botón espectador MÁS GRANDE
-                Button espectadorBtn = new Button("Quedar como Espectador (E)", ButtonSkin.Default);
-                espectadorBtn.Size = new Vector2(300, 80);
-                espectadorBtn.FillColor = Color.LightBlue;
-                espectadorBtn.OnClick = (Entity btn) =>
-                {
-                    Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN ESPECTADOR CLICKEADO ***");
-                    ConfigurarComoEspectador();
-                    CerrarPanelEliminacion(panel);
-                };
-                panel.AddChild(espectadorBtn);
-
-                panel.AddChild(new Paragraph("")); // Espaciado
-
-                // Botón salir MÁS GRANDE
-                Button salirBtn = new Button("Salir de la Partida (S)", ButtonSkin.Default);
-                salirBtn.Size = new Vector2(300, 80);
-                salirBtn.FillColor = Color.Orange;
-                salirBtn.OnClick = (Entity btn) =>
-                {
-                    Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN SALIR CLICKEADO ***");
-                    SalirDeLaPartida();
-                    CerrarPanelEliminacion(panel);
-                };
-                panel.AddChild(salirBtn);
-
-                panel.AddChild(new Paragraph("")); // Espaciado
-
-                // Botón menú
-                Button menuBtn = new Button("Regresar al Menú (ESC)", ButtonSkin.Default);
-                menuBtn.Size = new Vector2(300, 80);
-                menuBtn.FillColor = Color.Gray;
-                menuBtn.OnClick = (Entity btn) =>
-                {
-                    Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN MENÚ CLICKEADO ***");
-                    RegresarAlMenuPrincipal();
-                };
-                panel.AddChild(menuBtn);
-
-                // Añadir al UserInterface
-                UserInterface.Active.AddEntity(panel);
-
-                // ACTIVAR FLAG PARA PROCESAMIENTO ESPECIAL DE INPUT
-                _mostrandoPanelEliminacion = true;
-                _panelEliminacionActivo = panel;
-
-                Debug.WriteLine("[UI] *** Panel de eliminación creado y configurado para esperar input ***");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelEliminacion: {ex.Message} ***");
-
-                // Plan de respaldo
-                _permitirAccionesJuego = false;
-                RegresarAlMenuPrincipal();
-            }
+            Debug.WriteLine("[GEONBIT] Panel de eliminación mostrado");
         }
 
         private void MostrarPanelFinPartida(string ganador)
@@ -2563,7 +2489,7 @@ namespace Duska.Screens
                         (1080 - tamanoTexto.Y) / 2
                     );
 
-                    _spriteBatch.DrawString(arial, "¡HAS SIDO ELIMINADO!", posicion, Color.Red, 0f, Vector2.Zero, 2.0f, SpriteEffects.None, 0f);
+                    _spriteBatch.DrawString(kenney - rocket - square, "¡HAS SIDO ELIMINADO!", posicion, Color.Red, 0f, Vector2.Zero, 2.0f, SpriteEffects.None, 0f);
 
                     // Reducir tiempo
                     tiempoMostrarPanel -= (float)gameTime.ElapsedGameTime.TotalSeconds;
