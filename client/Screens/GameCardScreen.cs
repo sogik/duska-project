@@ -92,6 +92,7 @@ namespace Duska.Screens
             _cartas = new Texture2D[5];
             _random = new Random();
             _mostrarTodas = true;
+        }
         public override void LoadContent()
         {
             try
@@ -2174,7 +2175,8 @@ namespace Duska.Screens
                                     System.Threading.Tasks.Task.Delay(3000).ContinueWith(t =>
                                     {
                                         Debug.WriteLine("[ELIMINACIÓN] Tiempo cumplido - regresando al menú");
-                                        this.game.ChangeScreen(new MainMenuScreen(this.game));
+                                        var mainMenuScreen = new MainMenuScreen(Game, usuario);
+                                        ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
                                     });
                                 }
                                 else
