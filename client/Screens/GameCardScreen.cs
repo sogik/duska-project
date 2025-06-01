@@ -794,17 +794,20 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacion ***");
 
-                // NO limpiar la UI aquí, solo añadir el panel encima
-                if (UserInterface.Active == null)
+                // LIMPIAR UI COMPLETAMENTE para paneles críticos
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                }
+                else
                 {
                     Debug.WriteLine("[ERROR] UserInterface.Active es null");
                     return;
                 }
 
-                // Crear panel principal con alta prioridad
+                // Crear panel principal
                 Panel panel = new Panel(new Vector2(500, 400), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
-                panel.Priority = 1000; // Alta prioridad
 
                 // Título destacado en rojo
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
@@ -833,8 +836,7 @@ namespace Duska.Screens
                             server.Send(msg);
                         }
 
-                        panel.Visible = false;
-                        UserInterface.Active.RemoveEntity(panel);
+                        // Regenerar chat después de elegir espectador
                         ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
                     }
                     catch (Exception ex)
@@ -863,8 +865,6 @@ namespace Duska.Screens
                             server.Send(msg);
                         }
 
-                        panel.Visible = false;
-                        UserInterface.Active.RemoveEntity(panel);
                         RegresarAlMenuPrincipal();
                     }
                     catch (Exception ex)
@@ -906,10 +906,10 @@ namespace Duska.Screens
                     return;
                 }
 
-                // Crear panel principal con alta prioridad para que aparezca encima
+                // Crear panel principal SIN usar Priority
                 Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
                 panel.Visible = true;
-                panel.Priority = 1000; // Alta prioridad
+                // Eliminar esta línea: panel.Priority = 1000;
 
                 // Título destacado
                 Header titulo = new Header("¡PARTIDA TERMINADA!");
@@ -939,7 +939,7 @@ namespace Duska.Screens
 
                 panel.AddChild(new HorizontalLine());
 
-                // Botón para regresar al menú (con retraso)
+                // Botón para regresar al menú
                 Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
                 regresarBtn.Size = new Vector2(220, 60);
                 regresarBtn.FillColor = Color.LightGreen;
@@ -956,8 +956,18 @@ namespace Duska.Screens
                 };
                 panel.AddChild(regresarBtn);
 
-                // Añadir al UserInterface
+                // ALTERNATIVA A Priority: Añadir al final y enfocar
                 UserInterface.Active.AddEntity(panel);
+
+                // TRUCO: Enfocar el panel para que aparezca encima
+                try
+                {
+                    panel.Focused = true;
+                }
+                catch (Exception)
+                {
+                    // Si no funciona, ignorar
+                }
 
                 Debug.WriteLine("[UI] *** Panel fin de partida creado y añadido exitosamente ***");
 
