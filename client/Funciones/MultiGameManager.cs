@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics; // **AÑADIR ESTA LÍNEA**
 using System.Diagnostics;
 using MonoGame.Extended.Screens;
 using MonoGame.Extended.Screens.Transitions;
@@ -96,7 +97,6 @@ namespace Duska.Core
 
                 if (_socketsPartida.ContainsKey(partidaId))
                 {
-                    // No cerrar el socket aquí ya que puede estar siendo usado por otras pantallas
                     _socketsPartida.Remove(partidaId);
                 }
 
