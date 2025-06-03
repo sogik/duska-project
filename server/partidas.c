@@ -416,18 +416,18 @@ int eliminar_jugador_de_partida(GameInfo *partida, const char *jugador_eliminado
 // Generar las cartas designadas para cada ronda
 void generar_carta_para_ronda_actual(GameInfo *partida)
 {
-    // Definir los 4 tipos de cartas disponibles
-    const char *tipos_cartas[] = {"ACES", "REYES", "REINAS", "JOKERS"};
-    int num_tipos = 4;
+    // **DEFINIR SOLO 3 TIPOS DE CARTAS (SIN JOKERS)**
+    const char *tipos_cartas[] = {"ACES", "REYES", "REINAS"};
+    int num_tipos = 3; // **CAMBIAR DE 4 A 3**
 
-    // Asignar un tipo de carta aleatoriamente
+    // Asignar un tipo de carta aleatoriamente (SIN JOKERS)
     int indice_tipo = rand() % num_tipos;
 
     // Guardar el tipo de carta para esta ronda
     strncpy(partida->cartas_ronda[partida->ronda_actual], tipos_cartas[indice_tipo],
             sizeof(partida->cartas_ronda[partida->ronda_actual]) - 1);
 
-    printf("[RONDA] Ronda %d: Carta designada '%s'\n",
+    printf("[RONDA] Ronda %d: Carta designada '%s' (los Jokers son comodín)\n",
            partida->ronda_actual + 1, partida->cartas_ronda[partida->ronda_actual]);
 }
 

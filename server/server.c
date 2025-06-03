@@ -82,6 +82,8 @@ void remove_client(int sock)
     pthread_mutex_unlock(&client_list_mutex);
 }
 
+// Reemplazar la función verificar_cartas:
+
 void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int resultados[])
 {
     if (!partida || partida->ronda_actual >= partida->total_rondas)
@@ -100,7 +102,7 @@ void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int 
     printf("[VERIFICACIÓN] === INICIO VERIFICACIÓN ===\n");
     printf("[VERIFICACIÓN] Ronda %d: tipo designado '%s'\n",
            partida->ronda_actual + 1, tipo_ronda);
-    printf("[VERIFICACIÓN] Verificando %d cartas:\n", num_cartas);
+    printf("[VERIFICACIÓN] Verificando %d cartas (Jokers = comodín):\n", num_cartas);
 
     // Verificar cada carta jugada de forma individual
     for (int i = 0; i < num_cartas; i++)
@@ -124,7 +126,15 @@ void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int 
 
         printf("[VERIFICACIÓN] Carta limpia: '%s'\n", carta_limpia);
 
-        // Clasificar la carta según su valor
+        // **VERIFICACIÓN ESPECIAL PARA JOKERS (SIEMPRE VÁLIDOS)**
+        if (strcmp(carta_limpia, "jack") == 0 || strstr(carta_limpia, "jack") != NULL)
+        {
+            resultados[i] = 1; // **JOKER SIEMPRE VÁLIDO**
+            printf("[VERIFICACIÓN] ✓ JOKER - SIEMPRE VÁLIDO (comodín)\n");
+            continue; // Saltar al siguiente ciclo
+        }
+
+        // Clasificar la carta según su valor (para no-jokers)
         if (strcmp(carta_limpia, "ace") == 0 || strstr(carta_limpia, "ace") != NULL)
         {
             strcpy(tipo_carta, "ACES");
@@ -136,10 +146,6 @@ void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int 
         else if (strcmp(carta_limpia, "queen") == 0 || strstr(carta_limpia, "queen") != NULL)
         {
             strcpy(tipo_carta, "REINAS");
-        }
-        else if (strcmp(carta_limpia, "jack") == 0 || strstr(carta_limpia, "jack") != NULL)
-        {
-            strcpy(tipo_carta, "JOKERS");
         }
         else
         {

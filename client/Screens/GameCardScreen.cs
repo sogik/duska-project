@@ -140,11 +140,14 @@ namespace Duska.Screens
                 {
                     MensajesPrueba();
                     StartMessageListener();
-                    Thread.Sleep(300); // Esperar 300 ms
+                    Thread.Sleep(300);
                     PedirTurno();
                     obtener_carta_ronda();
-                    //GetCards(usuario);
+
+                    // **AÑADIR MENSAJE EXPLICATIVO SOBRE JOKERS**
                     ChatPanel(true, "Bienvenido al juego, " + usuario);
+                    ChatPanel(true, "Sistema/REGLA ESPECIAL: Los Jokers (Jack) son comodines y se pueden usar como cualquier carta");
+                    ChatPanel(true, "Sistema/Los Jokers nunca serán la carta designada de la ronda");
                 }
             }
             catch (Exception ex)
@@ -618,8 +621,19 @@ namespace Duska.Screens
                         _permitirAccionesJuego = esMiTurno;
                         jugadorConTurnoActual = jugadorTurno;
 
-                        // **RECREAR UI PARA MOSTRAR CAMBIO DE TURNO**
-                        CrearInterfazChatCompleta(true);
+                        // **SOLO ACTUALIZAR LA INFO DE TURNO, NO RECREAR TODO**
+                        if (System.Threading.Thread.CurrentThread.IsBackground)
+                        {
+                            lock (mensajesLock)
+                            {
+                                mensajesPendientes.Add("ACTUALIZAR_INFO_JUEGO");
+                                hayNuevosMensajes = true;
+                            }
+                        }
+                        else
+                        {
+                            ActualizarInfoJuegoEnPanel();
+                        }
 
                         Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
                     }
@@ -726,8 +740,9 @@ namespace Duska.Screens
                     string carta = message.Substring(12).Trim();
                     carta_ronda_actual = carta;
 
-                    // **MOSTRAR MENSAJE AL USUARIO**
+                    // **MOSTRAR MENSAJE AL USUARIO CON INFORMACIÓN SOBRE JOKERS**
                     ChatPanel(true, $"Sistema/Carta de la ronda: {carta_ronda_actual}");
+                    ChatPanel(true, "Sistema/Recuerda: Los Jokers (Jack) se pueden usar como cualquier carta");
                     Debug.WriteLine($"[JUEGO] Carta de la ronda actual: {carta_ronda_actual}");
                     return;
                 }
@@ -756,8 +771,9 @@ namespace Duska.Screens
                             obtener_carta_ronda();
                         }
 
-                        // **NOTIFICAR Y RECREAR UI**
+                        // **NOTIFICAR CON INFORMACIÓN SOBRE JOKERS**
                         historialChat.Add($"Sistema: ¡Comienza la ronda {numeroRonda}! Carta designada: {carta_ronda_actual}");
+                        historialChat.Add("Sistema: Los Jokers (Jack) se pueden usar como cualquier carta");
 
                         // **SOLICITAR CARTAS PARA LA NUEVA RONDA**
                         if (conectado || ConnectToServerIfNeeded())
@@ -1278,16 +1294,22 @@ namespace Duska.Screens
             if (string.IsNullOrEmpty(nombreCarta) || string.IsNullOrEmpty(tipoRonda))
                 return false;
 
-            // Comparar el tipo de la carta con el tipo de la ronda
-            if (tipoRonda == "ACES" && nombreCarta == "ace")
+            // **LOS JOKERS (JACK) SIEMPRE SON VÁLIDOS COMO COMODÍN**
+            if (nombreCarta.ToLower() == "jack")
+            {
+                Debug.WriteLine($"[VALIDACIÓN] {nombreCarta} es un JOKER - siempre válido");
                 return true;
-            else if (tipoRonda == "REYES" && nombreCarta == "king")
+            }
+
+            // Comparar el tipo de la carta con el tipo de la ronda (para cartas normales)
+            if (tipoRonda == "ACES" && nombreCarta.ToLower() == "ace")
                 return true;
-            else if (tipoRonda == "REINAS" && nombreCarta == "queen")
+            else if (tipoRonda == "REYES" && nombreCarta.ToLower() == "king")
                 return true;
-            else if (tipoRonda == "JOKERS" && nombreCarta == "jack")
+            else if (tipoRonda == "REINAS" && nombreCarta.ToLower() == "queen")
                 return true;
 
+            Debug.WriteLine($"[VALIDACIÓN] {nombreCarta} NO coincide con {tipoRonda}");
             return false;
         }
 
@@ -1554,58 +1576,124 @@ namespace Duska.Screens
         }
 
         // Reemplazar el método CrearInterfazChatCompleta:
+        // Agregar este nuevo método:
 
-        private void CrearInterfazChatCompleta(bool visible)
+        // Agregar este método para manejar la info de juego:
+
+        private void AgregarInfoJuego(Panel infoPanel)
         {
             try
             {
-                // Limpiar solo si es necesario
-                if (UserInterface.Active != null)
-                {
-                    UserInterface.Active.Clear();
-                }
-
-                // Crear el panel principal
-                Panel panel = new Panel(
-                    new Vector2(350, GraphicsDevice.Viewport.Height),
-                    PanelSkin.Simple,
-                    Anchor.TopRight);
-
-                panel.Padding = new Vector2(15, 15);
-                panel.Visible = visible;
-                UserInterface.Active.AddEntity(panel);
-
-                // Encabezado
-                Header header = new Header("Chat");
-                panel.AddChild(header);
-                panel.AddChild(new HorizontalLine());
-
-                // **MOSTRAR INFORMACIÓN DEL JUEGO**
+                // **CARTA DE RONDA - SOLO SI EXISTE**
                 if (!string.IsNullOrEmpty(carta_ronda_actual))
                 {
-                    Header cartaRonda = new Header($"Carta Ronda: {carta_ronda_actual}");
+                    Header cartaRonda = new Header($"Carta: {carta_ronda_actual}");
                     cartaRonda.FillColor = Color.Yellow;
-                    cartaRonda.Scale = 0.8f;
-                    panel.AddChild(cartaRonda);
+                    cartaRonda.Scale = 0.85f;
+                    infoPanel.AddChild(cartaRonda);
+
+                    // **AÑADIR RECORDATORIO SOBRE JOKERS**
+                    Paragraph recordatorioJokers = new Paragraph("Jokers = Comodín");
+                    recordatorioJokers.FillColor = Color.Orange;
+                    recordatorioJokers.Scale = 0.7f;
+                    infoPanel.AddChild(recordatorioJokers);
                 }
 
+                // **INFORMACIÓN DE TURNO - EVITAR DUPLICADOS**
                 if (!string.IsNullOrEmpty(jugadorConTurnoActual))
                 {
                     Paragraph turnoInfo = new Paragraph(esMiTurno ?
-                        "¡ES TU TURNO!" : $"Turno de: {jugadorConTurnoActual}");
+                        "¡ES TU TURNO!" : $"Turno: {jugadorConTurnoActual}");
                     turnoInfo.FillColor = esMiTurno ? Color.LightGreen : Color.LightBlue;
-                    panel.AddChild(turnoInfo);
+                    turnoInfo.Scale = 0.9f;
+                    infoPanel.AddChild(turnoInfo);
                 }
 
-                panel.AddChild(new HorizontalLine());
+                Debug.WriteLine($"[INFO] Info añadida - Carta: {carta_ronda_actual}, Turno: {jugadorConTurnoActual}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error añadiendo info de juego: {ex.Message}");
+            }
+        }
 
-                // **PANEL DE MENSAJES - AJUSTAR ALTURA PARA DEJAR ESPACIO A LOS BOTONES**
-                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 450; // Más espacio para botones
+        private void ActualizarInfoJuegoEnPanel()
+        {
+            try
+            {
+                // **BUSCAR EL PANEL DE INFO DE JUEGO EXISTENTE**
+                Panel panelPrincipal = UserInterface.Active?.Root?.Find("PanelChatPrincipal") as Panel;
+                Panel infoJuegoPanel = panelPrincipal?.Find("InfoJuegoPanel") as Panel;
 
-                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.ListBackground);
-                mensajesPanel.Padding = new Vector2(8, 8);
+                if (infoJuegoPanel != null)
+                {
+                    // **LIMPIAR SOLO EL PANEL DE INFO**
+                    infoJuegoPanel.ClearChildren();
 
-                // **SCROLL AUTOMÁTICO - MOSTRAR ÚLTIMOS MENSAJES**
+                    // **VOLVER A AÑADIR LA INFO ACTUALIZADA**
+                    AgregarInfoJuego(infoJuegoPanel);
+
+                    Debug.WriteLine("[CHAT] Info de juego actualizada sin recrear todo");
+                }
+                else
+                {
+                    Debug.WriteLine("[CHAT] Panel de info no encontrado, recreando interfaz");
+                    CrearInterfazChatCompleta(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error actualizando info de juego: {ex.Message}");
+            }
+        }
+
+        // Método para crear los botones:
+
+        private void CrearBotonesChat(Panel panel, TextInput text)
+        {
+            try
+            {
+                // Botón enviar mensaje
+                Button enviarBtn = new Button("Enviar");
+                enviarBtn.Size = new Vector2(150, 35);
+                enviarBtn.Anchor = Anchor.TopLeft;
+                enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
+                panel.AddChild(enviarBtn);
+
+                // **BOTÓN PEDIR CARTAS CON ESTADO**
+                Button cartasBtn = new Button("Pedir Cartas");
+                cartasBtn.Size = new Vector2(150, 35);
+                cartasBtn.Anchor = Anchor.TopRight;
+
+                bool cartasYaPedidas = VerificarCartasYaPedidas();
+
+                if (cartasYaPedidas)
+                {
+                    cartasBtn.FillColor = Color.Gray;
+                    cartasBtn.Enabled = false;
+                    cartasBtn.ToolTipText = "Ya pediste cartas en esta ronda";
+                }
+                else
+                {
+                    cartasBtn.FillColor = Color.LightBlue;
+                    cartasBtn.Enabled = true;
+                    cartasBtn.ToolTipText = "Solicitar nuevas cartas";
+                }
+
+                cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartasConLimite();
+                panel.AddChild(cartasBtn);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error creando botones: {ex.Message}");
+            }
+        }
+
+        private void AgregarMensajesAlPanel(Panel mensajesPanel, int altoPanelMensajes)
+        {
+            try
+            {
+                // **CALCULAR MENSAJES A MOSTRAR**
                 int mensajesPorPantalla = Math.Max(10, (altoPanelMensajes - 20) / 25);
                 int totalMensajes = historialChat?.Count ?? 0;
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
@@ -1649,10 +1737,69 @@ namespace Duska.Screens
                     noMensajes.Scale = 0.8f;
                     mensajesPanel.AddChild(noMensajes);
                 }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error añadiendo mensajes: {ex.Message}");
+            }
+        }
 
+        private void CrearInterfazChatCompleta(bool visible)
+        {
+            try
+            {
+                // **EVITAR RECREAR SI YA EXISTE Y SOLO CAMBIÓ EL TURNO**
+                if (UserInterface.Active != null && UserInterface.Active.Root.Children.Count > 0)
+                {
+                    // **SOLO ACTUALIZAR LA INFORMACIÓN DE TURNO/CARTA SIN RECREAR TODO**
+                    ActualizarInfoJuegoEnPanel();
+                    return;
+                }
+
+                // **LIMPIAR SOLO SI ES NECESARIO**
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                }
+
+                // Crear el panel principal
+                Panel panel = new Panel(
+                    new Vector2(350, GraphicsDevice.Viewport.Height),
+                    PanelSkin.Simple,
+                    Anchor.TopRight);
+
+                panel.Padding = new Vector2(15, 15);
+                panel.Visible = visible;
+                panel.Identifier = "PanelChatPrincipal"; // **AÑADIR ID ÚNICO**
+                UserInterface.Active.AddEntity(panel);
+
+                // Encabezado
+                Header header = new Header("Chat");
+                panel.AddChild(header);
+                panel.AddChild(new HorizontalLine());
+
+                // **CREAR PANEL ESPECÍFICO PARA INFO DE JUEGO CON ID**
+                Panel infoJuegoPanel = new Panel(new Vector2(0, 80), PanelSkin.None);
+                infoJuegoPanel.Identifier = "InfoJuegoPanel";
+                panel.AddChild(infoJuegoPanel);
+
+                // **AÑADIR INFORMACIÓN INICIAL**
+                AgregarInfoJuego(infoJuegoPanel);
+
+                panel.AddChild(new HorizontalLine());
+
+                // **PANEL DE MENSAJES - AJUSTAR ALTURA**
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 500; // Más espacio
+
+                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.ListBackground);
+                mensajesPanel.Padding = new Vector2(8, 8);
+                mensajesPanel.Identifier = "PanelMensajes";
+
+                // **AÑADIR MENSAJES**
+                AgregarMensajesAlPanel(mensajesPanel, altoPanelMensajes);
                 panel.AddChild(mensajesPanel);
 
-                // **CAMPO DE TEXTO**
+                // **CAMPO DE TEXTO Y BOTONES**
                 panel.AddChild(new HorizontalLine());
 
                 TextInput text = new TextInput(false);
@@ -1660,35 +1807,8 @@ namespace Duska.Screens
                 text.Size = new Vector2(0, 40);
                 panel.AddChild(text);
 
-                // **BOTONES EN LA PARTE INFERIOR**
-                // Botón enviar mensaje
-                Button enviarBtn = new Button("Enviar");
-                enviarBtn.Size = new Vector2(150, 35);
-                enviarBtn.Anchor = Anchor.TopLeft;
-                enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
-                panel.AddChild(enviarBtn);
-
-                // **BOTÓN PEDIR CARTAS - SIEMPRE DISPONIBLE PERO CON LIMITACIONES**
-                Button cartasBtn = new Button("Pedir Cartas");
-                cartasBtn.Size = new Vector2(150, 35);
-                cartasBtn.Anchor = Anchor.TopRight;
-
-                // **VERIFICAR SI YA SE PIDIERON CARTAS EN ESTA RONDA**
-                bool cartasYaPedidas = VerificarCartasYaPedidas();
-
-                if (cartasYaPedidas)
-                {
-                    cartasBtn.FillColor = Color.Gray;
-                    cartasBtn.Enabled = false;
-                }
-                else
-                {
-                    cartasBtn.FillColor = Color.LightBlue;
-                    cartasBtn.Enabled = true;
-                }
-
-                cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartasConLimite();
-                panel.AddChild(cartasBtn);
+                // **BOTONES**
+                CrearBotonesChat(panel, text);
 
                 Debug.WriteLine("[CHAT] Interfaz completa creada correctamente");
             }
@@ -2270,6 +2390,11 @@ namespace Duska.Screens
                         {
                             Debug.WriteLine("[UPDATE] *** ACTUALIZANDO CHAT ***");
                             ActualizarSoloPanelMensajes();
+                        }
+                        else if (mensaje == "ACTUALIZAR_INFO_JUEGO")
+                        {
+                            Debug.WriteLine("[UPDATE] *** ACTUALIZANDO INFO DE JUEGO ***");
+                            ActualizarInfoJuegoEnPanel();
                         }
                         else
                         {
