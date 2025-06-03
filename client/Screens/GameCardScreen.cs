@@ -795,14 +795,17 @@ namespace Duska.Screens
                             Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO ***");
                             estoyEliminado = true;
                             _permitirAccionesJuego = false;
+                            esMiTurno = false;
 
-                            // **ENCOLAR PARA MOSTRAR PANEL GEONBIT EN HILO PRINCIPAL**
+                            // **FORZAR MOSTRADO INMEDIATO DEL PANEL**
                             lock (mensajesLock)
                             {
+                                // **LIMPIAR MENSAJES PREVIOS Y AÑADIR SOLO EL CRÍTICO**
+                                mensajesPendientes.Clear();
                                 mensajesPendientes.Add("MOSTRAR_PANEL_ELIMINADO_GEONBIT");
                                 hayNuevosMensajes = true;
                             }
-                            Debug.WriteLine("[ELIMINACIÓN] Panel Geonbit de eliminación encolado");
+                            Debug.WriteLine("[ELIMINACIÓN] Panel Geonbit de eliminación encolado con prioridad");
                         }
                         else
                         {
@@ -819,23 +822,39 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("FIN_PARTIDA/"))
                 {
-                    string ganador = message.Substring(12).Trim();
-                    partidaTerminada = true;
-                    _permitirAccionesJuego = false;
+                    Debug.WriteLine("[FIN_PARTIDA] *** MENSAJE FIN PARTIDA RECIBIDO ***");
 
-                    Debug.WriteLine($"[FIN_PARTIDA] *** PARTIDA TERMINADA - GANADOR: {ganador} ***");
-
-                    ChatPanel(true, ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase)
-                        ? "Sistema/¡FELICIDADES! ¡HAS GANADO LA PARTIDA!"
-                        : $"Sistema/Fin de partida. Ganador: {ganador}");
-
-                    // **SIEMPRE ENCOLAR PARA EL HILO PRINCIPAL**
-                    lock (mensajesLock)
+                    string[] partes = message.Split('/');
+                    if (partes.Length >= 2)
                     {
-                        mensajesPendientes.Add($"MOSTRAR_PANEL_FIN_PARTIDA/{ganador}");
-                        hayNuevosMensajes = true;
+                        string ganador = partes[1].Trim();
+
+                        partidaTerminada = true;
+                        _permitirAccionesJuego = false;
+                        esMiTurno = false;
+
+                        Debug.WriteLine($"[FIN_PARTIDA] *** PARTIDA TERMINADA - GANADOR: {ganador} ***");
+
+                        // **AÑADIR MENSAJE AL CHAT**
+                        if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                        {
+                            historialChat.Add("Sistema: ¡FELICIDADES! ¡HAS GANADO LA PARTIDA!");
+                        }
+                        else
+                        {
+                            historialChat.Add($"Sistema: Fin de partida. Ganador: {ganador}");
+                        }
+
+                        // **FORZAR MOSTRADO INMEDIATO DEL PANEL**
+                        lock (mensajesLock)
+                        {
+                            // **LIMPIAR MENSAJES PREVIOS Y AÑADIR SOLO EL CRÍTICO**
+                            mensajesPendientes.Clear();
+                            mensajesPendientes.Add($"MOSTRAR_PANEL_FIN_PARTIDA/{ganador}");
+                            hayNuevosMensajes = true;
+                        }
+                        Debug.WriteLine("[FIN_PARTIDA] Panel encolado con prioridad para mostrar en hilo principal");
                     }
-                    Debug.WriteLine("[FIN_PARTIDA] Panel encolado para mostrar en hilo principal");
                     return;
                 }
                 else if (message.StartsWith("GRUPO_DISUELTO/"))
@@ -2190,13 +2209,6 @@ namespace Duska.Screens
         {
             try
             {
-                // *** RESTO DEL UPDATE NORMAL SOLO SI NO HAY PANEL ***
-                if (!_permitirAccionesJuego)
-                {
-                    UserInterface.Active?.Update(gameTime);
-                    return;
-                }
-
                 // Procesar mensajes pendientes primero
                 List<string> mensajesAhora = null;
                 bool mensajesProcesados = false;
@@ -2271,6 +2283,12 @@ namespace Duska.Screens
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Update(gameTime);
+                }
+
+                if (estoyEliminado || partidaTerminada)
+                {
+                    Debug.WriteLine("[UPDATE] Jugador eliminado o partida terminada - evitando lógica de juego");
+                    return;
                 }
 
                 // Obtener estados de entrada actuales - USAR NOMBRES ÚNICOS
@@ -2630,62 +2648,54 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacionGeonbit ***");
 
-                // **LIMPIAR ESTADOS PRIMERO**
+                // **FORZAR LIMPIEZA COMPLETA**
                 _permitirAccionesJuego = false;
                 esMiTurno = false;
                 _cartasAcercadas = false;
                 _cartaSeleccionadaIndex = -1;
 
-                // **LIMPIAR UI COMPLETAMENTE**
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Clear();
-                    Debug.WriteLine("[UI] UI limpiada para mostrar eliminación");
+                    Debug.WriteLine("[UI] UI limpiada completamente");
                 }
 
-                // **CREAR PANEL PRINCIPAL**
-                Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
-                panel.FillColor = Color.Black * 0.85f;
+                // **CREAR PANEL MÁS GRANDE Y VISIBLE**
+                Panel panel = new Panel(new Vector2(600, 400), PanelSkin.Default, Anchor.Center);
+                panel.FillColor = Color.Black * 0.9f;
                 panel.OutlineColor = Color.Red;
-                panel.OutlineWidth = 4;
+                panel.OutlineWidth = 6;
                 panel.Visible = true;
 
-                // **TÍTULO**
+                // **TÍTULO MUY VISIBLE**
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
                 titulo.FillColor = Color.Red;
-                titulo.Scale = 1.6f;
+                titulo.Scale = 2.0f; // **MÁS GRANDE**
                 panel.AddChild(titulo);
 
                 panel.AddChild(new HorizontalLine());
 
-                // **MENSAJE INFORMATIVO**
+                // **MENSAJES CLAROS**
                 Paragraph mensaje1 = new Paragraph("Has sido eliminado de la partida.");
                 mensaje1.FillColor = Color.White;
-                mensaje1.Scale = 1.1f;
+                mensaje1.Scale = 1.3f;
                 panel.AddChild(mensaje1);
 
                 Paragraph mensaje2 = new Paragraph("La partida ha terminado para ti.");
-                mensaje2.FillColor = Color.LightGray;
+                mensaje2.FillColor = Color.Orange;
+                mensaje2.Scale = 1.2f;
                 panel.AddChild(mensaje2);
 
                 panel.AddChild(new HorizontalLine());
 
-                // **MENSAJE ADICIONAL**
-                Paragraph mensaje3 = new Paragraph("¡Mejor suerte la próxima vez!");
-                mensaje3.FillColor = Color.Yellow;
-                mensaje3.Scale = 1.05f;
-                panel.AddChild(mensaje3);
-
-                panel.AddChild(new HorizontalLine());
-
-                // **SOLO BOTÓN REGRESAR AL MENÚ**
-                Button regresarBtn = new Button("Regresar al Menú Principal");
-                regresarBtn.Size = new Vector2(280, 60);
+                // **BOTÓN MUY VISIBLE**
+                Button regresarBtn = new Button("REGRESAR AL MENÚ");
+                regresarBtn.Size = new Vector2(300, 80);
                 regresarBtn.FillColor = Color.Orange;
-                regresarBtn.Scale = 1.1f;
+                regresarBtn.Scale = 1.3f;
                 regresarBtn.OnClick = (Entity btn) =>
                 {
-                    Debug.WriteLine("[ELIMINACIÓN] Botón regresar clickeado");
+                    Debug.WriteLine("[ELIMINACIÓN] *** BOTÓN REGRESAR CLICKEADO ***");
                     RegresarAlMenuPrincipal();
                 };
                 panel.AddChild(regresarBtn);
@@ -2693,30 +2703,21 @@ namespace Duska.Screens
                 // **AÑADIR AL UI**
                 UserInterface.Active.AddEntity(panel);
 
-                Debug.WriteLine("[UI] *** Panel Geonbit de eliminación creado y mostrado (sin espectador) ***");
+                Debug.WriteLine("[UI] *** PANEL ELIMINACIÓN GEONBIT CREADO Y VISIBLE ***");
 
-                // **AUTO-REGRESAR DESPUÉS DE 10 SEGUNDOS**
-                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                // **AUTO-REGRESAR MÁS RÁPIDO**
+                System.Threading.Tasks.Task.Delay(7000).ContinueWith(_ =>
                 {
-                    try
+                    if (panel != null && panel.Visible && estoyEliminado)
                     {
-                        if (panel != null && panel.Visible && estoyEliminado)
-                        {
-                            Debug.WriteLine("[UI] Auto-regreso después de 10 segundos");
-                            RegresarAlMenuPrincipal();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[UI] Error en auto-regreso: {ex.Message}");
+                        Debug.WriteLine("[UI] Auto-regreso por timeout");
+                        RegresarAlMenuPrincipal();
                     }
                 });
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelEliminacionGeonbit: {ex.Message} ***");
-
-                // **FALLBACK: REGRESAR DIRECTAMENTE**
+                Debug.WriteLine($"[ERROR] *** ERROR CRÍTICO EN PANEL ELIMINACIÓN: {ex.Message} ***");
                 RegresarAlMenuPrincipal();
             }
         }
