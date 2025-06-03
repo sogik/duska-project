@@ -105,6 +105,8 @@ namespace Duska.Screens
 
                 _spriteBatch = new SpriteBatch(GraphicsDevice);
 
+                CrearBotonRegreso();
+
                 // Cargar texturas de cartas
                 string[] cartasNombres = new string[] { "ace", "jack", "king", "queen", "cardback" };
                 for (int i = 0; i < cartasNombres.Length; i++)
@@ -168,6 +170,34 @@ namespace Duska.Screens
         {
             _partidaId = partidaId;
             Debug.WriteLine($"[GAME] Partida ID establecido: {partidaId}");
+        }
+
+        private void CrearBotonRegreso()
+        {
+            try
+            {
+                Button regresarMenuBtn = new Button("← Menú", ButtonSkin.Default, Anchor.TopLeft, new Vector2(100, 40));
+                regresarMenuBtn.Offset = new Vector2(10, 10);
+                regresarMenuBtn.OnClick = (Entity btn) =>
+                {
+                    try
+                    {
+                        Debug.WriteLine("[NAVEGACIÓN] Regresando al menú desde GameCardScreen");
+                        SimpleMultiWindowManager.Instance.RegresarAlMenuPrincipal();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] Error regresando al menú: {ex.Message}");
+                    }
+                };
+                UserInterface.Active.AddEntity(regresarMenuBtn);
+
+                Debug.WriteLine("[UI] Botón de regreso al menú creado");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error creando botón de regreso: {ex.Message}");
+            }
         }
 
         private void PedirTurno()
@@ -1579,35 +1609,33 @@ namespace Duska.Screens
         {
             try
             {
-                // **VERIFICAR SI YA SE PIDIERON CARTAS EN ESTA RONDA**
                 if (cartasPedidasEstaRonda)
                 {
-                    historialChat.Add("Sistema: ❌ Ya pediste cartas en esta ronda");
-                    CrearInterfazChatCompleta(true);
+                    ChatPanel(true, "Sistema/Ya pediste cartas en esta ronda");
                     return;
                 }
 
                 if (conectado || ConnectToServerIfNeeded())
                 {
-                    GetCards(usuario);
+                    // **USAR COMANDO 9 PARA PEDIR CARTAS**
+                    string mensaje = $"9/{usuario}/REQUEST_CARDS";
+                    byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
 
-                    // **MARCAR QUE YA SE PIDIERON CARTAS**
                     cartasPedidasEstaRonda = true;
+                    ChatPanel(true, "Sistema/Solicitando nuevas cartas...");
 
-                    historialChat.Add("Sistema: ✅ Solicitando nuevas cartas...");
-                    CrearInterfazChatCompleta(true); // Actualizar UI para deshabilitar botón
+                    Debug.WriteLine("[CARTAS] Solicitud enviada para nueva ronda");
                 }
                 else
                 {
-                    historialChat.Add("Sistema: ❌ ERROR - No hay conexión al servidor");
-                    CrearInterfazChatCompleta(true);
+                    ChatPanel(true, "Sistema/Error de conexión - no se pueden pedir cartas");
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error solicitando cartas: {ex.Message}");
-                historialChat.Add($"Sistema: ❌ ERROR - {ex.Message}");
-                CrearInterfazChatCompleta(true);
+                ChatPanel(true, "Sistema/Error al solicitar cartas");
             }
         }
 
@@ -1932,58 +1960,62 @@ namespace Duska.Screens
 
             try
             {
-                // Contar cuántas cartas tienen filtro aplicado
-                int cartasConFiltroCount = 0;
-                List<string> tiposCartas = new List<string>();
-
-                // Verificar que la lista de filtros esté inicializada
+                // **ASEGURAR QUE TENEMOS LA LISTA DE FILTROS**
                 if (_cartasConFiltro == null || _cartasConFiltro.Count < _cartasDisponibles.Count)
                 {
-                    // Inicializar la lista de filtros si es necesario
-                    _cartasConFiltro = new List<bool>();
                     while (_cartasConFiltro.Count < _cartasDisponibles.Count)
                     {
                         _cartasConFiltro.Add(false);
                     }
                 }
 
-                // Recorrer todas las cartas y verificar cuáles tienen filtro
-                for (int i = 0; i < _cartasDisponibles.Count; i++)
+                // **CONTAR CARTAS SELECCIONADAS**
+                int cartasConFiltroCount = 0;
+                List<string> cartasSeleccionadas = new List<string>();
+
+                for (int i = 0; i < Math.Min(_cartasDisponibles.Count, _cartasConFiltro.Count); i++)
                 {
                     if (_cartasConFiltro[i])
                     {
                         cartasConFiltroCount++;
-                        // Obtener el tipo de cada carta (del 1 al 4)
                         string tipoCarta = GetTipoCartaPorTextura(_cartasDisponibles[i]);
-                        tiposCartas.Add(tipoCarta);
+                        cartasSeleccionadas.Add(tipoCarta);
+                        Debug.WriteLine($"[CARTAS] Carta seleccionada {cartasConFiltroCount}: {tipoCarta}");
                     }
                 }
 
-                // Verificar si hay cartas seleccionadas
                 if (cartasConFiltroCount == 0)
                 {
-                    ChatPanel(true, "Sistema/No has seleccionado ninguna carta para enviar");
+                    ChatPanel(true, "Sistema/Selecciona al menos una carta para jugar");
                     return;
                 }
 
-                // Construir el mensaje con la cantidad de cartas y sus tipos
-                string datosCartas = $"{cartasConFiltroCount}/{string.Join(",", tiposCartas)}";
+                // **CREAR MENSAJE CON FORMATO CORRECTO**
+                // Formato: "21/usuario/PLAY/cantidad/carta1,carta2,carta3"
+                string listaCartas = string.Join(",", cartasSeleccionadas);
+                string mensaje = $"21/{usuario}/PLAY/{cartasConFiltroCount}/{listaCartas}";
 
-                // Enviar acción al servidor
-                string mensaje = $"21/{usuario}/PLAY/{datosCartas}";
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                Debug.WriteLine($"[CARTAS] Enviando mensaje: {mensaje}");
+
+                byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
                 server.Send(msg);
 
-                Debug.WriteLine($"[ACCIÓN] Enviadas {cartasConFiltroCount} cartas: {datosCartas}");
-                ChatPanel(true, $"Sistema/Has enviado {cartasConFiltroCount} carta(s)");
+                // **CONFIRMAR ENVÍO EN EL CHAT**
+                ChatPanel(true, $"Sistema/Jugaste {cartasConFiltroCount} carta(s): {string.Join(", ", cartasSeleccionadas)}");
 
-                // Opcional: Limpiar las cartas enviadas de tu mano
+                // **LIMPIAR CARTAS ENVIADAS**
                 LimpiarCartasEnviadas();
+
+                // **RESETEAR ESTADO**
+                _cartasAcercadas = false;
+                _cartaSeleccionadaIndex = -1;
+
+                Debug.WriteLine($"[CARTAS] {cartasConFiltroCount} cartas enviadas correctamente");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error al enviar cartas: {ex.Message}");
-                ChatPanel(true, $"Sistema/ERROR: {ex.Message}");
+                ChatPanel(true, "Sistema/Error al enviar cartas");
             }
         }
 

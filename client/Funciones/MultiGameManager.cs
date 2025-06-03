@@ -1,218 +1,138 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Xna.Framework;
 using System.Net.Sockets;
+using MonoGame.Extended.Screens;
+using MonoGame.Extended.Screens.Transitions;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Duska.Screens;
 
 namespace Duska.Core
 {
-    public class GameWindowManager
+    public class SimpleMultiWindowManager
     {
-        private static GameWindowManager _instance;
-        public static GameWindowManager Instance
+        private static SimpleMultiWindowManager _instance;
+        public static SimpleMultiWindowManager Instance
         {
             get
             {
                 if (_instance == null)
-                    _instance = new GameWindowManager();
+                    _instance = new SimpleMultiWindowManager();
                 return _instance;
             }
         }
 
-        private Dictionary<int, Process> _ventanasAbiertas;
+        private Dictionary<int, GameCardScreen> _partidasActivas;
         private string _usuario;
+        private ScreenManager _screenManager;
+        private Game _game;
+        private Socket _socketPrincipal; // **UN SOLO SOCKET**
 
-        private GameWindowManager()
+        private SimpleMultiWindowManager()
         {
-            _ventanasAbiertas = new Dictionary<int, Process>();
+            _partidasActivas = new Dictionary<int, GameCardScreen>();
         }
 
-        public void Initialize(string usuario)
+        public void Initialize(string usuario, ScreenManager screenManager, Game game)
         {
             _usuario = usuario;
-            Debug.WriteLine("[WINDOW_MANAGER] Inicializado para usuario: " + usuario);
+            _screenManager = screenManager;
+            _game = game;
+            Debug.WriteLine("[SIMPLE_MULTI] Inicializado para usuario: " + usuario);
+        }
+
+        // **NUEVO MÉTODO PARA ESTABLECER EL SOCKET PRINCIPAL**
+        public void SetSocketPrincipal(Socket socket)
+        {
+            _socketPrincipal = socket;
+            Debug.WriteLine("[SIMPLE_MULTI] Socket principal establecido");
         }
 
         public void AbrirNuevaVentanaPartida(int partidaId, Socket socketBase)
         {
             try
             {
-                Debug.WriteLine($"[WINDOW_MANAGER] Intentando crear nueva ventana para partida {partidaId}");
+                Debug.WriteLine($"[SIMPLE_MULTI] Abriendo partida {partidaId} en la misma ventana");
 
-                if (_ventanasAbiertas.ContainsKey(partidaId))
+                if (_partidasActivas.ContainsKey(partidaId))
                 {
-                    Debug.WriteLine($"[WINDOW_MANAGER] La partida {partidaId} ya tiene ventana abierta");
+                    Debug.WriteLine($"[SIMPLE_MULTI] La partida {partidaId} ya está abierta");
+
+                    var pantallaExistente = _partidasActivas[partidaId];
+                    _screenManager.LoadScreen(pantallaExistente, new FadeTransition(_game.GraphicsDevice, Color.Black, 0.5f));
                     return;
                 }
 
-                // **OPCIÓN 1: CREAR NUEVA INSTANCIA DEL EJECUTABLE**
-                string ejecutableActual = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                string directorioEjecutable = System.IO.Path.GetDirectoryName(ejecutableActual);
+                // **CREAR NUEVA PANTALLA DE JUEGO USANDO EL SOCKET PRINCIPAL**
+                var gameScreen = new GameCardScreen(_game, _usuario);
+                gameScreen.SetPartidaId(partidaId);
 
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = ejecutableActual,
-                    Arguments = $"--partida={partidaId} --usuario={_usuario} --modo=juego",
-                    UseShellExecute = true,
-                    WorkingDirectory = directorioEjecutable
-                };
+                // **USAR EL SOCKET PRINCIPAL, NO CREAR UNO NUEVO**
+                gameScreen.SetExistingSocket(_socketPrincipal ?? socketBase);
 
-                Process nuevaVentana = Process.Start(startInfo);
+                // **GUARDAR REFERENCIA**
+                _partidasActivas[partidaId] = gameScreen;
 
-                if (nuevaVentana != null)
-                {
-                    _ventanasAbiertas[partidaId] = nuevaVentana;
-                    Debug.WriteLine($"[WINDOW_MANAGER] Nueva ventana creada para partida {partidaId}");
+                // **CAMBIAR A LA PANTALLA DE JUEGO**
+                _screenManager.LoadScreen(gameScreen, new FadeTransition(_game.GraphicsDevice, Color.Black, 0.5f));
 
-                    // Monitorear cuando se cierre la ventana
-                    nuevaVentana.EnableRaisingEvents = true;
-                    nuevaVentana.Exited += (sender, e) =>
-                    {
-                        Debug.WriteLine($"[WINDOW_MANAGER] Ventana de partida {partidaId} cerrada");
-                        _ventanasAbiertas.Remove(partidaId);
-                    };
-                }
+                Debug.WriteLine($"[SIMPLE_MULTI] Partida {partidaId} abierta correctamente");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] Error al crear nueva ventana: {ex.Message}");
-
-                // **PLAN DE RESPALDO: USAR THREAD CON NUEVA INSTANCIA DE GAME**
-                CrearVentanaEnHiloSeparado(partidaId, socketBase);
+                Debug.WriteLine($"[ERROR] Error al abrir partida: {ex.Message}");
             }
-        }
-
-        private void CrearVentanaEnHiloSeparado(int partidaId, Socket socketBase)
-        {
-            Task.Run(() =>
-            {
-                try
-                {
-                    Debug.WriteLine($"[WINDOW_THREAD] Creando ventana en hilo separado para partida {partidaId}");
-
-                    // Crear nueva instancia del juego que solo muestre GameCardScreen
-                    using (var gameInstance = new GameInstanceForPartida(_usuario, partidaId))
-                    {
-                        gameInstance.RunOneFrame();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[ERROR] Error en hilo de ventana: {ex.Message}");
-                }
-            });
         }
 
         public void CerrarVentanaPartida(int partidaId)
         {
             try
             {
-                if (_ventanasAbiertas.ContainsKey(partidaId))
+                if (_partidasActivas.ContainsKey(partidaId))
                 {
-                    var proceso = _ventanasAbiertas[partidaId];
-                    if (!proceso.HasExited)
-                    {
-                        proceso.CloseMainWindow();
-                        proceso.WaitForExit(3000); // Esperar 3 segundos
-                        if (!proceso.HasExited)
-                        {
-                            proceso.Kill();
-                        }
-                    }
-                    _ventanasAbiertas.Remove(partidaId);
-                    Debug.WriteLine($"[WINDOW_MANAGER] Ventana de partida {partidaId} cerrada");
+                    _partidasActivas[partidaId]?.Dispose();
+                    _partidasActivas.Remove(partidaId);
                 }
+
+                Debug.WriteLine($"[SIMPLE_MULTI] Partida {partidaId} cerrada");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] Error al cerrar ventana: {ex.Message}");
+                Debug.WriteLine($"[ERROR] Error al cerrar partida: {ex.Message}");
             }
         }
 
         public List<int> GetPartidasActivas()
         {
-            // Limpiar procesos que ya no existen
-            var partidasACerrar = new List<int>();
-            foreach (var kvp in _ventanasAbiertas)
-            {
-                if (kvp.Value.HasExited)
-                {
-                    partidasACerrar.Add(kvp.Key);
-                }
-            }
-
-            foreach (int partidaId in partidasACerrar)
-            {
-                _ventanasAbiertas.Remove(partidaId);
-            }
-
-            return new List<int>(_ventanasAbiertas.Keys);
+            return new List<int>(_partidasActivas.Keys);
         }
 
-        public bool TieneVentanaAbierta(int partidaId)
+        public bool TienePartidaAbierta(int partidaId)
         {
-            return _ventanasAbiertas.ContainsKey(partidaId) &&
-                   !_ventanasAbiertas[partidaId].HasExited;
-        }
-    }
-
-    // **CLASE PARA INSTANCIA SEPARADA DEL JUEGO**
-    public class GameInstanceForPartida : Game
-    {
-        private Microsoft.Xna.Framework.Graphics.GraphicsDeviceManager _graphics;
-        private string _usuario;
-        private int _partidaId;
-
-        public GameInstanceForPartida(string usuario, int partidaId)
-        {
-            _graphics = new Microsoft.Xna.Framework.Graphics.GraphicsDeviceManager(this);
-            Content.RootDirectory = "Content";
-
-            _usuario = usuario;
-            _partidaId = partidaId;
-
-            // Configurar ventana
-            Window.Title = $"Duska - Partida #{partidaId} - {usuario}";
-            _graphics.PreferredBackBufferWidth = 1280;
-            _graphics.PreferredBackBufferHeight = 720;
-
-            Debug.WriteLine($"[GAME_INSTANCE] Instancia creada para partida {partidaId}");
+            return _partidasActivas.ContainsKey(partidaId);
         }
 
-        protected override void LoadContent()
+        public void RegresarAlMenuPrincipal()
         {
             try
             {
-                Debug.WriteLine($"[GAME_INSTANCE] Cargando contenido para partida {_partidaId}");
+                Debug.WriteLine("[SIMPLE_MULTI] Regresando al menú principal");
 
-                // Ir directamente a la pantalla de juego
-                var screenManager = new MonoGame.Extended.Screens.ScreenManager();
-                Components.Add(screenManager);
+                var mainMenu = new MainMenuScreen(_game, _usuario);
 
-                var gameScreen = new Duska.Screens.GameCardScreen(this, _usuario);
-                gameScreen.SetPartidaId(_partidaId);
+                // **PASAR EL SOCKET PRINCIPAL AL MENÚ**
+                if (_socketPrincipal != null)
+                {
+                    mainMenu.SetExistingSocket(_socketPrincipal);
+                }
 
-                screenManager.LoadScreen(gameScreen);
-
-                Debug.WriteLine($"[GAME_INSTANCE] Contenido cargado para partida {_partidaId}");
+                _screenManager.LoadScreen(mainMenu, new FadeTransition(_game.GraphicsDevice, Color.Black, 0.5f));
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] Error al cargar contenido: {ex.Message}");
+                Debug.WriteLine($"[ERROR] Error regresando al menú: {ex.Message}");
             }
-        }
-
-        protected override void Update(GameTime gameTime)
-        {
-            base.Update(gameTime);
-        }
-
-        protected override void Draw(GameTime gameTime)
-        {
-            GraphicsDevice.Clear(Color.DarkBlue);
-            base.Draw(gameTime);
         }
     }
 }
