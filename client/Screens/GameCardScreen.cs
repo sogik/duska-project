@@ -38,8 +38,6 @@ namespace Duska.Screens
         private bool isReconnecting = false;
         private volatile bool stopMessageListener = false;
         private bool conectado = false;
-        private bool _mostrandoPanelEliminacion = false;
-        private Panel _panelEliminacionActivo = null;
 
         public string usuario;
 
@@ -734,32 +732,46 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("NUEVA_RONDA/"))
                 {
-                    // Formato: NUEVA_RONDA/numero_ronda
-                    string[] partes = message.Split('/');
+                    Debug.WriteLine("[NUEVA_RONDA] *** MENSAJE DE NUEVA RONDA RECIBIDO ***");
 
+                    string[] partes = message.Split('/');
                     if (partes.Length >= 2)
                     {
-                        // Obtener número de ronda y carta
                         string numeroRonda = partes[1];
 
-                        // **RESETEAR EL FLAG DE CARTAS PEDIDAS**
+                        // **RESETEAR FLAGS DE CARTAS**
                         cartasPedidasEstaRonda = false;
                         rondaActual = int.TryParse(numeroRonda, out int ronda) ? ronda : rondaActual + 1;
 
-                        obtener_carta_ronda();
+                        // **SI HAY CARTA EN EL MENSAJE, USARLA**
+                        if (partes.Length >= 3)
+                        {
+                            carta_ronda_actual = partes[2];
+                            Debug.WriteLine($"[NUEVA_RONDA] Carta recibida en mensaje: {carta_ronda_actual}");
+                        }
+                        else
+                        {
+                            // **FALLBACK: OBTENER CARTA DEL SERVIDOR**
+                            obtener_carta_ronda();
+                        }
 
-                        // Notificar al usuario
-                        ChatPanel(true, $"Sistema/¡Comienza la ronda {numeroRonda}! Carta designada: {carta_ronda_actual}");
+                        // **NOTIFICAR Y RECREAR UI**
+                        historialChat.Add($"Sistema: ¡Comienza la ronda {numeroRonda}! Carta designada: {carta_ronda_actual}");
 
-                        // Solicitar nuevas cartas para esta ronda
+                        // **SOLICITAR CARTAS PARA LA NUEVA RONDA**
                         if (conectado || ConnectToServerIfNeeded())
                         {
-                            // Solicitar cartas nuevas para la nueva ronda
                             GetCards(usuario);
-                            cartasPedidasEstaRonda = true; // **MARCAR COMO USADAS PORQUE SE PIDIERON AUTOMÁTICAMENTE**
+                            cartasPedidasEstaRonda = true;
                             PedirTurno();
+                            Debug.WriteLine($"[NUEVA_RONDA] Cartas solicitadas para ronda {numeroRonda}");
+                        }
 
-                            Debug.WriteLine($"[RONDA] Nueva ronda {numeroRonda}, carta: {carta_ronda_actual}. Solicitando nuevas cartas.");
+                        // **ENCOLAR ACTUALIZACIÓN DE UI**
+                        lock (mensajesLock)
+                        {
+                            mensajesPendientes.Add("ACTUALIZAR_CHAT");
+                            hayNuevosMensajes = true;
                         }
                     }
                     return;
@@ -780,20 +792,27 @@ namespace Duska.Screens
 
                         if (soyYo)
                         {
-                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO - ENCOLANDO PANEL ***");
+                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO ***");
                             estoyEliminado = true;
+                            _permitirAccionesJuego = false;
 
-                            // **SIEMPRE ENCOLAR PARA EL HILO PRINCIPAL**
+                            // **ENCOLAR PARA MOSTRAR PANEL GEONBIT EN HILO PRINCIPAL**
                             lock (mensajesLock)
                             {
-                                mensajesPendientes.Add("MOSTRAR_PANEL_ELIMINADO");
+                                mensajesPendientes.Add("MOSTRAR_PANEL_ELIMINADO_GEONBIT");
                                 hayNuevosMensajes = true;
                             }
-                            Debug.WriteLine("[ELIMINACIÓN] Panel de eliminación encolado");
+                            Debug.WriteLine("[ELIMINACIÓN] Panel Geonbit de eliminación encolado");
                         }
                         else
                         {
-                            ChatPanel(true, $"Sistema/{jugadorEliminado} ha sido eliminado de la partida");
+                            historialChat.Add($"Sistema: {jugadorEliminado} ha sido eliminado de la partida");
+
+                            lock (mensajesLock)
+                            {
+                                mensajesPendientes.Add("ACTUALIZAR_CHAT");
+                                hayNuevosMensajes = true;
+                            }
                         }
                     }
                     return;
@@ -2171,41 +2190,6 @@ namespace Duska.Screens
         {
             try
             {
-                // *** MANEJAR PANEL DE ELIMINACIÓN PRIMERO ***
-                if (_mostrandoPanelEliminacion && _panelEliminacionActivo != null)
-                {
-                    // Solo procesar input para el panel de eliminación
-                    var keyboardStateExtended = KeyboardExtended.GetState();
-
-                    // Detectar teclas presionadas
-                    if (keyboardStateExtended.WasKeyReleased(Keys.E))
-                    {
-                        Debug.WriteLine("[INPUT] Tecla E presionada - Espectador");
-                        ConfigurarComoEspectador();
-                        CerrarPanelEliminacion(_panelEliminacionActivo);
-                        return;
-                    }
-
-                    if (keyboardStateExtended.WasKeyReleased(Keys.S))
-                    {
-                        Debug.WriteLine("[INPUT] Tecla S presionada - Salir");
-                        SalirDeLaPartida();
-                        CerrarPanelEliminacion(_panelEliminacionActivo);
-                        return;
-                    }
-
-                    if (keyboardStateExtended.WasKeyReleased(Keys.Escape))
-                    {
-                        Debug.WriteLine("[INPUT] Tecla ESC presionada - Menú");
-                        RegresarAlMenuPrincipal();
-                        return;
-                    }
-
-                    // NO procesar nada más mientras el panel esté activo
-                    UserInterface.Active?.Update(gameTime);
-                    return;
-                }
-
                 // *** RESTO DEL UPDATE NORMAL SOLO SI NO HAY PANEL ***
                 if (!_permitirAccionesJuego)
                 {
@@ -2239,9 +2223,14 @@ namespace Duska.Screens
                     {
                         Debug.WriteLine($"[UPDATE] *** PROCESANDO MENSAJE PENDIENTE: {mensaje} ***");
 
-                        if (mensaje == "MOSTRAR_PANEL_ELIMINADO")
+                        if (mensaje == "MOSTRAR_PANEL_ELIMINADO_GEONBIT")
                         {
-                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN ***");
+                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL GEONBIT DE ELIMINACIÓN ***");
+                            MostrarPanelEliminacionGeonbit();
+                        }
+                        else if (mensaje == "MOSTRAR_PANEL_ELIMINADO")
+                        {
+                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL SIMPLE DE ELIMINACIÓN ***");
                             MostrarPanelEliminacionDefinitivo();
                         }
                         else if (mensaje.StartsWith("MOSTRAR_PANEL_FIN_PARTIDA/"))
@@ -2256,11 +2245,15 @@ namespace Duska.Screens
                             ProcesarCartasDelServidor(mensaje);
                             _mostrarTodas = true;
                         }
-                        // **AGREGAR ESTA NUEVA CONDICIÓN:**
                         else if (mensaje == "ACTUALIZAR_CHAT")
                         {
                             Debug.WriteLine("[UPDATE] *** ACTUALIZANDO CHAT ***");
                             ActualizarSoloPanelMensajes();
+                        }
+                        else if (mensaje == "MOSTRAR_PANEL_ELIMINADO_GEONBIT")
+                        {
+                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL GEONBIT DE ELIMINACIÓN ***");
+                            MostrarPanelEliminacionGeonbit();
                         }
                         else
                         {
@@ -2426,6 +2419,14 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[PANEL] *** CREANDO PANEL DE ELIMINACIÓN DEFINITIVO ***");
 
+                // **LIMPIAR TODOS LOS ESTADOS PRIMERO**
+                mostrarResultadoDesafio = false;
+                desafioEnProceso = false;
+                _permitirAccionesJuego = false;
+                esMiTurno = false;
+                _cartasAcercadas = false;
+                _cartaSeleccionadaIndex = -1;
+
                 // **LIMPIAR TODO PRIMERO**
                 if (UserInterface.Active != null)
                 {
@@ -2435,28 +2436,29 @@ namespace Duska.Screens
 
                 // **CREAR PANEL PRINCIPAL GRANDE Y VISIBLE**
                 Panel panelEliminacion = new Panel(new Vector2(600, 400), PanelSkin.Default, Anchor.Center);
-                panelEliminacion.FillColor = Color.Black * 0.8f;
+                panelEliminacion.FillColor = Color.Black * 0.9f;
                 panelEliminacion.OutlineColor = Color.Red;
-                panelEliminacion.OutlineWidth = 3;
+                panelEliminacion.OutlineWidth = 5;
                 panelEliminacion.Visible = true;
 
                 // **TÍTULO GRANDE Y ROJO**
                 Header titulo = new Header("¡HAS SIDO ELIMINADO!");
                 titulo.FillColor = Color.Red;
-                titulo.Scale = 1.5f;
+                titulo.Scale = 1.8f;
                 panelEliminacion.AddChild(titulo);
 
                 panelEliminacion.AddChild(new HorizontalLine());
 
                 // **MENSAJE EXPLICATIVO**
                 panelEliminacion.AddChild(new Paragraph("Has sido eliminado de la partida."));
-                panelEliminacion.AddChild(new Paragraph("La partida ha terminado para ti."));
+                panelEliminacion.AddChild(new Paragraph("La partida continúa sin ti."));
                 panelEliminacion.AddChild(new HorizontalLine());
 
                 // **BOTÓN PARA REGRESAR**
                 Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
                 regresarBtn.Size = new Vector2(250, 60);
                 regresarBtn.FillColor = Color.Orange;
+                regresarBtn.Scale = 1.2f;
                 regresarBtn.OnClick = (Entity btn) =>
                 {
                     Debug.WriteLine("[PANEL] Botón regresar clickeado - eliminado");
@@ -2469,14 +2471,14 @@ namespace Duska.Screens
 
                 Debug.WriteLine("[PANEL] *** PANEL DE ELIMINACIÓN CREADO Y MOSTRADO ***");
 
-                // **AUTO-REGRESAR DESPUÉS DE 10 SEGUNDOS**
-                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                // **AUTO-REGRESAR DESPUÉS DE 8 SEGUNDOS**
+                System.Threading.Tasks.Task.Delay(8000).ContinueWith(_ =>
                 {
                     try
                     {
-                        if (panelEliminacion != null && panelEliminacion.Visible)
+                        if (panelEliminacion != null && panelEliminacion.Visible && estoyEliminado)
                         {
-                            Debug.WriteLine("[PANEL] Auto-regreso después de 10 segundos");
+                            Debug.WriteLine("[PANEL] Auto-regreso después de 8 segundos");
                             RegresarAlMenuPrincipal();
                         }
                     }
@@ -2491,118 +2493,7 @@ namespace Duska.Screens
                 Debug.WriteLine($"[ERROR] *** Error crítico creando panel eliminación: {ex.Message} ***");
 
                 // **PLAN DE RESPALDO**
-                ChatPanel(true, "Sistema/Has sido eliminado. Regresando al menú en 3 segundos...");
-                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
-                {
-                    RegresarAlMenuPrincipal();
-                });
-            }
-        }
-
-        private void ConfigurarComoEspectador()
-        {
-            try
-            {
-                if (server != null && server.Connected)
-                {
-                    string mensaje = $"28/{usuario}/ESPECTADOR";
-                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                    server.Send(msg);
-                    Debug.WriteLine("[ELIMINACIÓN] Mensaje espectador enviado");
-                }
-
-                // Reactivar procesamiento de mensajes
-                stopMessageListener = false;
-
-                // Regenerar UI básica del juego como espectador
-                InicializarUIEspectador();
-
-                Debug.WriteLine("[ELIMINACIÓN] Configurado como espectador exitosamente");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al configurarse como espectador: {ex.Message}");
-            }
-        }
-
-        private void SalirDeLaPartida()
-        {
-            try
-            {
-                if (server != null && server.Connected)
-                {
-                    string mensaje = $"28/{usuario}/SALIR";
-                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                    server.Send(msg);
-                    Debug.WriteLine("[ELIMINACIÓN] Mensaje salir enviado");
-                }
-
                 RegresarAlMenuPrincipal();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al salir: {ex.Message}");
-                RegresarAlMenuPrincipal();
-            }
-        }
-
-        private void CerrarPanelEliminacion(Panel panel)
-        {
-            try
-            {
-                Debug.WriteLine("[UI] Cerrando panel de eliminación");
-
-                // Desactivar flags
-                _mostrandoPanelEliminacion = false;
-                _panelEliminacionActivo = null;
-
-                // Limpiar UI
-                if (UserInterface.Active != null && panel != null)
-                {
-                    UserInterface.Active.RemoveEntity(panel);
-                }
-
-                Debug.WriteLine("[UI] Panel de eliminación cerrado correctamente");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error cerrando panel: {ex.Message}");
-            }
-        }
-
-        private void InicializarUIEspectador()
-        {
-            try
-            {
-                Debug.WriteLine("[UI] Inicializando UI para espectador");
-
-                // Limpiar UI actual
-                if (UserInterface.Active != null)
-                {
-                    UserInterface.Active.Clear();
-                }
-
-                // Crear UI básica para espectador (solo chat y mensaje)
-                Panel panelEspectador = new Panel(new Vector2(400, 100), PanelSkin.Default, Anchor.TopCenter);
-                panelEspectador.Offset = new Vector2(0, 50);
-
-                Header mensajeEspectador = new Header("MODO ESPECTADOR");
-                mensajeEspectador.FillColor = Color.LightBlue;
-                panelEspectador.AddChild(mensajeEspectador);
-
-                Paragraph infoEspectador = new Paragraph("Observando la partida...");
-                panelEspectador.AddChild(infoEspectador);
-
-                UserInterface.Active.AddEntity(panelEspectador);
-
-                // Reinicializar chat
-                ChatPanel(true, "Sistema/Ahora eres espectador. Puedes seguir viendo la partida.");
-
-                Debug.WriteLine("[UI] UI de espectador inicializada");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error inicializando UI espectador: {ex.Message}");
             }
         }
 
@@ -2734,62 +2625,103 @@ namespace Duska.Screens
             }
         }
 
+        // Reemplazar MostrarPanelEliminacionGeonbit completo:
+
         private void MostrarPanelEliminacionGeonbit()
         {
-            Debug.WriteLine("[GEONBIT] Creando panel de eliminación");
-
-            // Panel principal centrado con fondo oscuro
-            var panelEliminacion = new GeonBit.UI.Entities.Panel(
-                new Vector2(600, 400),
-                GeonBit.UI.Entities.PanelSkin.Default,
-                GeonBit.UI.Entities.Anchor.Center
-            );
-
-            // Hacer el panel más visible
-            panelEliminacion.FillColor = Color.Black * 0.9f;
-            panelEliminacion.OutlineColor = Color.Red;
-            panelEliminacion.OutlineWidth = 4;
-
-            // Título grande y rojo
-            var titulo = new GeonBit.UI.Entities.Header("¡HAS SIDO ELIMINADO!");
-            titulo.Anchor = GeonBit.UI.Entities.Anchor.TopCenter;
-            titulo.FillColor = Color.Red;
-            titulo.Scale = 1.5f; // Hacer el texto más grande
-            panelEliminacion.AddChild(titulo);
-
-            // Mensaje explicativo
-            var mensaje = new GeonBit.UI.Entities.Paragraph(
-                "Has sido eliminado de la partida.\n\nLa partida ha terminado para ti.\nSerás devuelto al menú principal."
-            );
-            mensaje.Anchor = GeonBit.UI.Entities.Anchor.Center;
-            mensaje.FillColor = Color.White;
-            mensaje.Scale = 1.1f;
-            panelEliminacion.AddChild(mensaje);
-
-            // Botón para continuar
-            var botonContinuar = new GeonBit.UI.Entities.Button("Continuar al Menú");
-            botonContinuar.Anchor = GeonBit.UI.Entities.Anchor.BottomCenter;
-            botonContinuar.Size = new Vector2(300, 70);
-
-            // Evento del botón
-            botonContinuar.OnClick = (GeonBit.UI.Entities.Entity entity) =>
+            try
             {
-                Debug.WriteLine("[PANEL] Botón continuar presionado");
+                Debug.WriteLine("[UI] *** INICIANDO MostrarPanelEliminacionGeonbit ***");
 
-                // Remover el panel
-                UserInterface.Active.RemoveEntity(panelEliminacion);
+                // **LIMPIAR ESTADOS PRIMERO**
+                _permitirAccionesJuego = false;
+                esMiTurno = false;
+                _cartasAcercadas = false;
+                _cartaSeleccionadaIndex = -1;
 
-                // Regresar al menú principal
-                var mainMenuScreen = new MainMenuScreen(Game, usuario);
-                ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
-            };
+                // **LIMPIAR UI COMPLETAMENTE**
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                    Debug.WriteLine("[UI] UI limpiada para mostrar eliminación");
+                }
 
-            panelEliminacion.AddChild(botonContinuar);
+                // **CREAR PANEL PRINCIPAL**
+                Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
+                panel.FillColor = Color.Black * 0.85f;
+                panel.OutlineColor = Color.Red;
+                panel.OutlineWidth = 4;
+                panel.Visible = true;
 
-            // Agregar el panel a la interfaz (esto lo hace modal automáticamente)
-            UserInterface.Active.AddEntity(panelEliminacion);
+                // **TÍTULO**
+                Header titulo = new Header("¡HAS SIDO ELIMINADO!");
+                titulo.FillColor = Color.Red;
+                titulo.Scale = 1.6f;
+                panel.AddChild(titulo);
 
-            Debug.WriteLine("[GEONBIT] Panel de eliminación añadido a la UI");
+                panel.AddChild(new HorizontalLine());
+
+                // **MENSAJE INFORMATIVO**
+                Paragraph mensaje1 = new Paragraph("Has sido eliminado de la partida.");
+                mensaje1.FillColor = Color.White;
+                mensaje1.Scale = 1.1f;
+                panel.AddChild(mensaje1);
+
+                Paragraph mensaje2 = new Paragraph("La partida ha terminado para ti.");
+                mensaje2.FillColor = Color.LightGray;
+                panel.AddChild(mensaje2);
+
+                panel.AddChild(new HorizontalLine());
+
+                // **MENSAJE ADICIONAL**
+                Paragraph mensaje3 = new Paragraph("¡Mejor suerte la próxima vez!");
+                mensaje3.FillColor = Color.Yellow;
+                mensaje3.Scale = 1.05f;
+                panel.AddChild(mensaje3);
+
+                panel.AddChild(new HorizontalLine());
+
+                // **SOLO BOTÓN REGRESAR AL MENÚ**
+                Button regresarBtn = new Button("Regresar al Menú Principal");
+                regresarBtn.Size = new Vector2(280, 60);
+                regresarBtn.FillColor = Color.Orange;
+                regresarBtn.Scale = 1.1f;
+                regresarBtn.OnClick = (Entity btn) =>
+                {
+                    Debug.WriteLine("[ELIMINACIÓN] Botón regresar clickeado");
+                    RegresarAlMenuPrincipal();
+                };
+                panel.AddChild(regresarBtn);
+
+                // **AÑADIR AL UI**
+                UserInterface.Active.AddEntity(panel);
+
+                Debug.WriteLine("[UI] *** Panel Geonbit de eliminación creado y mostrado (sin espectador) ***");
+
+                // **AUTO-REGRESAR DESPUÉS DE 10 SEGUNDOS**
+                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                {
+                    try
+                    {
+                        if (panel != null && panel.Visible && estoyEliminado)
+                        {
+                            Debug.WriteLine("[UI] Auto-regreso después de 10 segundos");
+                            RegresarAlMenuPrincipal();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[UI] Error en auto-regreso: {ex.Message}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelEliminacionGeonbit: {ex.Message} ***");
+
+                // **FALLBACK: REGRESAR DIRECTAMENTE**
+                RegresarAlMenuPrincipal();
+            }
         }
 
         private void DibujarBordeCarta(int x, int y, int ancho, int alto, Color color)
