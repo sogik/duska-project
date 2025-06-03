@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS Partidas (
     estado VARCHAR(20) DEFAULT 'ACTIVA',
     ganador_id INT NULL,
     num_jugadores INT NOT NULL DEFAULT 2,
+    jugadores TEXT NULL,
     FOREIGN KEY (ganador_id) REFERENCES Jugadores(id_jugador)
 );
 
