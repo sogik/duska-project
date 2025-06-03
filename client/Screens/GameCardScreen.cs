@@ -728,58 +728,36 @@ namespace Duska.Screens
                     }
                     return;
                 }
-                // En el método ProcessServerMessage, busca la sección JUGADOR_ELIMINADO y cámbiala por:
-
-                // Busca la sección que maneja "JUGADOR_ELIMINADO" en ProcessServerMessage y reemplázala:
-
-                // En ProcessServerMessage, busca la sección JUGADOR_ELIMINADO y reemplázala por:
-
-                if (message.StartsWith("JUGADOR_ELIMINADO/"))
+                else if (message.StartsWith("JUGADOR_ELIMINADO/"))
                 {
                     Debug.WriteLine("[ELIMINACIÓN] *** MENSAJE DE ELIMINACIÓN RECIBIDO ***");
 
                     string[] partes = message.Split('/');
                     if (partes.Length >= 2)
                     {
-                        string jugadorEliminado = partes[1];
+                        string jugadorEliminado = partes[1].Trim();
+
                         Debug.WriteLine($"[ELIMINACIÓN] Jugador eliminado: '{jugadorEliminado}'");
                         Debug.WriteLine($"[ELIMINACIÓN] Mi usuario: '{usuario}'");
 
-                        // Limpiar barras y espacios extra
-                        string jugadorLimpio = jugadorEliminado.Trim().TrimStart('/');
-                        string miUsuarioLimpio = usuario.Trim().TrimStart('/');
+                        bool soyYo = string.Equals(jugadorEliminado, usuario, StringComparison.OrdinalIgnoreCase);
 
-                        Debug.WriteLine($"[ELIMINACIÓN] Jugador limpio: '{jugadorLimpio}'");
-                        Debug.WriteLine($"[ELIMINACIÓN] Mi usuario limpio: '{miUsuarioLimpio}'");
-
-                        bool sonIguales = string.Equals(jugadorLimpio, miUsuarioLimpio, StringComparison.OrdinalIgnoreCase);
-                        Debug.WriteLine($"[ELIMINACIÓN] ¿Son iguales? {sonIguales}");
-
-                        if (sonIguales)
+                        if (soyYo)
                         {
-                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO ***");
-
-                            // Marcar como eliminado y detener procesamiento
+                            Debug.WriteLine("[ELIMINACIÓN] *** SOY YO EL ELIMINADO - ENCOLANDO PANEL ***");
                             estoyEliminado = true;
-                            stopMessageListener = true;
 
-                            // Mostrar mensaje en chat
-                            ChatPanel(true, "Sistema/¡Has sido eliminado de la partida!");
-
-                            // Agregar a mensajes pendientes para mostrar panel
+                            // **SIEMPRE ENCOLAR PARA EL HILO PRINCIPAL**
                             lock (mensajesLock)
                             {
-                                mensajesPendientes.Add("JUGADOR_ELIMINADO_YO");
+                                mensajesPendientes.Add("MOSTRAR_PANEL_ELIMINADO");
                                 hayNuevosMensajes = true;
                             }
-
                             Debug.WriteLine("[ELIMINACIÓN] Panel de eliminación encolado");
-                            return; // No procesar más mensajes
                         }
                         else
                         {
-                            Debug.WriteLine($"[ELIMINACIÓN] Otro jugador eliminado: {jugadorLimpio}");
-                            ChatPanel(true, $"Sistema/{jugadorLimpio} ha sido eliminado de la partida");
+                            ChatPanel(true, $"Sistema/{jugadorEliminado} ha sido eliminado de la partida");
                         }
                     }
                     return;
@@ -792,30 +770,17 @@ namespace Duska.Screens
 
                     Debug.WriteLine($"[FIN_PARTIDA] *** PARTIDA TERMINADA - GANADOR: {ganador} ***");
 
-                    if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
-                    {
-                        ChatPanel(true, "Sistema/¡FELICIDADES! ¡HAS GANADO LA PARTIDA!");
-                    }
-                    else
-                    {
-                        ChatPanel(true, $"Sistema/Fin de partida. Ganador: {ganador}");
-                    }
+                    ChatPanel(true, ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase)
+                        ? "Sistema/¡FELICIDADES! ¡HAS GANADO LA PARTIDA!"
+                        : $"Sistema/Fin de partida. Ganador: {ganador}");
 
-                    // PROCESAR EN EL HILO PRINCIPAL
-                    if (System.Threading.Thread.CurrentThread.IsBackground)
+                    // **SIEMPRE ENCOLAR PARA EL HILO PRINCIPAL**
+                    lock (mensajesLock)
                     {
-                        lock (mensajesLock)
-                        {
-                            mensajesPendientes.Add($"MOSTRAR_PANEL_FIN_PARTIDA/{ganador}");
-                            hayNuevosMensajes = true;
-                            Debug.WriteLine("[FIN_PARTIDA] Panel encolado para mostrar en hilo principal");
-                        }
+                        mensajesPendientes.Add($"MOSTRAR_PANEL_FIN_PARTIDA/{ganador}");
+                        hayNuevosMensajes = true;
                     }
-                    else
-                    {
-                        Debug.WriteLine("[FIN_PARTIDA] Mostrando panel directamente en hilo principal");
-                        MostrarPanelFinPartida(ganador);
-                    }
+                    Debug.WriteLine("[FIN_PARTIDA] Panel encolado para mostrar en hilo principal");
                     return;
                 }
                 else if (message.StartsWith("GRUPO_DISUELTO/"))
@@ -1029,46 +994,49 @@ namespace Duska.Screens
             Debug.WriteLine("[GEONBIT] Panel de eliminación mostrado");
         }
 
+        // Reemplazar MostrarPanelFinPartida en GameCardScreen.cs:
+
         private void MostrarPanelFinPartida(string ganador)
         {
             try
             {
                 Debug.WriteLine("[UI] *** INICIANDO MostrarPanelFinPartida ***");
 
-                // LIMPIAR UI COMPLETAMENTE para asegurar que el panel sea visible
+                // **LIMPIAR UI COMPLETAMENTE**
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Clear();
-                }
-                else
-                {
-                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
-                    return;
+                    Debug.WriteLine("[UI] UI limpiada para mostrar fin de partida");
                 }
 
-                // Crear panel principal
+                // **CREAR PANEL PRINCIPAL**
                 Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
+                panel.FillColor = Color.Black * 0.8f;
+                panel.OutlineColor = Color.Gold;
+                panel.OutlineWidth = 3;
                 panel.Visible = true;
 
-                // Título destacado
+                // **TÍTULO DESTACADO**
                 Header titulo = new Header("¡PARTIDA TERMINADA!");
-                if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
-                {
-                    titulo.FillColor = Color.Gold;
-                }
-                else
-                {
-                    titulo.FillColor = Color.Orange;
-                }
+                titulo.FillColor = ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase)
+                    ? Color.Gold : Color.Orange;
+                titulo.Scale = 1.4f;
                 panel.AddChild(titulo);
 
                 panel.AddChild(new HorizontalLine());
 
-                // Mensaje del ganador
+                // **MENSAJE DEL GANADOR**
                 if (ganador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
                 {
-                    panel.AddChild(new Paragraph("¡FELICIDADES!"));
-                    panel.AddChild(new Paragraph("¡HAS GANADO LA PARTIDA!"));
+                    Paragraph felicidades = new Paragraph("¡FELICIDADES!");
+                    felicidades.FillColor = Color.Gold;
+                    felicidades.Scale = 1.2f;
+                    panel.AddChild(felicidades);
+
+                    Paragraph victoria = new Paragraph("¡HAS GANADO LA PARTIDA!");
+                    victoria.FillColor = Color.Yellow;
+                    victoria.Scale = 1.1f;
+                    panel.AddChild(victoria);
                 }
                 else
                 {
@@ -1078,62 +1046,36 @@ namespace Duska.Screens
 
                 panel.AddChild(new HorizontalLine());
 
-                // Botón para regresar al menú
+                // **BOTÓN PARA REGRESAR**
                 Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
                 regresarBtn.Size = new Vector2(220, 60);
                 regresarBtn.FillColor = Color.LightGreen;
-                // En GameCardScreen.cs, en MostrarPanelFinPartida, cambiar el OnClick:
-
                 regresarBtn.OnClick = (Entity btn) =>
                 {
                     Debug.WriteLine("[FIN_PARTIDA] Botón regresar clickeado");
-
-                    // **TRANSFERIR SOCKET EN LUGAR DE CREAR NUEVA CONEXIÓN**
-                    try
-                    {
-                        // Detener escucha de mensajes
-                        stopMessageListener = true;
-
-                        // Limpiar la UI antes de cambiar
-                        if (UserInterface.Active != null)
-                        {
-                            UserInterface.Active.Clear();
-                        }
-
-                        // **TRANSFERIR SOCKET AL MENÚ PRINCIPAL**
-                        var mainMenuScreen = new MainMenuScreen(Game, usuario);
-
-                        if (server != null && server.Connected)
-                        {
-                            mainMenuScreen.SetExistingSocket(server);
-                            Debug.WriteLine("[FIN_PARTIDA] Socket transferido correctamente");
-                        }
-
-                        ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error en transferencia de socket: {ex.Message}");
-
-                        // Fallback: crear menú sin socket
-                        var mainMenuScreen = new MainMenuScreen(Game, usuario);
-                        ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
-                    }
+                    RegresarAlMenuPrincipal();
                 };
                 panel.AddChild(regresarBtn);
 
-                // Añadir al UserInterface
+                // **AÑADIR AL UI**
                 UserInterface.Active.AddEntity(panel);
 
                 Debug.WriteLine("[UI] *** Panel fin de partida creado y añadido exitosamente ***");
 
-                // OPCIONAL: Auto-regresar después de 15 segundos si el usuario no hace clic
+                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS**
                 System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
                 {
-                    if (panel.Visible) // Solo si el panel aún está visible
+                    try
                     {
-                        Debug.WriteLine("[FIN_PARTIDA] Auto-regreso al menú después de 15 segundos");
-                        RegresarAlMenuPrincipal();
+                        if (panel != null && panel.Visible)
+                        {
+                            Debug.WriteLine("[UI] Auto-regreso después de 15 segundos");
+                            RegresarAlMenuPrincipal();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[UI] Error en auto-regreso: {ex.Message}");
                     }
                 });
             }
@@ -1141,7 +1083,7 @@ namespace Duska.Screens
             {
                 Debug.WriteLine($"[ERROR] *** Error crítico en MostrarPanelFinPartida: {ex.Message} ***");
 
-                // Plan de respaldo
+                // **PLAN DE RESPALDO**
                 ChatPanel(true, "Sistema/Partida terminada. Regresando al menú principal en 3 segundos...");
                 System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
                 {
@@ -1886,26 +1828,15 @@ namespace Duska.Screens
                                 if (bytesReceived > 0)
                                 {
                                     string message = Encoding.ASCII.GetString(buffer, 0, bytesReceived);
-                                    Debug.WriteLine($"[SOCKET] *** Mensaje crudo recibido: '{message}' ***");
+                                    Debug.WriteLine($"[LISTENER] *** MENSAJE RAW RECIBIDO: '{message}' ***");
 
-                                    // SEPARAR MENSAJES CONCATENADOS
-                                    string[] mensajesIndividuales = SepararMensajesConcatenados(message);
-
-                                    foreach (string mensajeIndividual in mensajesIndividuales)
+                                    // **DEBUG ESPECÍFICO PARA ELIMINACIÓN Y FIN DE PARTIDA**
+                                    if (message.Contains("JUGADOR_ELIMINADO") || message.Contains("FIN_PARTIDA"))
                                     {
-                                        if (!string.IsNullOrEmpty(mensajeIndividual.Trim()))
-                                        {
-                                            Debug.WriteLine($"[SOCKET] Procesando mensaje individual: '{mensajeIndividual}'");
-
-                                            // Verificar específicamente mensajes de eliminación
-                                            if (mensajeIndividual.Contains("JUGADOR_ELIMINADO"))
-                                            {
-                                                Debug.WriteLine($"[SOCKET] *** MENSAJE DE ELIMINACIÓN DETECTADO: '{mensajeIndividual}' ***");
-                                            }
-
-                                            ProcessServerMessage(mensajeIndividual);
-                                        }
+                                        Debug.WriteLine($"[LISTENER] *** MENSAJE CRÍTICO DETECTADO: {message} ***");
                                     }
+
+                                    ProcessServerMessage(message);
                                 }
                             }
                             else
@@ -2186,91 +2117,64 @@ namespace Duska.Screens
                 }
 
                 // Procesar mensajes pendientes primero
-                bool mensajesProcesados = false;
                 List<string> mensajesAhora = null;
+                bool mensajesProcesados = false;
+
                 lock (mensajesLock)
                 {
                     if (hayNuevosMensajes && mensajesPendientes.Count > 0)
                     {
-                        Debug.WriteLine($"[UPDATE] Encontrados {mensajesPendientes.Count} mensajes pendientes");
                         mensajesAhora = new List<string>(mensajesPendientes);
                         mensajesPendientes.Clear();
                         hayNuevosMensajes = false;
                         mensajesProcesados = true;
+                        Debug.WriteLine($"[UPDATE] Procesando {mensajesAhora.Count} mensajes pendientes");
                     }
-
-                    // **TAMBIÉN PROCESAR SI SOLO HAY CAMBIOS EN EL CHAT**
-                    if (hayNuevosMensajes)
+                    else if (hayNuevosMensajes)
                     {
-                        ActualizarSoloPanelMensajes();
                         hayNuevosMensajes = false;
-                        mensajesProcesados = true;
                     }
                 }
 
+                if (mensajesAhora != null)
+                {
+                    foreach (string mensaje in mensajesAhora)
+                    {
+                        Debug.WriteLine($"[UPDATE] *** PROCESANDO MENSAJE PENDIENTE: {mensaje} ***");
+
+                        if (mensaje == "MOSTRAR_PANEL_ELIMINADO")
+                        {
+                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN ***");
+                            MostrarPanelEliminacionDefinitivo();
+                        }
+                        else if (mensaje.StartsWith("MOSTRAR_PANEL_FIN_PARTIDA/"))
+                        {
+                            string ganador = mensaje.Substring(26);
+                            Debug.WriteLine($"[UPDATE] *** MOSTRANDO PANEL FIN PARTIDA - GANADOR: {ganador} ***");
+                            MostrarPanelFinPartida(ganador);
+                        }
+                        else if (mensaje.StartsWith("CARDS/"))
+                        {
+                            Debug.WriteLine("[UPDATE] Procesando cartas en hilo principal");
+                            ProcesarCartasDelServidor(mensaje);
+                            _mostrarTodas = true;
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[UPDATE] Mensaje no reconocido: {mensaje}");
+                        }
+                    }
+                }
+
+                // **ACTUALIZAR UI SI HAY CAMBIOS EN CHAT**
                 if (mensajesProcesados)
                 {
                     ActualizarSoloPanelMensajes();
                 }
 
-                if (mensajesAhora != null)
+                if (UserInterface.Active != null)
                 {
-                    foreach (string mensajePendiente in mensajesAhora)
-                    {
-                        Debug.WriteLine($"[UPDATE] Procesando mensaje pendiente: {mensajePendiente}");
-
-                        if (mensajePendiente == "MOSTRAR_PANEL_ELIMINACION")
-                        {
-                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN ***");
-                            try
-                            {
-                                MostrarPanelEliminacion();
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ERROR] Error al mostrar panel de eliminación: {ex.Message}");
-                            }
-                        }
-                        else if (mensajePendiente.StartsWith("MOSTRAR_PANEL_FIN_PARTIDA/"))
-                        {
-                            string ganador = mensajePendiente.Substring(26); // "MOSTRAR_PANEL_FIN_PARTIDA/".Length = 26
-                            Debug.WriteLine($"[UPDATE] *** MOSTRANDO PANEL FIN DE PARTIDA - GANADOR: {ganador} ***");
-                            try
-                            {
-                                MostrarPanelFinPartida(ganador);
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ERROR] Error al mostrar panel fin de partida: {ex.Message}");
-                            }
-                        }
-                        else if (mensajePendiente.StartsWith("MOSTRAR_PANEL_CANCELADA/"))
-                        {
-                            string razon = mensajePendiente.Substring(24); // "MOSTRAR_PANEL_CANCELADA/".Length = 24
-                            Debug.WriteLine($"[UPDATE] *** MOSTRANDO PANEL PARTIDA CANCELADA ***");
-                            try
-                            {
-                                MostrarPanelPartidaCancelada(razon);
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ERROR] Error al mostrar panel partida cancelada: {ex.Message}");
-                            }
-                        }
-                        if (mensajePendiente == "JUGADOR_ELIMINADO_YO")
-                        {
-                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL DE ELIMINACIÓN GEONBIT ***");
-
-                            // Crear y mostrar panel modal de eliminación con Geonbit
-                            MostrarPanelEliminacionGeonbit();
-                        }
-
-                        else
-                        {
-                            // Procesar otros mensajes normalmente
-                            ProcessServerMessage(mensajePendiente);
-                        }
-                    }
+                    UserInterface.Active.Update(gameTime);
                 }
 
                 // Obtener estados de entrada actuales - USAR NOMBRES ÚNICOS
@@ -2278,12 +2182,7 @@ namespace Duska.Screens
                 var keyboardExtended = KeyboardExtended.GetState(); // ← CAMBIAR NOMBRE
                 var mouseState = MouseExtended.GetState();
 
-                // Permitir que UserInterface procese la entrada
-                if (UserInterface.Active != null)
-                {
-                    // Esto es importante para que los controles de UI respondan al ratón
-                    UserInterface.Active.Update(gameTime);
-                }
+                // Permitir que UserInterface procese la entrad
 
                 // Verifica si el ratón está sobre un control de UI antes de procesar teclas de juego
                 bool ratónSobreUI = false;
@@ -2417,6 +2316,87 @@ namespace Duska.Screens
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error en Update: {ex.Message}");
+            }
+        }
+
+        // Agregar este nuevo método a GameCardScreen.cs:
+
+        private void MostrarPanelEliminacionDefinitivo()
+        {
+            try
+            {
+                Debug.WriteLine("[PANEL] *** CREANDO PANEL DE ELIMINACIÓN DEFINITIVO ***");
+
+                // **LIMPIAR TODO PRIMERO**
+                if (UserInterface.Active != null)
+                {
+                    UserInterface.Active.Clear();
+                    Debug.WriteLine("[PANEL] UI limpiada completamente");
+                }
+
+                // **CREAR PANEL PRINCIPAL GRANDE Y VISIBLE**
+                Panel panelEliminacion = new Panel(new Vector2(600, 400), PanelSkin.Default, Anchor.Center);
+                panelEliminacion.FillColor = Color.Black * 0.8f;
+                panelEliminacion.OutlineColor = Color.Red;
+                panelEliminacion.OutlineWidth = 3;
+                panelEliminacion.Visible = true;
+
+                // **TÍTULO GRANDE Y ROJO**
+                Header titulo = new Header("¡HAS SIDO ELIMINADO!");
+                titulo.FillColor = Color.Red;
+                titulo.Scale = 1.5f;
+                panelEliminacion.AddChild(titulo);
+
+                panelEliminacion.AddChild(new HorizontalLine());
+
+                // **MENSAJE EXPLICATIVO**
+                panelEliminacion.AddChild(new Paragraph("Has sido eliminado de la partida."));
+                panelEliminacion.AddChild(new Paragraph("La partida ha terminado para ti."));
+                panelEliminacion.AddChild(new HorizontalLine());
+
+                // **BOTÓN PARA REGRESAR**
+                Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
+                regresarBtn.Size = new Vector2(250, 60);
+                regresarBtn.FillColor = Color.Orange;
+                regresarBtn.OnClick = (Entity btn) =>
+                {
+                    Debug.WriteLine("[PANEL] Botón regresar clickeado - eliminado");
+                    RegresarAlMenuPrincipal();
+                };
+                panelEliminacion.AddChild(regresarBtn);
+
+                // **AÑADIR A LA UI**
+                UserInterface.Active.AddEntity(panelEliminacion);
+
+                Debug.WriteLine("[PANEL] *** PANEL DE ELIMINACIÓN CREADO Y MOSTRADO ***");
+
+                // **AUTO-REGRESAR DESPUÉS DE 10 SEGUNDOS**
+                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                {
+                    try
+                    {
+                        if (panelEliminacion != null && panelEliminacion.Visible)
+                        {
+                            Debug.WriteLine("[PANEL] Auto-regreso después de 10 segundos");
+                            RegresarAlMenuPrincipal();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[PANEL] Error en auto-regreso: {ex.Message}");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] *** Error crítico creando panel eliminación: {ex.Message} ***");
+
+                // **PLAN DE RESPALDO**
+                ChatPanel(true, "Sistema/Has sido eliminado. Regresando al menú en 3 segundos...");
+                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
+                {
+                    RegresarAlMenuPrincipal();
+                });
             }
         }
 
