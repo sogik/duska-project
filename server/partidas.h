@@ -48,7 +48,7 @@ int avanzar_ronda(int partida_id);
 void generar_carta_para_ronda_actual(GameInfo *partida);
 void guardar_ultima_jugada(GameInfo *partida, const char *jugador, char cartas[][10], int num_cartas);
 void obtener_carta_ronda_actual(GameInfo *partida, char *carta_ronda);
-int eliminar_jugador_de_partida(GameInfo *partida, char *jugador);
+int eliminar_jugador_de_partida(GameInfo *partida, const char *jugador_eliminado);
 
 // Funciones externas necesarias
 extern int obtener_grupo_id(const char *usuario);
