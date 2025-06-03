@@ -1864,6 +1864,34 @@ void *cliente(void *socket_ptr)
                 strcpy(respuesta, "ERROR/El usuario no existe");
             }
         }
+        else if (codigo == 30) // Buscar partidas con amigo
+        {
+            // Formato esperado: 30/usuario_solicitante/nombre_amigo
+            char nombre_amigo[50] = {0};
+
+            if (contrasena != NULL)
+            {
+                strncpy(nombre_amigo, contrasena, sizeof(nombre_amigo) - 1);
+                nombre_amigo[sizeof(nombre_amigo) - 1] = '\0';
+
+                printf("[PARTIDAS_AMIGO] Solicitud de partidas entre %s y %s\n", usuario, nombre_amigo);
+
+                // Verificar que ambos usuarios existen
+                if (usuarioExiste(conn, usuario) && usuarioExiste(conn, nombre_amigo))
+                {
+                    listarPartidasConAmigo(conn, usuario, nombre_amigo, respuesta, sizeof(respuesta));
+                    printf("[PARTIDAS_AMIGO] Respuesta enviada (primeros 100 chars): %.100s\n", respuesta);
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/Uno de los usuarios no existe");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de petición incorrecto");
+            }
+        }
         else
         {
             strcpy(respuesta, "ERROR/Comando desconocido");

@@ -243,13 +243,26 @@ int obtenerIdJugadorPorNombre(MYSQL *conn, const char *nombre_usuario)
 
 int insertarPartida(MYSQL *conn, int num_jugadores, char jugadores[10][50])
 {
-    char consulta[512];
+    char consulta[1024];
     int partida_id = -1;
 
-    // **INSERTAR SIN GRUPO_ID**
+    // **CONSTRUIR CADENA DE JUGADORES SEPARADOS POR COMAS**
+    char jugadores_str[500] = {0};
+    for (int i = 0; i < num_jugadores; i++)
+    {
+        if (i > 0)
+        {
+            strcat(jugadores_str, ",");
+        }
+        strcat(jugadores_str, jugadores[i]);
+    }
+
+    printf("[BD] Jugadores para insertar: '%s'\n", jugadores_str);
+
+    // **INSERTAR CON JUGADORES**
     snprintf(consulta, sizeof(consulta),
-             "INSERT INTO Partidas (num_jugadores, estado) VALUES (%d, 'ACTIVA')",
-             num_jugadores);
+             "INSERT INTO Partidas (num_jugadores, jugadores, estado, fecha_inicio) VALUES (%d, '%s', 'ACTIVA', NOW())",
+             num_jugadores, jugadores_str);
 
     int err = mysql_query(conn, consulta);
     if (err != 0)
@@ -260,9 +273,9 @@ int insertarPartida(MYSQL *conn, int num_jugadores, char jugadores[10][50])
 
     // Obtener el ID de la partida recién creada
     partida_id = (int)mysql_insert_id(conn);
-    printf("[BD] Partida creada con ID: %d\n", partida_id);
+    printf("[BD] Partida creada con ID: %d, jugadores: %s\n", partida_id, jugadores_str);
 
-    // Insertar los jugadores de la partida
+    // **TAMBIÉN INSERTAR EN PARTIDA_JUGADORES COMO ANTES**
     for (int i = 0; i < num_jugadores; i++)
     {
         int id_jugador = obtenerIdJugadorPorNombre(conn, jugadores[i]);
@@ -377,13 +390,14 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
 
     lista[0] = '\0';
 
-    // **CONSULTA SIMPLE SIN JOINS COMPLEJOS**
+    // **CONSULTA MEJORADA QUE INCLUYE JUGADORES**
     snprintf(consulta, sizeof(consulta),
              "SELECT p.id_partida, DATE_FORMAT(p.fecha_inicio, '%%H:%%i'), "
-             "COALESCE(j.nombre_usuario, 'En curso') as ganador "
+             "COALESCE(j.nombre_usuario, 'En curso') as ganador, "
+             "p.jugadores "
              "FROM Partidas p "
              "LEFT JOIN Jugadores j ON p.ganador_id = j.id_jugador "
-             "ORDER BY p.fecha_inicio DESC LIMIT 30");
+             "ORDER BY p.fecha_inicio DESC LIMIT 20");
 
     int err = mysql_query(conn, consulta);
     if (err != 0)
@@ -396,14 +410,18 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
     res = mysql_store_result(conn);
     if (res)
     {
+        strcat(lista, "LISTP/"); // Prefijo para identificar lista de partidas
+
         while ((row = mysql_fetch_row(res)))
         {
-            char entrada[100];
+            char entrada[200];
 
-            snprintf(entrada, sizeof(entrada), "Partida %s - %s - %s/",
-                     row[0] ? row[0] : "?",         // id_partida
-                     row[1] ? row[1] : "??:??",     // hora (HH:MM)
-                     row[2] ? row[2] : "En curso"); // ganador
+            // **FORMATO: ID - Hora - Ganador - Jugadores**
+            snprintf(entrada, sizeof(entrada), "Partida %s (%s) - %s - [%s]/",
+                     row[0] ? row[0] : "?",              // id_partida
+                     row[1] ? row[1] : "??:??",          // hora (HH:MM)
+                     row[2] ? row[2] : "En curso",       // ganador
+                     row[3] ? row[3] : "Sin jugadores"); // jugadores
 
             if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))
             {
@@ -416,11 +434,11 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
         }
 
         mysql_free_result(res);
-        printf("[BD] Lista de partidas enviada\n");
+        printf("[BD] Lista de partidas con jugadores enviada\n");
     }
     else
     {
-        strcpy(lista, "ERROR/No se pudieron obtener las partidas");
+        strcpy(lista, "LISTP/ERROR - No se pudieron obtener las partidas");
     }
 }
 
@@ -433,14 +451,15 @@ void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista,
 
     lista[0] = '\0';
 
-    // **CONSULTA MEJORADA SIMILAR A listarPartidasCompletas**
+    // **CONSULTA QUE INCLUYE JUGADORES**
     snprintf(consulta, sizeof(consulta),
              "SELECT p.id_partida, DATE_FORMAT(p.fecha_inicio, '%%H:%%i'), "
-             "DATE_FORMAT(p.fecha_fin, '%%Y-%%m-%%d') as fecha "
+             "DATE_FORMAT(p.fecha_fin, '%%Y-%%m-%%d') as fecha, "
+             "p.jugadores "
              "FROM Partidas p "
              "INNER JOIN Jugadores j ON p.ganador_id = j.id_jugador "
              "WHERE j.nombre_usuario = '%s' AND p.estado = 'FINALIZADA' "
-             "ORDER BY p.fecha_fin DESC LIMIT 20",
+             "ORDER BY p.fecha_fin DESC LIMIT 15",
              nombre_usuario);
 
     int err = mysql_query(conn, consulta);
@@ -454,18 +473,19 @@ void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista,
     res = mysql_store_result(conn);
     if (res)
     {
-        // **EMPEZAR CON PREFIJO PARA IDENTIFICAR EL TIPO**
+        // **EMPEZAR CON PREFIJO**
         strcat(lista, "PARTIDASG/");
 
         while ((row = mysql_fetch_row(res)))
         {
-            char entrada[100];
+            char entrada[200];
 
-            // **FORMATO: Partida X - Fecha - Hora**
-            snprintf(entrada, sizeof(entrada), "Partida %s - %s - %s/",
-                     row[0] ? row[0] : "?",         // id_partida
-                     row[2] ? row[2] : "Sin-fecha", // fecha (cambiar ????-??-?? por Sin-fecha)
-                     row[1] ? row[1] : "Sin-hora"); // hora (cambiar ??:?? por Sin-hora)
+            // **FORMATO: Partida X - Fecha - Hora - Jugadores**
+            snprintf(entrada, sizeof(entrada), "Partida %s - %s %s - [%s]/",
+                     row[0] ? row[0] : "?",              // id_partida
+                     row[2] ? row[2] : "Sin-fecha",      // fecha
+                     row[1] ? row[1] : "Sin-hora",       // hora
+                     row[3] ? row[3] : "Sin-jugadores"); // jugadores
 
             // Verificar que no se exceda el buffer
             if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))
@@ -486,13 +506,115 @@ void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista,
         }
 
         mysql_free_result(res);
-        printf("[BD] Lista de partidas ganadas para %s: %d entradas\n", nombre_usuario, contador);
+        printf("[BD] Lista de partidas ganadas para %s: %d entradas con jugadores\n", nombre_usuario, contador);
     }
     else
     {
         strcpy(lista, "PARTIDASG/ERROR - No se pudieron obtener las partidas ganadas");
     }
 }
+
+void listarPartidasConAmigo(MYSQL *conn, const char *usuario1, const char *usuario2, char *lista, int tamano_lista)
+{
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    char consulta[1024];
+    int contador = 0;
+
+    lista[0] = '\0';
+
+    printf("[BD] Buscando partidas entre %s y %s\n", usuario1, usuario2);
+
+    // **CONSULTA PARA BUSCAR PARTIDAS DONDE AMBOS USUARIOS PARTICIPARON**
+    snprintf(consulta, sizeof(consulta),
+             "SELECT p.id_partida, DATE_FORMAT(p.fecha_inicio, '%%Y-%%m-%%d %%H:%%i'), "
+             "COALESCE(g.nombre_usuario, 'Sin ganador') as ganador, "
+             "p.jugadores, p.estado "
+             "FROM Partidas p "
+             "LEFT JOIN Jugadores g ON p.ganador_id = g.id_jugador "
+             "WHERE (p.jugadores LIKE '%%%s%%' AND p.jugadores LIKE '%%%s%%') "
+             "ORDER BY p.fecha_inicio DESC LIMIT 20",
+             usuario1, usuario2);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al consultar partidas con amigo: %s\n", mysql_error(conn));
+        strcpy(lista, "ERROR/Error al consultar partidas");
+        return;
+    }
+
+    res = mysql_store_result(conn);
+    if (res)
+    {
+        // **EMPEZAR CON PREFIJO**
+        strcat(lista, "PARTIDASAMIGO/");
+
+        while ((row = mysql_fetch_row(res)))
+        {
+            char entrada[300];
+
+            // **DETERMINAR RESULTADO PARA EL USUARIO1**
+            const char *estado = row[4] ? row[4] : "ACTIVA";
+            const char *ganador = row[2] ? row[2] : "Sin ganador";
+            char resultado[50] = {0};
+
+            if (strcmp(estado, "FINALIZADA") == 0)
+            {
+                if (strcmp(ganador, usuario1) == 0)
+                {
+                    strcpy(resultado, "GANASTE");
+                }
+                else if (strcmp(ganador, usuario2) == 0)
+                {
+                    strcpy(resultado, "PERDISTE");
+                }
+                else
+                {
+                    strcpy(resultado, "EMPATE");
+                }
+            }
+            else
+            {
+                strcpy(resultado, estado);
+            }
+
+            // **FORMATO: Partida X - Fecha - Resultado - Jugadores**
+            snprintf(entrada, sizeof(entrada), "Partida %s - %s - %s - [%s]/",
+                     row[0] ? row[0] : "?",              // id_partida
+                     row[1] ? row[1] : "Sin fecha",      // fecha y hora
+                     resultado,                          // resultado
+                     row[3] ? row[3] : "Sin jugadores"); // jugadores
+
+            // Verificar que no se exceda el buffer
+            if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))
+            {
+                strcat(lista, entrada);
+                contador++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // Si no hay partidas
+        if (contador == 0)
+        {
+            char mensaje[200];
+            snprintf(mensaje, sizeof(mensaje), "No hay partidas jugadas entre %s y %s/", usuario1, usuario2);
+            strcat(lista, mensaje);
+        }
+
+        mysql_free_result(res);
+        printf("[BD] Lista de partidas con amigo para %s y %s: %d entradas\n", usuario1, usuario2, contador);
+    }
+    else
+    {
+        strcpy(lista, "PARTIDASAMIGO/ERROR - No se pudieron obtener las partidas");
+    }
+}
+
 // ñ
 void listarConectados(MYSQL *conn, char *lista, int tamano_lista)
 {

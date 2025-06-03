@@ -29,6 +29,7 @@ void listarConectados(MYSQL *conn, char *lista, int tamano_lista);
 void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista, int tamano_lista);
 int insertarPartida(MYSQL *conn, int num_jugadores, char jugadores[10][50]);
 void listarAmigos(MYSQL *conn, const char *usuario_solicitante, char *lista, int tamano_lista);
+void listarPartidasConAmigo(MYSQL *conn, const char *usuario1, const char *usuario2, char *lista, int tamano_lista);
 int actualizarPartidaFinalizada(MYSQL *conn, int partida_id, const char *ganador);
 int actualizarEstadoPartida(MYSQL *conn, int partida_id, const char *estado);
 int actualizarRondaPartida(MYSQL *conn, int partida_id, int ronda, const char *carta_designada);

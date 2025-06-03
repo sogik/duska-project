@@ -27,7 +27,7 @@ int crear_partida(int grupo_id)
     nueva_partida->partida_id = next_partida_id++;
     nueva_partida->grupo_id = grupo_id;
     nueva_partida->estado = 0; // ESTADO_CREADA
-    nueva_partida->turno_current = -1;
+    nueva_partida->turno_actual = -1;
     nueva_partida->num_jugadores = 0;
     nueva_partida->jugadores = NULL;
     nueva_partida->next = partidas_lista;
@@ -86,8 +86,12 @@ int iniciar_partida(int partida_id)
         if (nombre)
         {
             partida->jugadores[i] = strdup(nombre);
+
+            // **ASEGURAR QUE SE COPIE CORRECTAMENTE PARA LA BD**
             strncpy(jugadores_bd[i], nombre, sizeof(jugadores_bd[i]) - 1);
             jugadores_bd[i][sizeof(jugadores_bd[i]) - 1] = '\0';
+
+            printf("[PARTIDA] Jugador %d: '%s' preparado para BD\n", i, jugadores_bd[i]);
         }
         else
         {
@@ -96,15 +100,20 @@ int iniciar_partida(int partida_id)
         }
     }
 
-    // **GUARDAR EN LA BASE DE DATOS**
+    // **GUARDAR EN LA BASE DE DATOS CON JUGADORES**
     MYSQL *conn = mysql_init(NULL);
     if (mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
     {
         int partida_bd_id = insertarPartida(conn, num_jug, jugadores_bd);
         if (partida_bd_id > 0)
         {
-            partida->partida_bd_id = partida_bd_id; // Guardar el ID de la BD
-            printf("[PARTIDA] Guardada en BD con ID: %d\n", partida_bd_id);
+            partida->partida_bd_id = partida_bd_id;
+            printf("[PARTIDA] Guardada en BD con ID: %d, jugadores: ", partida_bd_id);
+            for (int i = 0; i < num_jug; i++)
+            {
+                printf("%s%s", jugadores_bd[i], (i < num_jug - 1) ? "," : "");
+            }
+            printf("\n");
         }
         mysql_close(conn);
     }
@@ -115,7 +124,7 @@ int iniciar_partida(int partida_id)
 
     // Asignar turno inicial aleatorio
     srand(time(NULL));
-    partida->turno_current = rand() % num_jug;
+    partida->turno_actual = rand() % num_jug;
 
     partida->ronda_actual = 0;
     partida->total_rondas = 4;
@@ -330,7 +339,7 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
     printf("[PARTIDA] La partida continúa con %d jugadores activos\n", partida->num_jugadores_activos);
 
     // Si el jugador eliminado tenía el turno, avanzar al siguiente jugador activo
-    if (partida->turno_current == indice_jugador)
+    if (partida->turno_actual == indice_jugador)
     {
         printf("[PARTIDA] El jugador eliminado tenía el turno, avanzando...\n");
 
@@ -346,16 +355,16 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
 
         if (intentos < partida->num_jugadores && !partida->jugadores_eliminados[nuevo_turno])
         {
-            partida->turno_current = nuevo_turno;
+            partida->turno_actual = nuevo_turno;
 
             // Notificar el nuevo turno
             char mensaje_turno[100];
             snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s",
-                     partida->jugadores[partida->turno_current]);
+                     partida->jugadores[partida->turno_actual]);
             broadcast_to_group(partida->grupo_id, mensaje_turno);
 
             printf("[TURNO] Nuevo turno asignado a: %s\n",
-                   partida->jugadores[partida->turno_current]);
+                   partida->jugadores[partida->turno_actual]);
         }
     }
 
@@ -426,12 +435,12 @@ int es_turno_de_jugador(const char *usuario)
     if (!partida || partida->estado != 1) // ESTADO_ACTIVA
         return 0;
 
-    if (!partida->jugadores || partida->turno_current < 0 ||
-        partida->turno_current >= partida->num_jugadores)
+    if (!partida->jugadores || partida->turno_actual < 0 ||
+        partida->turno_actual >= partida->num_jugadores)
         return 0;
 
     // IMPORTANTE: Comparación insensible a mayúsculas/minúsculas
-    char *jugador_turno = partida->jugadores[partida->turno_current];
+    char *jugador_turno = partida->jugadores[partida->turno_actual];
     if (!jugador_turno)
         return 0;
 
@@ -486,7 +495,7 @@ int avanzar_turno(int partida_id)
     }
 
     printf("[TURNO] Avanzando turno en partida %d. Turno actual: %d (%s)\n",
-           partida_id, partida->turno_current, partida->jugadores[partida->turno_current]);
+           partida_id, partida->turno_actual, partida->jugadores[partida->turno_actual]);
 
     // Verificar si quedan suficientes jugadores activos
     if (partida->num_jugadores_activos <= 1)
@@ -528,19 +537,19 @@ int avanzar_turno(int partida_id)
     }
 
     // BUSCAR EL SIGUIENTE JUGADOR ACTIVO
-    int turno_original = partida->turno_current;
+    int turno_original = partida->turno_actual;
     int intentos = 0;
 
     do
     {
         // Avanzar al siguiente jugador
-        partida->turno_current = (partida->turno_current + 1) % partida->num_jugadores;
+        partida->turno_actual = (partida->turno_actual + 1) % partida->num_jugadores;
         intentos++;
 
         printf("[TURNO] Probando jugador %d: %s (eliminado: %s)\n",
-               partida->turno_current,
-               partida->jugadores[partida->turno_current],
-               partida->jugadores_eliminados[partida->turno_current] ? "SÍ" : "NO");
+               partida->turno_actual,
+               partida->jugadores[partida->turno_actual],
+               partida->jugadores_eliminados[partida->turno_actual] ? "SÍ" : "NO");
 
         // Evitar bucle infinito
         if (intentos > partida->num_jugadores)
@@ -549,18 +558,18 @@ int avanzar_turno(int partida_id)
             return -4;
         }
 
-    } while (partida->jugadores_eliminados[partida->turno_current] == 1);
+    } while (partida->jugadores_eliminados[partida->turno_actual] == 1);
 
     // Verificar que encontramos un jugador válido
-    if (partida->jugadores_eliminados[partida->turno_current] == 1)
+    if (partida->jugadores_eliminados[partida->turno_actual] == 1)
     {
         printf("[ERROR] El jugador seleccionado %s está eliminado\n",
-               partida->jugadores[partida->turno_current]);
+               partida->jugadores[partida->turno_actual]);
         return -5;
     }
 
     // Obtener nombre del siguiente jugador ACTIVO
-    char *siguiente_jugador = partida->jugadores[partida->turno_current];
+    char *siguiente_jugador = partida->jugadores[partida->turno_actual];
     if (!siguiente_jugador)
     {
         printf("[ERROR] El nombre del siguiente jugador es NULL\n");
@@ -568,7 +577,7 @@ int avanzar_turno(int partida_id)
     }
 
     printf("[TURNO] Turno asignado al jugador %d: %s\n",
-           partida->turno_current, siguiente_jugador);
+           partida->turno_actual, siguiente_jugador);
 
     // Enviar mensaje de turno al grupo
     char mensaje_turno[100];

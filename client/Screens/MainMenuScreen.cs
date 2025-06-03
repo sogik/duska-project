@@ -26,6 +26,7 @@ namespace Duska.Screens
         private SpriteBatch spriteBatch;
 
         private BuiltinThemes _currTheme;
+        private string amigoActualConsulta = "";
 
         private Socket server;
         private Thread atender;
@@ -590,15 +591,16 @@ namespace Duska.Screens
         private void ListaPartidasPanel(bool visible, string partidas)
         {
             // create panel and add to list of panels and manager
-            Panel panel = new Panel(new Vector2(450, -1));
+            Panel panel = new Panel(new Vector2(500, -1)); // Panel más ancho para mostrar jugadores
             panel.Visible = visible;
             UserInterface.Active.AddEntity(panel);
 
             // add title and text
             panel.AddChild(new Header("Lista de Partidas"));
             panel.AddChild(new HorizontalLine());
+            panel.AddChild(new Paragraph("Partidas registradas (con jugadores):"));
 
-            SelectList list = new SelectList(new Vector2(0, 280)) { Identifier = "PartidasList" };
+            SelectList list = new SelectList(new Vector2(0, 350)) { Identifier = "PartidasList" }; // Lista más alta
             panel.AddChild(list);
 
             // Agregar un botón para regresar al menú principal
@@ -606,7 +608,7 @@ namespace Duska.Screens
             backBtn.OnClick = (Entity btn) =>
             {
                 panel.Visible = false;
-                Extras(true); // Regresar al menú principal
+                Extras(true);
             };
             panel.AddChild(backBtn);
 
@@ -615,14 +617,17 @@ namespace Duska.Screens
             {
                 partidasList.ClearItems();
 
-                // **DIVIDIR POR '/' COMO ESTÁ**
+                // **DIVIDIR POR '/' PARA PROCESAR CADA PARTIDA**
                 string[] partidasArray = partidas.Split('/');
 
                 foreach (string partida in partidasArray)
                 {
-                    if (!string.IsNullOrWhiteSpace(partida) && !partida.StartsWith("ERROR"))
+                    if (!string.IsNullOrWhiteSpace(partida) &&
+                        !partida.StartsWith("ERROR") &&
+                        !partida.StartsWith("LISTP") &&
+                        partida.Contains("Partida"))
                     {
-                        Debug.WriteLine($"Agregando partida a la lista: {partida}");
+                        Debug.WriteLine($"Agregando partida con jugadores: {partida}");
                         partidasList.AddItem(partida);
                     }
                 }
@@ -990,14 +995,9 @@ namespace Duska.Screens
                 UserInterface.Active.RemoveEntity(existingMenu);
             }
 
-            // Crear un panel con las opciones y asegurar que sea visible en pantalla
-            Panel optionsPanel = new Panel(new Vector2(200, 150), PanelSkin.Default, Anchor.Center);
+            // Crear un panel con las opciones más grande para el nuevo botón
+            Panel optionsPanel = new Panel(new Vector2(200, 200), PanelSkin.Default, Anchor.Center);
             optionsPanel.Identifier = "FriendOptionsMenu";
-
-            // No es necesario establecer Offset cuando usamos Anchor.Center
-            // El panel se centrará automáticamente
-
-            // Asegurar que el panel sea visible
             optionsPanel.Visible = true;
 
             // Título
@@ -1027,6 +1027,26 @@ namespace Duska.Screens
             };
             optionsPanel.AddChild(inviteBtn);
 
+            // **NUEVO BOTÓN: VER PARTIDAS JUGADAS CON ESTE AMIGO**
+            Button partidasBtn = new Button("Ver Partidas Juntos", ButtonSkin.Default);
+            partidasBtn.FillColor = Color.LightBlue;
+            partidasBtn.OnClick = (Entity btn) =>
+            {
+                Debug.WriteLine($"Solicitando partidas jugadas con {friendName}...");
+
+                try
+                {
+                    UserInterface.Active.RemoveEntity(optionsPanel);
+                    SolicitarPartidasConAmigo(friendName);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error al solicitar partidas con amigo: {ex.Message}");
+                    Menu(true); // Regresar al menú principal en caso de error
+                }
+            };
+            optionsPanel.AddChild(partidasBtn);
+
             // Botón para cerrar el menú
             Button closeBtn = new Button("Cerrar", ButtonSkin.Default);
             closeBtn.OnClick = (Entity btn) =>
@@ -1040,6 +1060,132 @@ namespace Duska.Screens
             // Añadir al UI
             UserInterface.Active.AddEntity(optionsPanel);
             Debug.WriteLine($"Menú de opciones creado en posición centrada");
+        }
+
+        private void MostrarPanelCargandoPartidas(string nombreAmigo)
+        {
+            // Crear panel de carga
+            Panel panel = new Panel(new Vector2(450, 200), PanelSkin.Default, Anchor.Center);
+            panel.Visible = true;
+            panel.Identifier = "PanelCargandoPartidas";
+            UserInterface.Active.AddEntity(panel);
+
+            panel.AddChild(new Header("Buscando Partidas"));
+            panel.AddChild(new HorizontalLine());
+            panel.AddChild(new Paragraph($"Buscando partidas jugadas con {nombreAmigo}..."));
+            panel.AddChild(new Paragraph("Por favor espera."));
+
+            Debug.WriteLine($"Panel de carga mostrado para buscar partidas con {nombreAmigo}");
+        }
+
+        private void MostrarPartidasConAmigoPanel(bool visible, string partidasAmigo, string nombreAmigo)
+        {
+            // Cerrar panel de carga si existe
+            Entity panelCarga = UserInterface.Active.Root.Find("PanelCargandoPartidas");
+            if (panelCarga != null)
+            {
+                UserInterface.Active.RemoveEntity(panelCarga);
+            }
+
+            // Crear panel principal
+            Panel panel = new Panel(new Vector2(550, -1));
+            panel.Visible = visible;
+            UserInterface.Active.AddEntity(panel);
+
+            // Título con el nombre del amigo
+            panel.AddChild(new Header($"Partidas con {nombreAmigo}"));
+            panel.AddChild(new HorizontalLine());
+            panel.AddChild(new Paragraph($"Historial de partidas jugadas con {nombreAmigo}:"));
+
+            // Lista de partidas
+            SelectList list = new SelectList(new Vector2(0, 350)) { Identifier = "PartidasAmigoList" };
+            panel.AddChild(list);
+
+            // Botón para regresar
+            Button backBtn = new Button("Regresar", ButtonSkin.Default);
+            backBtn.OnClick = (Entity btn) =>
+            {
+                panel.Visible = false;
+                UserInterface.Active.RemoveEntity(panel);
+                FriendsListPanel(true, ""); // Volver a la lista de amigos
+                friends(); // Recargar lista de amigos
+            };
+            panel.AddChild(backBtn);
+
+            // Procesar y mostrar las partidas
+            SelectList partidasList = panel.Find<SelectList>("PartidasAmigoList");
+            if (partidasList != null)
+            {
+                partidasList.ClearItems();
+
+                // Dividir por '/' para procesar cada partida
+                string[] partidasArray = partidasAmigo.Split('/');
+
+                foreach (string partida in partidasArray)
+                {
+                    if (!string.IsNullOrWhiteSpace(partida) &&
+                        !partida.StartsWith("ERROR") &&
+                        !partida.StartsWith("PARTIDASAMIGO") &&
+                        partida.Contains("Partida"))
+                    {
+                        Debug.WriteLine($"Agregando partida con amigo: {partida}");
+
+                        // Colorear según el resultado
+                        string texto = partida;
+                        if (partida.Contains("GANASTE"))
+                        {
+                            texto = "✓ " + partida.Replace("GANASTE", "VICTORIA");
+                        }
+                        else if (partida.Contains("PERDISTE"))
+                        {
+                            texto = "✗ " + partida.Replace("PERDISTE", "DERROTA");
+                        }
+                        else if (partida.Contains("EMPATE"))
+                        {
+                            texto = "= " + partida.Replace("EMPATE", "EMPATE");
+                        }
+
+                        partidasList.AddItem(texto);
+                    }
+                }
+
+                // Si no hay partidas
+                if (partidasList.Count == 0)
+                {
+                    partidasList.AddItem($"No hay partidas jugadas con {nombreAmigo}");
+                }
+
+                Debug.WriteLine($"Panel de partidas con {nombreAmigo} mostrado con {partidasList.Count} entradas");
+            }
+        }
+
+        private int SolicitarPartidasConAmigo(string nombreAmigo)
+        {
+            try
+            {
+                // **GUARDAR EL NOMBRE DEL AMIGO PARA LA RESPUESTA**
+                amigoActualConsulta = nombreAmigo;
+
+                if (!conectado)
+                {
+                    ConnectToServer();
+                }
+
+                MostrarPanelCargandoPartidas(nombreAmigo);
+
+                string mensaje = $"30/{usuario}/{nombreAmigo}";
+                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                server.Send(msg);
+
+                Debug.WriteLine($"Petición de partidas con amigo enviada: {mensaje}");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error al enviar petición de partidas con amigo: {ex.Message}");
+                conectado = false;
+                return -1;
+            }
         }
 
         private int estado(string usuario, string estado)
@@ -1260,6 +1406,20 @@ namespace Duska.Screens
             {
                 // Respuesta sobre eliminación de cuenta
                 ProcesarRespuestaBaja(message);
+                return;
+            }
+            else if (message.StartsWith("PARTIDASAMIGO/"))
+            {
+                string partidasAmigo = message.Substring(14);
+                Debug.WriteLine("[PARTIDAS AMIGO] Lista de partidas con amigo recibida");
+
+                // Usar el nombre guardado
+                string nombreAmigo = !string.IsNullOrEmpty(amigoActualConsulta) ? amigoActualConsulta : "amigo";
+
+                MostrarPartidasConAmigoPanel(true, partidasAmigo, nombreAmigo);
+
+                // Limpiar la variable
+                amigoActualConsulta = "";
                 return;
             }
             else if (message.StartsWith("GRUPO/"))
