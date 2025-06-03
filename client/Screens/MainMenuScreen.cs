@@ -347,28 +347,28 @@ namespace Duska.Screens
             panel.Visible = true;
             UserInterface.Active.AddEntity(panel);
 
-            // Título de advertencia
-            Header header = new Header("⚠️ ELIMINAR CUENTA ⚠️");
+            // **TÍTULO SIN EMOJIS**
+            Header header = new Header("ELIMINAR CUENTA");
             header.FillColor = Color.Red;
             panel.AddChild(header);
             panel.AddChild(new HorizontalLine());
 
             // Mensaje de advertencia detallado
-            panel.AddChild(new Paragraph("¿Estás seguro que quieres eliminar tu cuenta?"));
+            panel.AddChild(new Paragraph("Estas seguro que quieres eliminar tu cuenta?"));
             panel.AddChild(new Paragraph(""));
-            panel.AddChild(new Paragraph("ESTA ACCIÓN NO SE PUEDE DESHACER"));
+            panel.AddChild(new Paragraph("ESTA ACCION NO SE PUEDE DESHACER"));
             panel.AddChild(new Paragraph(""));
-            panel.AddChild(new Paragraph("Se perderá:"));
-            panel.AddChild(new Paragraph("• Tu nombre de usuario"));
-            panel.AddChild(new Paragraph("• Todas tus partidas ganadas"));
-            panel.AddChild(new Paragraph("• Todo tu progreso"));
+            panel.AddChild(new Paragraph("Se perdera:"));
+            panel.AddChild(new Paragraph("- Tu nombre de usuario"));
+            panel.AddChild(new Paragraph("- Todas tus partidas ganadas"));
+            panel.AddChild(new Paragraph("- Todo tu progreso"));
             panel.AddChild(new HorizontalLine());
 
             // Campo de texto para confirmar el nombre de usuario
             panel.AddChild(new Paragraph($"Para confirmar, escribe tu nombre de usuario: {usuario}"));
 
             TextInput confirmacionInput = new TextInput(false);
-            confirmacionInput.PlaceholderText = "Escribe tu nombre de usuario aquí";
+            confirmacionInput.PlaceholderText = "Escribe tu nombre de usuario aqui";
             confirmacionInput.Size = new Vector2(0, 40);
             panel.AddChild(confirmacionInput);
 
@@ -411,10 +411,8 @@ namespace Duska.Screens
                 }
                 else
                 {
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
-                        "El nombre de usuario no coincide.",
-                        "Error de confirmación"
-                    );
+                    // **USAR MÉTODO SIMPLE SIN LIBRERÍA EXTERNA**
+                    MostrarMensajeError("El nombre de usuario no coincide.");
                 }
             };
             botonesPanel.AddChild(confirmarBtn);
@@ -436,6 +434,43 @@ namespace Duska.Screens
             Debug.WriteLine("[BAJA] Panel de confirmación de baja mostrado");
         }
 
+        // **MÉTODO SIMPLE PARA MOSTRAR ERRORES**
+        private void MostrarMensajeError(string mensaje)
+        {
+            Panel panelError = new Panel(new Vector2(400, 150), PanelSkin.Default, Anchor.Center);
+            panelError.Visible = true;
+            UserInterface.Active.AddEntity(panelError);
+
+            Header titulo = new Header("Error");
+            titulo.FillColor = Color.Red;
+            panelError.AddChild(titulo);
+            panelError.AddChild(new HorizontalLine());
+
+            panelError.AddChild(new Paragraph(mensaje));
+
+            Button okBtn = new Button("OK");
+            okBtn.OnClick = (Entity btn) =>
+            {
+                panelError.Visible = false;
+                UserInterface.Active.RemoveEntity(panelError);
+            };
+            panelError.AddChild(okBtn);
+
+            // Auto-cerrar después de 3 segundos
+            System.Threading.Timer timer = new System.Threading.Timer((state) =>
+            {
+                try
+                {
+                    if (panelError.Visible)
+                    {
+                        panelError.Visible = false;
+                        UserInterface.Active.RemoveEntity(panelError);
+                    }
+                }
+                catch { }
+            }, null, 3000, System.Threading.Timeout.Infinite);
+        }
+
         private void EjecutarEliminacionCuenta()
         {
             try
@@ -449,9 +484,8 @@ namespace Duska.Screens
 
                 if (server != null && server.Connected)
                 {
-                    // Enviar solicitud de eliminación al servidor
-                    // Formato: 29/usuario/CONFIRMAR_ELIMINACION
-                    string mensaje = $"29/{usuario}/CONFIRMAR_ELIMINACION";
+                    // **MENSAJE SIMPLIFICADO SIN CARACTERES ESPECIALES**
+                    string mensaje = $"29/{usuario}/CONFIRMAR";
                     byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                     server.Send(msg);
 
@@ -462,39 +496,38 @@ namespace Duska.Screens
                 }
                 else
                 {
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
-                        "No se pudo conectar al servidor. Inténtalo más tarde.",
-                        "Error de conexión"
-                    );
+                    MostrarMensajeError("No se pudo conectar al servidor. Intentalo mas tarde.");
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error al ejecutar eliminación: {ex.Message}");
-                GeonBit.UI.Utils.MessageBox.ShowMsgBox(
-                    "Error al procesar la eliminación. Inténtalo más tarde.",
-                    "Error"
-                );
+                MostrarMensajeError("Error al procesar la eliminacion. Intentalo mas tarde.");
             }
         }
 
         private void MostrarPanelProcesandoBaja()
         {
+            // Limpiar cualquier panel anterior
+            var panelAnterior = UserInterface.Active.Root.Children
+                .OfType<Panel>()
+                .FirstOrDefault(p => p.Identifier == "PanelProcesandoBaja");
+
+            if (panelAnterior != null)
+            {
+                UserInterface.Active.RemoveEntity(panelAnterior);
+            }
+
             // Crear panel de carga
             Panel panel = new Panel(new Vector2(400, 200), PanelSkin.Default, Anchor.Center);
             panel.Visible = true;
-            panel.Identifier = "PanelProcesandoBaja"; // Para poder encontrarlo después
+            panel.Identifier = "PanelProcesandoBaja";
             UserInterface.Active.AddEntity(panel);
 
             panel.AddChild(new Header("Procesando..."));
             panel.AddChild(new HorizontalLine());
             panel.AddChild(new Paragraph("Eliminando tu cuenta del servidor..."));
             panel.AddChild(new Paragraph("Por favor espera."));
-
-            // Añadir una barra de progreso para dar feedback visual
-            ProgressBar progressBar = new ProgressBar(0, 100);
-            progressBar.Value = 50; // Valor intermedio
-            panel.AddChild(progressBar);
 
             Debug.WriteLine("[BAJA] Panel de procesamiento mostrado");
         }
@@ -506,10 +539,13 @@ namespace Duska.Screens
                 Debug.WriteLine($"[BAJA] Respuesta recibida: {respuesta}");
 
                 // Cerrar panel de procesamiento si existe
-                Panel panelProcesando = UserInterface.Active.Root.Find<Panel>("PanelProcesandoBaja");
-                if (panelProcesando != null)
+                foreach (var entity in UserInterface.Active.Root.Children.ToList())
                 {
-                    UserInterface.Active.RemoveEntity(panelProcesando);
+                    if (entity is Panel p && p.Identifier == "PanelProcesandoBaja")
+                    {
+                        UserInterface.Active.RemoveEntity(p);
+                        break;
+                    }
                 }
 
                 if (respuesta.StartsWith("BAJA_OK/"))
@@ -530,9 +566,9 @@ namespace Duska.Screens
                     panelExito.AddChild(new Paragraph("Tu cuenta ha sido eliminada exitosamente."));
                     panelExito.AddChild(new Paragraph(""));
                     panelExito.AddChild(new Paragraph("Gracias por haber usado Duska."));
-                    panelExito.AddChild(new Paragraph("La aplicación se cerrará ahora."));
+                    panelExito.AddChild(new Paragraph("La aplicacion se cerrara ahora."));
 
-                    Button cerrarBtn = new Button("Cerrar Aplicación");
+                    Button cerrarBtn = new Button("Cerrar Aplicacion");
                     cerrarBtn.OnClick = (Entity btn) =>
                     {
                         // Desconectar y cerrar aplicación
@@ -544,8 +580,12 @@ namespace Duska.Screens
                     // Auto-cerrar después de 5 segundos
                     System.Threading.Timer timer = new System.Threading.Timer((state) =>
                     {
-                        DisconnectFromServer();
-                        Game.Exit();
+                        try
+                        {
+                            DisconnectFromServer();
+                            Game.Exit();
+                        }
+                        catch { }
                     }, null, 5000, System.Threading.Timeout.Infinite);
                 }
                 else if (respuesta.StartsWith("ERROR/"))
@@ -554,19 +594,13 @@ namespace Duska.Screens
                     string mensajeError = respuesta.Substring(6);
                     Debug.WriteLine($"[BAJA] Error: {mensajeError}");
 
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
-                        $"Error al eliminar la cuenta: {mensajeError}",
-                        "Error"
-                    );
+                    MostrarMensajeError($"Error al eliminar la cuenta: {mensajeError}");
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error procesando respuesta de baja: {ex.Message}");
-                GeonBit.UI.Utils.MessageBox.ShowMsgBox(
-                    "Error al procesar la respuesta del servidor.",
-                    "Error"
-                );
+                MostrarMensajeError("Error al procesar la respuesta del servidor.");
             }
         }
 
@@ -1261,7 +1295,8 @@ namespace Duska.Screens
                 SolicitarInformacionLider(grupoId);
                 return;
             }
-            else if (message.StartsWith("BAJA_OK/") || (message.StartsWith("ERROR/") && message.Contains("eliminación")))
+            else if (message.StartsWith("BAJA_OK/") ||
+                (message.StartsWith("ERROR/") && (message.Contains("eliminacion") || message.Contains("Confirmacion"))))
             {
                 // Respuesta sobre eliminación de cuenta
                 ProcesarRespuestaBaja(message);

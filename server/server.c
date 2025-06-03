@@ -1670,87 +1670,130 @@ void *cliente(void *socket_ptr)
         }
         else if (codigo == 29) // Eliminar cuenta de usuario
         {
-            // Formato: 29/nombre_usuario/confirmacion
-            char confirmacion[50] = {0};
+            printf("[DEBUG-29] ====== PROCESANDO CÓDIGO 29 ======\n");
+            printf("[DEBUG-29] Usuario: '%s'\n", usuario);
+            printf("[DEBUG-29] Petición completa: '%s'\n", peticion);
 
-            if (p != NULL)
+            // **PARSING MEJORADO**
+            char peticion_copia[512];
+            strncpy(peticion_copia, peticion, sizeof(peticion_copia) - 1);
+            peticion_copia[sizeof(peticion_copia) - 1] = '\0';
+
+            printf("[DEBUG-29] Petición copia: '%s'\n", peticion_copia);
+
+            // Buscar la confirmación después del segundo "/"
+            char *primera_barra = strchr(peticion_copia, '/');
+            if (primera_barra != NULL)
             {
-                strncpy(confirmacion, p, sizeof(confirmacion) - 1);
-            }
-
-            // Verificar que la confirmación sea correcta (seguridad extra)
-            if (strcmp(confirmacion, "CONFIRMAR_ELIMINACION") == 0)
-            {
-                printf("[BAJA] Solicitud de eliminación de cuenta para usuario: %s\n", usuario);
-
-                // Verificar que el usuario existe antes de eliminarlo
-                if (usuarioExiste(conn, usuario))
+                char *segunda_barra = strchr(primera_barra + 1, '/');
+                if (segunda_barra != NULL)
                 {
-                    // Actualizar estado a desconectado antes de eliminar
-                    actualizarEstado(conn, usuario, 0);
+                    char *confirmacion = segunda_barra + 1;
 
-                    // Eliminar el usuario de la base de datos
-                    int resultado = eliminarUsuario(conn, usuario);
-
-                    if (resultado == 0)
+                    // Limpiar caracteres extraños
+                    char confirmacion_limpia[100] = {0};
+                    int j = 0;
+                    for (int i = 0; confirmacion[i] != '\0' && i < 99; i++)
                     {
-                        printf("[BAJA] Usuario %s eliminado exitosamente\n", usuario);
-
-                        // Notificar éxito al cliente
-                        strcpy(respuesta, "BAJA_OK/Cuenta eliminada exitosamente");
-
-                        // Obtener el grupo del usuario (si está en uno)
-                        int grupo_id = obtener_grupo_id(usuario);
-
-                        // Si estaba en un grupo, notificar a los demás miembros
-                        if (grupo_id > 0)
+                        if (confirmacion[i] >= 32 && confirmacion[i] <= 126) // Solo caracteres ASCII imprimibles
                         {
-                            char mensaje_salida[256];
-                            snprintf(mensaje_salida, sizeof(mensaje_salida), "USUARIO_ELIMINADO/%s", usuario);
-                            broadcast_to_group(grupo_id, mensaje_salida);
-
-                            // Remover del grupo
-                            pthread_mutex_lock(&client_list_mutex);
-                            ClientNode *current = client_list;
-                            while (current != NULL)
-                            {
-                                if (strcmp(current->usuario, usuario) == 0)
-                                {
-                                    current->grupo_id = 0;
-                                    break;
-                                }
-                                current = current->next;
-                            }
-                            pthread_mutex_unlock(&client_list_mutex);
-
-                            // Notificar cambio de líder si corresponde
-                            notificar_lider_grupo(grupo_id);
+                            confirmacion_limpia[j++] = confirmacion[i];
                         }
-
-                        // Actualizar lista de conectados para todos
-                        char buffer[1024] = {0};
-                        listarConectados(conn, buffer, sizeof(buffer));
-                        broadcast_to_all(buffer);
                     }
-                    else if (resultado == -2)
+                    confirmacion_limpia[j] = '\0';
+
+                    printf("[DEBUG-29] Confirmación extraída: '%s'\n", confirmacion_limpia);
+                    printf("[DEBUG-29] Longitud confirmación: %d\n", (int)strlen(confirmacion_limpia));
+
+                    // **VERIFICAR CONFIRMACIÓN - MÚLTIPLES VARIANTES**
+                    if (strcmp(confirmacion_limpia, "CONFIRMAR_ELIMINACION") == 0 ||
+                        strstr(confirmacion_limpia, "CONFIRMAR_ELIMINACION") != NULL ||
+                        strcmp(confirmacion_limpia, "CONFIRMAR") == 0)
                     {
-                        strcpy(respuesta, "ERROR/Usuario no encontrado en la base de datos");
+                        printf("[BAJA] Confirmación válida recibida para usuario: %s\n", usuario);
+
+                        // Verificar que el usuario existe antes de eliminarlo
+                        if (usuarioExiste(conn, usuario))
+                        {
+                            // Actualizar estado a desconectado antes de eliminar
+                            actualizarEstado(conn, usuario, 0);
+
+                            // Eliminar el usuario de la base de datos
+                            int resultado = eliminarUsuario(conn, usuario);
+
+                            if (resultado == 0)
+                            {
+                                printf("[BAJA] Usuario %s eliminado exitosamente\n", usuario);
+
+                                // Notificar éxito al cliente
+                                strcpy(respuesta, "BAJA_OK/Cuenta eliminada exitosamente");
+
+                                // Obtener el grupo del usuario (si está en uno)
+                                int grupo_id = obtener_grupo_id(usuario);
+
+                                // Si estaba en un grupo, notificar a los demás miembros
+                                if (grupo_id > 0)
+                                {
+                                    char mensaje_salida[256];
+                                    snprintf(mensaje_salida, sizeof(mensaje_salida), "USUARIO_ELIMINADO/%s", usuario);
+                                    broadcast_to_group(grupo_id, mensaje_salida);
+
+                                    // Remover del grupo
+                                    pthread_mutex_lock(&client_list_mutex);
+                                    ClientNode *current = client_list;
+                                    while (current != NULL)
+                                    {
+                                        if (strcmp(current->usuario, usuario) == 0)
+                                        {
+                                            current->grupo_id = 0;
+                                            break;
+                                        }
+                                        current = current->next;
+                                    }
+                                    pthread_mutex_unlock(&client_list_mutex);
+
+                                    // Notificar cambio de líder si corresponde
+                                    notificar_lider_grupo(grupo_id);
+                                }
+
+                                // Actualizar lista de conectados para todos
+                                char buffer[1024] = {0};
+                                listarConectados(conn, buffer, sizeof(buffer));
+                                broadcast_to_all(buffer);
+
+                                printf("[BAJA] Proceso de eliminación completado para %s\n", usuario);
+                            }
+                            else if (resultado == -2)
+                            {
+                                strcpy(respuesta, "ERROR/Usuario no encontrado en la base de datos");
+                            }
+                            else
+                            {
+                                strcpy(respuesta, "ERROR/Error interno al eliminar la cuenta");
+                            }
+                        }
+                        else
+                        {
+                            strcpy(respuesta, "ERROR/El usuario no existe en la base de datos");
+                        }
                     }
                     else
                     {
-                        strcpy(respuesta, "ERROR/Error interno al eliminar la cuenta");
+                        snprintf(respuesta, sizeof(respuesta), "ERROR/Confirmacion incorrecta. Recibido: '%s'", confirmacion_limpia);
+                        printf("[BAJA] Confirmación incorrecta. Esperado: 'CONFIRMAR_ELIMINACION', Recibido: '%s'\n", confirmacion_limpia);
                     }
                 }
                 else
                 {
-                    strcpy(respuesta, "ERROR/El usuario no existe en la base de datos");
+                    strcpy(respuesta, "ERROR/Formato de peticion incorrecto - falta confirmacion");
                 }
             }
             else
             {
-                strcpy(respuesta, "ERROR/Confirmación de eliminación incorrecta");
-                printf("[BAJA] Intento de eliminación sin confirmación correcta: %s\n", confirmacion);
+                strcpy(respuesta, "ERROR/Formato de peticion incorrecto");
             }
+
+            printf("[DEBUG-29] ====== FIN CÓDIGO 29 ======\n");
         }
         else
         {
