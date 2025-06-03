@@ -446,16 +446,12 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("CHAT/"))
                 {
-                    // Mensaje de chat
-                    string chatMessage = message.Substring(5).Trim(); ;
+                    string chatMessage = message.Substring(5).Trim();
                     Debug.WriteLine("Mensaje de chat recibido: " + chatMessage);
-                    PedirTurno();
 
-                    // Usar Invoke para actualizar UI desde cualquier hilo
+                    // **SOLO AÑADIR AL HISTORIAL, NO RECREAR UI**
                     if (System.Threading.Thread.CurrentThread.IsBackground)
                     {
-                        // Llamada segura a método de UI
-                        // En MonoGame normalmente necesitarías una forma de ejecutar esto en el hilo principal
                         lock (mensajesLock)
                         {
                             mensajesPendientes.Add(message);
@@ -470,23 +466,20 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("TURN/"))
                 {
-                    // TURN/jugadorNombre - Indica de quién es el turno
                     string jugadorTurno = message.Substring(5).Trim();
 
-                    esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
+                    // **EVITAR SPAM DE TURNOS - SOLO PROCESAR SI CAMBIÓ**
+                    if (jugadorTurno != jugadorConTurnoActual)
+                    {
+                        esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
+                        _permitirAccionesJuego = esMiTurno;
+                        jugadorConTurnoActual = jugadorTurno;
 
-                    _permitirAccionesJuego = esMiTurno;
+                        // **RECREAR UI PARA MOSTRAR CAMBIO DE TURNO**
+                        CrearInterfazChatCompleta(true);
 
-                    jugadorConTurnoActual = jugadorTurno;
-
-                    // Mensaje en el chat
-                    if (esMiTurno)
-                        ChatPanel(true, "Sistema/¡ES TU TURNO! Selecciona cartas con [ESPACIO] y envíalas con [E]");
-                    else
-                        ChatPanel(true, $"Sistema/Turno de {jugadorConTurnoActual}. Esperando...");
-
-                    Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
-
+                        Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
+                    }
                     return;
                 }
                 else if (message.StartsWith("ACTION/"))
@@ -585,11 +578,15 @@ namespace Duska.Screens
                     }
                     return;
                 }
-                else if (message.StartsWith("CARTA_RONDA"))
+                if (message.StartsWith("CARTA_RONDA"))
                 {
                     string carta = message.Substring(12).Trim();
                     carta_ronda_actual = carta;
+
+                    // **MOSTRAR MENSAJE AL USUARIO**
+                    ChatPanel(true, $"Sistema/Carta de la ronda: {carta_ronda_actual}");
                     Debug.WriteLine($"[JUEGO] Carta de la ronda actual: {carta_ronda_actual}");
+                    return;
                 }
                 else if (message.StartsWith("NUEVA_RONDA/"))
                 {
@@ -1338,7 +1335,7 @@ namespace Duska.Screens
                     {
                         string nombre = partes[0];
                         string mensajeChat = partes[1];
-                        historialChat.Add($"{nombre}/{mensajeChat}");
+                        historialChat.Add($"{nombre}: {mensajeChat}");
                     }
                     else
                     {
@@ -1347,225 +1344,182 @@ namespace Duska.Screens
                     }
                 }
 
-                // Limpiar la interfaz anterior
+                // **NO RECREAR LA UI SI YA EXISTE Y SOLO AÑADIMOS MENSAJE**
+                if (!string.IsNullOrEmpty(mensaje) && UserInterface.Active != null && UserInterface.Active.Root.Children.Count > 0)
+                {
+                    // Solo añadir el mensaje sin recrear toda la UI
+                    Debug.WriteLine("[CHAT] Mensaje añadido al historial sin recrear UI");
+                    return;
+                }
+
+                // Solo recrear UI si realmente es necesario
+                if (UserInterface.Active == null || UserInterface.Active.Root.Children.Count == 0)
+                {
+                    // Crear la UI completa solo la primera vez o si está vacía
+                    CrearInterfazChatCompleta(visible);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error en ChatPanel: {ex.Message}");
+            }
+        }
+
+        private void CrearInterfazChatCompleta(bool visible)
+        {
+            try
+            {
+                // Limpiar solo si es necesario
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Clear();
                 }
-                else
-                {
-                    Debug.WriteLine("[ERROR] UserInterface.Active es null");
-                    return;
-                }
 
-                // Crear el panel principal con altura fija
+                // Crear el panel principal
                 Panel panel = new Panel(
-            new Vector2(350, GraphicsDevice.Viewport.Height),
-            PanelSkin.Simple,
-            Anchor.TopRight);
-                if (panel == null)
-                {
-                    Debug.WriteLine("[ERROR] No se pudo crear el panel principal");
-                    return;
-                }
+                    new Vector2(350, GraphicsDevice.Viewport.Height),
+                    PanelSkin.Simple,
+                    Anchor.TopRight);
 
                 panel.Padding = new Vector2(15, 15);
                 panel.Visible = visible;
                 UserInterface.Active.AddEntity(panel);
 
-                // ---- ESTRUCTURA VERTICAL CLARA ----
-                // 1. Encabezado + línea (altura ~40px)
-                // 2. Panel de mensajes (altura fija 340px)
-                // 3. Línea divisoria
-                // 4. Campo de texto (altura 40px)
-                // 5. Panel de botones (altura 60px)
-
-                // 1. ENCABEZADO
+                // Encabezado
                 Header header = new Header("Chat");
-                if (header != null) panel.AddChild(header);
+                panel.AddChild(header);
+                panel.AddChild(new HorizontalLine());
 
-                HorizontalLine lineTop = new HorizontalLine();
-                if (lineTop != null) panel.AddChild(lineTop);
-
-                // 2. PANEL DE MENSAJES - contenedor fijo
-                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 160;
-                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.None, Anchor.TopCenter);
-                if (mensajesPanel == null)
+                // **MOSTRAR INFORMACIÓN DEL JUEGO**
+                if (!string.IsNullOrEmpty(carta_ronda_actual))
                 {
-                    Debug.WriteLine("[ERROR] No se pudo crear el panel de mensajes");
-                    return;
+                    Header cartaRonda = new Header($"Carta Ronda: {carta_ronda_actual}");
+                    cartaRonda.FillColor = Color.Yellow;
+                    cartaRonda.Scale = 0.8f;
+                    panel.AddChild(cartaRonda);
                 }
 
+                if (!string.IsNullOrEmpty(jugadorConTurnoActual))
+                {
+                    Paragraph turnoInfo = new Paragraph(esMiTurno ?
+                        "¡ES TU TURNO!" : $"Turno de: {jugadorConTurnoActual}");
+                    turnoInfo.FillColor = esMiTurno ? Color.LightGreen : Color.LightBlue;
+                    panel.AddChild(turnoInfo);
+                }
+
+                panel.AddChild(new HorizontalLine());
+
+                // Panel de mensajes
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 250;
+                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.None, Anchor.TopCenter);
                 mensajesPanel.Padding = new Vector2(10, 10);
                 panel.AddChild(mensajesPanel);
 
-                // Limitar historial y obtener los mensajes más recientes
-                int mensajesPorPantalla = 15; // Aproximadamente cuántos caben
-
-                if (historialChat == null)
-                {
-                    historialChat = new List<string>();
-                }
-
-                int totalMensajes = historialChat.Count;
+                // Mostrar últimos mensajes
+                int mensajesPorPantalla = 12;
+                int totalMensajes = historialChat?.Count ?? 0;
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
 
-                // Limitar historial para no acumular demasiados
-                int maxHistorialPermitido = 15;
-                if (historialChat.Count > maxHistorialPermitido)
+                if (historialChat != null)
                 {
-                    historialChat.RemoveRange(0, historialChat.Count - maxHistorialPermitido);
-                    indiceInicio = Math.Max(0, historialChat.Count - mensajesPorPantalla);
-                }
-
-                // Mostrar los mensajes más recientes
-                for (int i = indiceInicio; i < totalMensajes; i++)
-                {
-                    if (i >= 0 && i < historialChat.Count)
+                    for (int i = indiceInicio; i < totalMensajes; i++)
                     {
-                        string msg = historialChat[i];
-                        if (msg == null) continue;
-
-                        string[] partes = msg.Split('/');
-                        Paragraph mensajeParagraph;
-
-                        if (partes.Length >= 2)
+                        if (i >= 0 && i < historialChat.Count)
                         {
-                            mensajeParagraph = new Paragraph($"{partes[0]}: {partes[1]}");
-                        }
-                        else
-                        {
-                            mensajeParagraph = new Paragraph(msg);
-                        }
-
-                        if (mensajeParagraph != null)
-                        {
-                            mensajeParagraph.Scale = 0.9f;
-                            mensajeParagraph.WrapWords = true;
-                            mensajesPanel.AddChild(mensajeParagraph);
+                            string msg = historialChat[i];
+                            if (!string.IsNullOrEmpty(msg))
+                            {
+                                Paragraph mensajeParagraph = new Paragraph(msg);
+                                mensajeParagraph.Scale = 0.85f;
+                                mensajeParagraph.WrapWords = true;
+                                mensajesPanel.AddChild(mensajeParagraph);
+                            }
                         }
                     }
                 }
 
-                // 3. LÍNEA DIVISORIA - clara separación visual
-                HorizontalLine lineMiddle = new HorizontalLine();
-                if (lineMiddle != null) panel.AddChild(lineMiddle);
+                // Campo de texto y botones
+                panel.AddChild(new HorizontalLine());
 
-                // 4. CAMPO DE TEXTO - asegurando que esté disponible
                 TextInput text = new TextInput(false);
-                if (text != null)
-                {
-                    text.PlaceholderText = "Escribe un mensaje...";
-                    text.Size = new Vector2(0, 40);
-                    text.Anchor = Anchor.Auto; // Posición automática según el orden
-                    panel.AddChild(text);
-                }
+                text.PlaceholderText = "Escribe un mensaje...";
+                text.Size = new Vector2(0, 40);
+                panel.AddChild(text);
 
-                // 5. PANEL DE BOTONES - anclado abajo explícitamente 
+                // Panel de botones
                 Panel botonesPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
-                if (botonesPanel != null)
-                {
-                    botonesPanel.Padding = new Vector2(10, 10);
-                    botonesPanel.Anchor = Anchor.BottomCenter; // Anclar explícitamente abajo
-                    panel.AddChild(botonesPanel);
+                botonesPanel.Padding = new Vector2(10, 10);
+                panel.AddChild(botonesPanel);
 
-                    // Distribuir botones horizontalmente
-                    Button enviarBtn = new Button("Enviar");
-                    Button cartasBtn = new Button("Pedir Cartas");
+                Button enviarBtn = new Button("Enviar");
+                enviarBtn.Size = new Vector2(150, 35);
+                enviarBtn.Anchor = Anchor.TopLeft;
+                enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
+                botonesPanel.AddChild(enviarBtn);
 
-                    if (enviarBtn != null && cartasBtn != null)
-                    {
-                        // Distribuir los botones en el espacio disponible
-                        enviarBtn.Size = new Vector2(150, 35);
-                        enviarBtn.Anchor = Anchor.TopLeft;
+                Button cartasBtn = new Button("Pedir Cartas");
+                cartasBtn.Size = new Vector2(150, 35);
+                cartasBtn.Anchor = Anchor.TopRight;
+                cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartas();
+                botonesPanel.AddChild(cartasBtn);
 
-                        cartasBtn.Size = new Vector2(150, 35);
-                        cartasBtn.Anchor = Anchor.TopRight;
-
-                        // Añadir manejadores de eventos
-                        enviarBtn.OnClick = (Entity btn) =>
-                        {
-                            if (text == null || string.IsNullOrEmpty(text.Value)) return;
-
-                            string mensajeEnviar = text.Value;
-                            try
-                            {
-                                if (server != null && server.Connected && conectado)
-                                {
-                                    string mensajeFormato = "11/" + usuario + "/" + mensajeEnviar;
-                                    byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
-                                    server.Send(msg);
-                                    text.Value = "";
-                                    ChatPanel(true, null);
-                                }
-                                else
-                                {
-                                    Debug.WriteLine("[CHAT] No hay conexión. Intentando reconectar...");
-                                    historialChat.Add("Sistema/Reconectando al servidor...");
-                                    ChatPanel(true, null);
-                                    ConnectToServerIfNeeded();
-
-                                    if (server != null && server.Connected)
-                                    {
-                                        string mensajeFormato = "11/" + usuario + "/" + mensajeEnviar;
-                                        byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
-                                        server.Send(msg);
-                                        text.Value = "";
-                                        historialChat.Add("Sistema/Mensaje enviado después de reconectar");
-                                        ChatPanel(true, null);
-                                    }
-                                    else
-                                    {
-                                        historialChat.Add("Sistema/ERROR: No se pudo conectar al servidor");
-                                        ChatPanel(true, null);
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine("[ERROR] Error al enviar mensaje: " + ex.Message);
-                                historialChat.Add("Sistema/ERROR: " + ex.Message);
-                                ChatPanel(true, null);
-                            }
-                        };
-
-                        cartasBtn.OnClick = (Entity btn) =>
-                        {
-                            try
-                            {
-                                if (conectado || ConnectToServerIfNeeded())
-                                {
-                                    cartasBtn.Enabled = false;
-                                    cartasBtn.Visible = false; // Deshabilitar botón mientras se solicitan cartas
-                                    GetCards(usuario);
-                                    historialChat.Add("Sistema/Solicitando nuevas cartas...");
-                                    ChatPanel(true, null);
-                                }
-                                else
-                                {
-                                    historialChat.Add("Sistema/ERROR: No hay conexión al servidor");
-                                    ChatPanel(true, null);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ERROR] Error al solicitar cartas: {ex.Message}");
-                                historialChat.Add("Sistema/ERROR: " + ex.Message);
-                                ChatPanel(true, null);
-                            }
-                        };
-
-                        // Añadir botones al panel
-                        botonesPanel.AddChild(enviarBtn);
-                        botonesPanel.AddChild(cartasBtn);
-                    }
-                }
-
-                Debug.WriteLine("[CHAT] Panel de chat inicializado correctamente");
+                Debug.WriteLine("[CHAT] Interfaz completa creada correctamente");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] Error en ChatPanel: {ex.Message}\n{ex.StackTrace}");
+                Debug.WriteLine($"[ERROR] Error creando interfaz completa: {ex.Message}");
+            }
+        }
+
+        private void SolicitarNuevasCartas()
+        {
+            try
+            {
+                if (conectado || ConnectToServerIfNeeded())
+                {
+                    GetCards(usuario);
+                    historialChat.Add("Sistema: Solicitando nuevas cartas...");
+                    // NO recrear UI aquí, solo añadir mensaje
+                }
+                else
+                {
+                    historialChat.Add("Sistema: ERROR - No hay conexión al servidor");
+                    CrearInterfazChatCompleta(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error solicitando cartas: {ex.Message}");
+                historialChat.Add($"Sistema: ERROR - {ex.Message}");
+                CrearInterfazChatCompleta(true);
+            }
+        }
+
+        private void EnviarMensajeChat(TextInput text)
+        {
+            if (text == null || string.IsNullOrEmpty(text.Value)) return;
+
+            try
+            {
+                if (server != null && server.Connected)
+                {
+                    string mensajeFormato = "11/" + usuario + "/" + text.Value;
+                    byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
+                    server.Send(msg);
+                    text.Value = "";
+                    Debug.WriteLine("[CHAT] Mensaje enviado correctamente");
+                }
+                else
+                {
+                    historialChat.Add("Sistema: Error de conexión");
+                    CrearInterfazChatCompleta(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error enviando mensaje: {ex.Message}");
+                historialChat.Add($"Sistema: Error - {ex.Message}");
+                CrearInterfazChatCompleta(true);
             }
         }
 
@@ -1785,15 +1739,32 @@ namespace Duska.Screens
         {
             List<string> mensajes = new List<string>();
 
-            // Patrones comunes de inicio de mensaje
+            // **MEJORAR PATRONES Y USAR SALTOS DE LÍNEA**
             string[] patrones = {
         "CARDS/", "TURN/", "ACTION/", "CHAT/", "DESAFIO/", "JUGADOR_ELIMINADO/",
         "FIN_PARTIDA/", "GRUPO_DISUELTO/", "PARTIDA_CANCELADA/", "NUEVA_RONDA/",
-        "ERROR/", "ACTION_OK/", "CARTA_RONDA"
+        "ERROR/", "ACTION_OK/", "CARTA_RONDA", "PARTIDA/", "MSG/"
     };
 
-            int inicio = 0;
+            // **PRIMER INTENTO: SEPARAR POR SALTOS DE LÍNEA**
+            string[] lineas = mensajeCrudo.Split(new char[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
+            if (lineas.Length > 1)
+            {
+                // Si hay múltiples líneas, cada una es un mensaje
+                foreach (string linea in lineas)
+                {
+                    string lineaLimpia = linea.Trim();
+                    if (!string.IsNullOrEmpty(lineaLimpia))
+                    {
+                        mensajes.Add(lineaLimpia);
+                    }
+                }
+                return mensajes.ToArray();
+            }
+
+            // **SEGUNDO INTENTO: BUSCAR PATRONES**
+            int inicio = 0;
             for (int i = 1; i < mensajeCrudo.Length; i++)
             {
                 foreach (string patron in patrones)
@@ -1801,7 +1772,6 @@ namespace Duska.Screens
                     if (i + patron.Length <= mensajeCrudo.Length &&
                         mensajeCrudo.Substring(i, patron.Length) == patron)
                     {
-                        // Encontramos el inicio de un nuevo mensaje
                         string mensajeAnterior = mensajeCrudo.Substring(inicio, i - inicio).Trim();
                         if (!string.IsNullOrEmpty(mensajeAnterior))
                         {
