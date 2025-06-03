@@ -4,6 +4,8 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <errno.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -13,6 +15,10 @@
 #include "generarcartas.h"
 #include "partidas.h"
 #include <signal.h>
+
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
 
 // Estructura para mantener los clientes conectados
 typedef struct ClientNode
@@ -1777,10 +1783,26 @@ void *cliente(void *socket_ptr)
                     printf("[BAJA] Usuario %s eliminado exitosamente\n", usuario);
                     strcpy(respuesta, "BAJA_OK/Cuenta eliminada exitosamente");
 
-                    // Actualizar lista de conectados
-                    char buffer[1024] = {0};
-                    listarConectados(conn, buffer, sizeof(buffer));
-                    broadcast_to_all(buffer);
+                    // **ENVIAR RESPUESTA PRIMERO**
+                    send(sock_conn, respuesta, strlen(respuesta), 0);
+
+                    // **LIMPIAR ESTE CLIENTE DE LA LISTA ANTES DEL BROADCAST**
+                    limpiar_cliente_desconectado(sock_conn);
+
+                    // **ACTUALIZAR LISTA SOLO SI HAY OTROS CLIENTES**
+                    pthread_mutex_lock(&client_list_mutex);
+                    if (client_list != NULL)
+                    {
+                        char buffer[1024] = {0};
+                        listarConectados(conn, buffer, sizeof(buffer));
+                        broadcast_to_all(buffer);
+                    }
+                    pthread_mutex_unlock(&client_list_mutex);
+
+                    printf("[BAJA] Proceso de eliminación completado para %s\n", usuario);
+
+                    // **MARCAR PARA SALIR DEL BUCLE**
+                    break;
                 }
                 else
                 {

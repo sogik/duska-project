@@ -1070,57 +1070,42 @@ namespace Duska.Screens
         {
             try
             {
-                Debug.WriteLine("Desconectando del servidor...");
+                Debug.WriteLine("[DESCONEXION] Iniciando desconexión limpia");
 
-                // Marcar que es una desconexión intencional
-                desconexionIntencional = true;
                 stopMessageListener = true;
-
-                // Esperar a que el hilo termine (con timeout)
-                if (messageListenerThread != null && messageListenerThread.IsAlive)
-                {
-                    // Dar tiempo a que el hilo termine limpiamente
-                    if (!messageListenerThread.Join(1000))
-                    {
-                        Debug.WriteLine("Forzando terminación del hilo de escucha");
-                        // No llamar a Abort(), es mala práctica y está obsoleto
-                    }
-                }
-
-                // Ahora es seguro enviar el mensaje de desconexión y cerrar el socket
-                if (server != null && server.Connected)
-                {
-                    try
-                    {
-                        // Enviar mensaje de estado desconectado
-                        string mensaje = "6/" + usuario + "/0";
-                        byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                        server.Send(msg);
-                        Debug.WriteLine("Estado de desconexión enviado correctamente");
-
-                        // Cerrar socket de manera ordenada
-                        server.Shutdown(SocketShutdown.Both);
-                        server.Close();
-                        server = null; // Importante para que no intente reconectarse
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"Error al cerrar socket: {ex.Message}");
-                        // Asegurar que sea nulo incluso si hay error
-                        server = null;
-                    }
-                }
-
-                // Marcar como desconectado
                 conectado = false;
 
-                Debug.WriteLine("Desconexión del servidor completada.");
+                if (server != null)
+                {
+                    if (server.Connected)
+                    {
+                        // Enviar mensaje de desconexión si es posible
+                        try
+                        {
+                            string mensaje = "DISCONNECT/" + usuario;
+                            byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                            server.Send(msg);
+
+                            // Dar tiempo para que llegue el mensaje
+                            System.Threading.Thread.Sleep(100);
+                        }
+                        catch
+                        {
+                            // Ignorar errores al enviar mensaje de desconexión
+                        }
+
+                        server.Shutdown(SocketShutdown.Both);
+                    }
+
+                    server.Close();
+                    server = null;
+                }
+
+                Debug.WriteLine("[DESCONEXION] Desconexión completada");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("Error al desconectar del servidor: " + ex.Message);
-                conectado = false;
-                server = null;
+                Debug.WriteLine($"[ERROR] Error en desconexión: {ex.Message}");
             }
         }
 

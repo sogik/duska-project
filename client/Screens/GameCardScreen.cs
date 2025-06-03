@@ -1706,35 +1706,42 @@ namespace Duska.Screens
         {
             try
             {
-                Debug.WriteLine("Desconectando del servidor...");
-                stopMessageListener = true; // Detener el hilo primero
+                Debug.WriteLine("[DESCONEXION] Iniciando desconexión limpia");
+
+                stopMessageListener = true;
+                conectado = false;
 
                 if (server != null)
                 {
                     if (server.Connected)
                     {
+                        // Enviar mensaje de desconexión si es posible
                         try
                         {
-                            int estado = this.estado(usuario, "0");
-                            server.Shutdown(SocketShutdown.Send);
+                            string mensaje = "DISCONNECT/" + usuario;
+                            byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                            server.Send(msg);
+
+                            // Dar tiempo para que llegue el mensaje
+                            System.Threading.Thread.Sleep(100);
                         }
-                        catch (Exception ex)
+                        catch
                         {
-                            Debug.WriteLine($"Error al cerrar socket: {ex.Message}");
+                            // Ignorar errores al enviar mensaje de desconexión
                         }
-                        finally
-                        {
-                            server.Close();
-                        }
+
+                        server.Shutdown(SocketShutdown.Both);
                     }
+
+                    server.Close();
                     server = null;
                 }
-                conectado = false;
-                Debug.WriteLine("Desconexión del servidor completada.");
+
+                Debug.WriteLine("[DESCONEXION] Desconexión completada");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine("Error al desconectar del servidor: " + ex.Message);
+                Debug.WriteLine($"[ERROR] Error en desconexión: {ex.Message}");
             }
         }
 
