@@ -342,96 +342,47 @@ namespace Duska.Screens
 
         private void MostrarConfirmacionBaja()
         {
-            // Crear panel de confirmación
-            Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
+            // Crear panel de confirmación simple
+            Panel panel = new Panel(new Vector2(400, 200), PanelSkin.Default, Anchor.Center);
             panel.Visible = true;
             UserInterface.Active.AddEntity(panel);
 
-            // **TÍTULO SIN EMOJIS**
-            Header header = new Header("ELIMINAR CUENTA");
-            header.FillColor = Color.Red;
-            panel.AddChild(header);
+            panel.AddChild(new Header("Eliminar Cuenta"));
             panel.AddChild(new HorizontalLine());
-
-            // Mensaje de advertencia detallado
             panel.AddChild(new Paragraph("Estas seguro que quieres eliminar tu cuenta?"));
-            panel.AddChild(new Paragraph(""));
-            panel.AddChild(new Paragraph("ESTA ACCION NO SE PUEDE DESHACER"));
-            panel.AddChild(new Paragraph(""));
-            panel.AddChild(new Paragraph("Se perdera:"));
-            panel.AddChild(new Paragraph("- Tu nombre de usuario"));
-            panel.AddChild(new Paragraph("- Todas tus partidas ganadas"));
-            panel.AddChild(new Paragraph("- Todo tu progreso"));
+            panel.AddChild(new Paragraph("Esta accion no se puede deshacer."));
             panel.AddChild(new HorizontalLine());
 
-            // Campo de texto para confirmar el nombre de usuario
-            panel.AddChild(new Paragraph($"Para confirmar, escribe tu nombre de usuario: {usuario}"));
+            // Panel para los botones
+            Panel botonesPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
 
-            TextInput confirmacionInput = new TextInput(false);
-            confirmacionInput.PlaceholderText = "Escribe tu nombre de usuario aqui";
-            confirmacionInput.Size = new Vector2(0, 40);
-            panel.AddChild(confirmacionInput);
-
-            panel.AddChild(new HorizontalLine());
-
-            // Panel para botones
-            Panel botonesPanel = new Panel(new Vector2(0, 80), PanelSkin.None);
-
-            // Botón de confirmación (inicialmente deshabilitado)
-            Button confirmarBtn = new Button("ELIMINAR MI CUENTA", ButtonSkin.Default);
-            confirmarBtn.FillColor = Color.Red;
-            confirmarBtn.Size = new Vector2(0, 40);
-            confirmarBtn.Enabled = false;
-
-            // Verificar en tiempo real si el nombre coincide
-            confirmacionInput.OnValueChange = (Entity entity) =>
-            {
-                if (confirmacionInput.Value != null && confirmacionInput.Value.Trim().Equals(usuario, StringComparison.OrdinalIgnoreCase))
-                {
-                    confirmarBtn.Enabled = true;
-                    confirmarBtn.FillColor = Color.Red;
-                }
-                else
-                {
-                    confirmarBtn.Enabled = false;
-                    confirmarBtn.FillColor = Color.Gray;
-                }
-            };
-
-            confirmarBtn.OnClick = (Entity btn) =>
-            {
-                if (confirmacionInput.Value != null && confirmacionInput.Value.Trim().Equals(usuario, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Cerrar panel de confirmación
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-
-                    // Ejecutar la eliminación
-                    EjecutarEliminacionCuenta();
-                }
-                else
-                {
-                    // **USAR MÉTODO SIMPLE SIN LIBRERÍA EXTERNA**
-                    MostrarMensajeError("El nombre de usuario no coincide.");
-                }
-            };
-            botonesPanel.AddChild(confirmarBtn);
-
-            // Botón para cancelar
-            Button cancelarBtn = new Button("Cancelar", ButtonSkin.Default);
-            cancelarBtn.Size = new Vector2(0, 40);
-            cancelarBtn.Offset = new Vector2(0, 45);
-            cancelarBtn.OnClick = (Entity btn) =>
+            // Botón SÍ
+            Button siBtn = new Button("SI", ButtonSkin.Default);
+            siBtn.Size = new Vector2(120, 40);
+            siBtn.FillColor = Color.Red;
+            siBtn.Anchor = Anchor.TopLeft;
+            siBtn.OnClick = (Entity btn) =>
             {
                 panel.Visible = false;
                 UserInterface.Active.RemoveEntity(panel);
-                EscMenu(usuario, true); // Volver al menú de pausa
+                EjecutarEliminacionCuenta();
             };
-            botonesPanel.AddChild(cancelarBtn);
+            botonesPanel.AddChild(siBtn);
+
+            // Botón NO
+            Button noBtn = new Button("NO", ButtonSkin.Default);
+            noBtn.Size = new Vector2(120, 40);
+            noBtn.Anchor = Anchor.TopRight;
+            noBtn.OnClick = (Entity btn) =>
+            {
+                panel.Visible = false;
+                UserInterface.Active.RemoveEntity(panel);
+            };
+            botonesPanel.AddChild(noBtn);
 
             panel.AddChild(botonesPanel);
 
-            Debug.WriteLine("[BAJA] Panel de confirmación de baja mostrado");
+            Debug.WriteLine("[BAJA] Panel de confirmación mostrado");
         }
 
         // **MÉTODO SIMPLE PARA MOSTRAR ERRORES**
@@ -475,34 +426,26 @@ namespace Duska.Screens
         {
             try
             {
-                Debug.WriteLine("[BAJA] Iniciando proceso de eliminación de cuenta");
-
-                if (!conectado)
-                {
-                    ConnectToServer();
-                }
+                Debug.WriteLine("[BAJA] Eliminando cuenta");
 
                 if (server != null && server.Connected)
                 {
-                    // **MENSAJE SIMPLIFICADO SIN CARACTERES ESPECIALES**
-                    string mensaje = $"29/{usuario}/CONFIRMAR";
+                    // Mensaje súper simple
+                    string mensaje = $"29/{usuario}/brr";
                     byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                     server.Send(msg);
 
-                    Debug.WriteLine($"[BAJA] Solicitud de eliminación enviada: {mensaje}");
-
-                    // Mostrar panel de carga mientras se procesa
-                    MostrarPanelProcesandoBaja();
+                    Debug.WriteLine($"[BAJA] Enviado: {mensaje}");
                 }
                 else
                 {
-                    MostrarMensajeError("No se pudo conectar al servidor. Intentalo mas tarde.");
+                    MostrarMensajeError("Error de conexion");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] Error al ejecutar eliminación: {ex.Message}");
-                MostrarMensajeError("Error al procesar la eliminacion. Intentalo mas tarde.");
+                Debug.WriteLine($"[ERROR] {ex.Message}");
+                MostrarMensajeError("Error al eliminar cuenta");
             }
         }
 
@@ -550,43 +493,19 @@ namespace Duska.Screens
 
                 if (respuesta.StartsWith("BAJA_OK/"))
                 {
-                    // Eliminación exitosa
-                    Debug.WriteLine("[BAJA] Cuenta eliminada exitosamente");
-
-                    // Mostrar mensaje de éxito y cerrar aplicación
-                    Panel panelExito = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
+                    // Cuenta eliminada
+                    Panel panelExito = new Panel(new Vector2(300, 150), PanelSkin.Default, Anchor.Center);
                     panelExito.Visible = true;
                     UserInterface.Active.AddEntity(panelExito);
 
-                    Header titulo = new Header("Cuenta Eliminada");
-                    titulo.FillColor = Color.Green;
-                    panelExito.AddChild(titulo);
-                    panelExito.AddChild(new HorizontalLine());
+                    panelExito.AddChild(new Header("Cuenta Eliminada"));
+                    panelExito.AddChild(new Paragraph("Tu cuenta ha sido eliminada."));
 
-                    panelExito.AddChild(new Paragraph("Tu cuenta ha sido eliminada exitosamente."));
-                    panelExito.AddChild(new Paragraph(""));
-                    panelExito.AddChild(new Paragraph("Gracias por haber usado Duska."));
-                    panelExito.AddChild(new Paragraph("La aplicacion se cerrara ahora."));
-
-                    Button cerrarBtn = new Button("Cerrar Aplicacion");
-                    cerrarBtn.OnClick = (Entity btn) =>
-                    {
-                        // Desconectar y cerrar aplicación
-                        DisconnectFromServer();
-                        Game.Exit();
-                    };
+                    Button cerrarBtn = new Button("Cerrar");
+                    cerrarBtn.OnClick = (Entity btn) => Game.Exit();
                     panelExito.AddChild(cerrarBtn);
 
-                    // Auto-cerrar después de 5 segundos
-                    System.Threading.Timer timer = new System.Threading.Timer((state) =>
-                    {
-                        try
-                        {
-                            DisconnectFromServer();
-                            Game.Exit();
-                        }
-                        catch { }
-                    }, null, 5000, System.Threading.Timeout.Infinite);
+                    return;
                 }
                 else if (respuesta.StartsWith("ERROR/"))
                 {
