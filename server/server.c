@@ -1305,647 +1305,650 @@ void *cliente(void *socket_ptr)
         {
             printf("[DEBUG-21] ====== PROCESANDO CÓDIGO 21 ======\n");
             printf("[DEBUG-21] Usuario: '%s'\n", usuario);
-            printf("[DEBUG-21] Petición completa: '%s'\n", peticion);
+            printf("[DEBUG-21] Petición RAW: '%s'\n", peticion);
 
             char accion[10] = {0};
             int cantidad = 0;
             char cartas_jugadas[10][10] = {{0}};
             int resultados_verificacion[10] = {0};
 
-            // **PARSING MEJORADO DE LA PETICIÓN COMPLETA**
-            char peticion_copia[512];
-            strncpy(peticion_copia, peticion, sizeof(peticion_copia) - 1);
-            peticion_copia[sizeof(peticion_copia) - 1] = '\0';
+            // **RECONSTRUIR LA PETICIÓN DESDE LAS VARIABLES YA PARSEADAS**
+            // En este punto ya tenemos:
+            // - codigo = 21
+            // - usuario = extraído por strtok
+            // - contrasena = siguiente token (que será la acción)
+            // - mensaje = siguiente token (que será la cantidad)
+            // - Y el resto está en la petición original
 
-            printf("[DEBUG-21] Parseando petición: '%s'\n", peticion_copia);
-
-            // Dividir por "/" para obtener todas las partes
-            char *partes[20] = {NULL}; // Máximo 20 partes
-            int num_partes = 0;
-
-            char *token = strtok(peticion_copia, "/");
-            while (token != NULL && num_partes < 20)
+            if (contrasena && mensaje)
             {
-                partes[num_partes] = token;
-                printf("[DEBUG-21] Parte %d: '%s'\n", num_partes, token);
-                num_partes++;
-                token = strtok(NULL, "/");
-            }
+                // Acción está en 'contrasena'
+                strncpy(accion, contrasena, sizeof(accion) - 1);
 
-            // **FORMATO ESPERADO: 21/usuario/accion/cantidad/carta1/carta2/carta3/...**
-            if (num_partes >= 4)
-            {
-                // Extraer acción (parte 2)
-                strncpy(accion, partes[2], sizeof(accion) - 1);
-
-                // Extraer cantidad (parte 3)
-                cantidad = atoi(partes[3]);
+                // Cantidad está en 'mensaje'
+                cantidad = atoi(mensaje);
 
                 printf("[DEBUG-21] Acción: '%s', Cantidad: %d\n", accion, cantidad);
 
-                // **EXTRAER LAS CARTAS REALES (partes 4 en adelante)**
+                // **BUSCAR LAS CARTAS EN LA PETICIÓN ORIGINAL**
+                char peticion_temp[512];
+                strncpy(peticion_temp, peticion, sizeof(peticion_temp) - 1);
+                peticion_temp[sizeof(peticion_temp) - 1] = '\0';
+
+                // Dividir por "/" para encontrar las cartas
+                char *token = strtok(peticion_temp, "/");
+                int parte_actual = 0;
                 int cartas_extraidas = 0;
-                for (int i = 4; i < num_partes && cartas_extraidas < cantidad && cartas_extraidas < 10; i++)
+
+                while (token != NULL && cartas_extraidas < cantidad && cartas_extraidas < 10)
                 {
-                    if (partes[i] && strlen(partes[i]) > 0)
+                    if (parte_actual >= 4) // Las cartas empiezan en la parte 4
                     {
-                        strncpy(cartas_jugadas[cartas_extraidas], partes[i], sizeof(cartas_jugadas[cartas_extraidas]) - 1);
+                        strncpy(cartas_jugadas[cartas_extraidas], token, sizeof(cartas_jugadas[cartas_extraidas]) - 1);
                         cartas_jugadas[cartas_extraidas][sizeof(cartas_jugadas[cartas_extraidas]) - 1] = '\0';
 
                         printf("[DEBUG-21] Carta %d extraída: '%s'\n", cartas_extraidas + 1, cartas_jugadas[cartas_extraidas]);
                         cartas_extraidas++;
                     }
+
+                    token = strtok(NULL, "/");
+                    parte_actual++;
                 }
 
-                // Verificar que tengamos todas las cartas esperadas
+                // Verificar que tengamos todas las cartas
                 if (cartas_extraidas != cantidad)
                 {
                     printf("[DEBUG-21] ADVERTENCIA: Se esperaban %d cartas pero se extrajeron %d\n", cantidad, cartas_extraidas);
-                    cantidad = cartas_extraidas; // Ajustar cantidad a las cartas realmente extraídas
+                    cantidad = cartas_extraidas;
                 }
-            }
-            else
-            {
-                printf("[DEBUG-21] ERROR: Formato de petición incorrecto. Se esperaban al menos 4 partes, se obtuvieron %d\n", num_partes);
-                strcpy(respuesta, "ERROR/Formato de petición incorrecto");
-                printf("[DEBUG-21] ====== FIN CÓDIGO 21 (ERROR) ======\n");
-                continue;
-            }
 
-            // **MOSTRAR CARTAS FINALES PROCESADAS**
-            printf("[DEBUG-21] === CARTAS FINALES PROCESADAS ===\n");
-            for (int i = 0; i < cantidad; i++)
-            {
-                printf("[DEBUG-21] Carta %d: '%s' (longitud: %lu)\n",
-                       i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
-            }
-
-            // **CONTINUAR CON LA LÓGICA EXISTENTE**
-            if (es_turno_de_jugador(usuario))
-            {
-                GameInfo *partida = obtener_partida_por_jugador(usuario);
-                if (partida != NULL)
+                // **MOSTRAR CARTAS FINALES PROCESADAS**
+                printf("[DEBUG-21] === CARTAS FINALES PROCESADAS ===\n");
+                for (int i = 0; i < cantidad; i++)
                 {
-                    // Verificar cada carta contra la carta de la ronda
-                    verificar_cartas(partida, cartas_jugadas, cantidad, resultados_verificacion);
+                    printf("[DEBUG-21] Carta %d: '%s' (longitud: %lu)\n",
+                           i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
+                }
 
-                    // Guardar información sobre esta jugada para posibles desafíos
-                    guardar_ultima_jugada(partida, usuario, cartas_jugadas, cantidad);
-
-                    // Copiar los resultados de verificación a la partida
-                    for (int i = 0; i < cantidad && i < 10; i++)
+                // **CONTINUAR CON LA LÓGICA EXISTENTE**
+                if (es_turno_de_jugador(usuario))
+                {
+                    GameInfo *partida = obtener_partida_por_jugador(usuario);
+                    if (partida != NULL)
                     {
-                        partida->resultados_verificacion[i] = resultados_verificacion[i];
-                    }
+                        // Verificar cada carta contra la carta de la ronda
+                        verificar_cartas(partida, cartas_jugadas, cantidad, resultados_verificacion);
 
-                    // Formato del mensaje: ACTION/jugador/accion/cantidad
-                    char mensaje_accion[1024];
-                    snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%d",
-                             usuario, accion, cantidad);
+                        // Guardar información sobre esta jugada para posibles desafíos
+                        guardar_ultima_jugada(partida, usuario, cartas_jugadas, cantidad);
 
-                    // Notificar a todos los jugadores de la partida
-                    broadcast_to_group(partida->grupo_id, mensaje_accion);
+                        // Copiar los resultados de verificación a la partida
+                        for (int i = 0; i < cantidad && i < 10; i++)
+                        {
+                            partida->resultados_verificacion[i] = resultados_verificacion[i];
+                        }
 
-                    // Avanzar automáticamente al siguiente turno después de procesar la acción
-                    int result = avanzar_turno(partida->partida_id);
+                        // Formato del mensaje: ACTION/jugador/accion/cantidad
+                        char mensaje_accion[1024];
+                        snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%d",
+                                 usuario, accion, cantidad);
 
-                    if (result == 0)
-                    {
-                        strncpy(respuesta, "ACTION_OK/Acción procesada", sizeof(respuesta));
+                        // Notificar a todos los jugadores de la partida
+                        broadcast_to_group(partida->grupo_id, mensaje_accion);
+
+                        // Avanzar automáticamente al siguiente turno después de procesar la acción
+                        int result = avanzar_turno(partida->partida_id);
+
+                        if (result == 0)
+                        {
+                            strncpy(respuesta, "ACTION_OK/Acción procesada", sizeof(respuesta));
+                        }
+                        else
+                        {
+                            snprintf(respuesta, sizeof(respuesta),
+                                     "ERROR/Acción procesada pero no se pudo avanzar el turno (código %d)",
+                                     result);
+                        }
                     }
                     else
                     {
-                        snprintf(respuesta, sizeof(respuesta),
-                                 "ERROR/Acción procesada pero no se pudo avanzar el turno (código %d)",
-                                 result);
+                        strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
                     }
                 }
                 else
                 {
-                    strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
+                    strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", sizeof(respuesta));
                 }
             }
             else
             {
-                strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", sizeof(respuesta));
+                printf("[DEBUG-21] ERROR: Variables parseadas incompletas\n");
+                strcpy(respuesta, "ERROR/Formato de petición incorrecto");
             }
 
             printf("[DEBUG-21] ====== FIN CÓDIGO 21 ======\n");
         }
-        // Para código 22 (pasar turno)
-        else if (codigo == 22)
+        else
         {
-            // Verificar que es el turno del jugador
-            if (es_turno_de_jugador(usuario))
+            strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", sizeof(respuesta));
+        }
+
+        printf("[DEBUG-21] ====== FIN CÓDIGO 21 ======\n");
+    }
+    // Para código 22 (pasar turno)
+    else if (codigo == 22)
+    {
+        // Verificar que es el turno del jugador
+        if (es_turno_de_jugador(usuario))
+        {
+            // Obtener la partida del jugador
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+
+            if (partida != NULL)
             {
-                // Obtener la partida del jugador
-                GameInfo *partida = obtener_partida_por_jugador(usuario);
+                // Avanzar al siguiente turno
+                int result = avanzar_turno(partida->partida_id);
 
-                if (partida != NULL)
+                if (result == 0)
                 {
-                    // Avanzar al siguiente turno
-                    int result = avanzar_turno(partida->partida_id);
-
-                    if (result == 0)
-                    {
-                        strncpy(respuesta, "TURN_OK/Turno pasado correctamente", sizeof(respuesta));
-                    }
-                    else
-                    {
-                        snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo avanzar el turno (código %d)", result);
-                    }
+                    strncpy(respuesta, "TURN_OK/Turno pasado correctamente", sizeof(respuesta));
                 }
                 else
                 {
-                    strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
+                    snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo avanzar el turno (código %d)", result);
                 }
             }
             else
             {
-                strncpy(respuesta, "ERROR/No es tu turno para pasar", sizeof(respuesta));
-            }
-        }
-        // Para código 23 (pedir turno)
-        else if (codigo == 23)
-        {
-            // Formato esperado: 23/usuario
-            // Aquí podríamos implementar una lógica para obtener el estado de la partida
-            GameInfo *partida = obtener_partida_por_jugador(usuario);
-            if (partida != NULL)
-            {
-                char mensaje_turno[100];
-                snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
-                         partida->jugadores[partida->turno_actual]);
-                printf("[TURNO] Enviando primer turno: '%s'\n", mensaje_turno);
-                broadcast_to_group(partida->grupo_id, mensaje_turno);
-                strcpy(respuesta, "PARTIDA/OK");
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/Error al obtener el turno");
-            }
-        }
-        else if (codigo == 24) // Desafío
-        {
-            printf("[DESAFÍO] Procesando desafío de usuario: %s\n", usuario);
-
-            GameInfo *partida = obtener_partida_por_jugador(usuario);
-            if (partida == NULL)
-            {
-                strcpy(respuesta, "ERROR/No estás en una partida activa");
-                continue;
-            }
-
-            // Verificar si hay una jugada que desafiar
-            if (partida->num_cartas_ultima_jugada == 0)
-            {
-                strcpy(respuesta, "ERROR/No hay jugada que desafiar");
-                continue;
-            }
-
-            // Verificar cada carta de la última jugada
-            int cartas_invalidas = 0;
-            int mintiendo = 0;
-
-            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
-            {
-                if (partida->resultados_verificacion[i] == 0)
-                {
-                    cartas_invalidas++;
-                    mintiendo = 1;
-                }
-            }
-
-            printf("[DESAFÍO] Verificación completada. Mintiendo: %s\n", mintiendo ? "SÍ" : "NO");
-
-            char mensaje_resultado[512] = {0};
-
-            if (mintiendo)
-            {
-                // EL JUGADOR DESAFIADO MINTIÓ - Desafío exitoso
-                sprintf(mensaje_resultado, "DESAFIO/EXITO");
-
-                // Añadir las cartas que fueron jugadas
-                for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
-                {
-                    char temp[50];
-                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
-                    strcat(mensaje_resultado, temp);
-                }
-
-                printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
-                broadcast_to_group(partida->grupo_id, mensaje_resultado);
-
-                // ELIMINAR AL JUGADOR QUE FUE DESAFIADO (el que mintió)
-                char *jugador_eliminado = partida->ultimo_jugador;
-                if (jugador_eliminado != NULL)
-                {
-                    printf("[DESAFÍO] Eliminando al jugador que mintió: %s\n", jugador_eliminado);
-
-                    // Notificar eliminación
-                    char mensaje_eliminacion[100];
-                    sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_eliminado);
-                    broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
-
-                    // Eliminar de la partida
-                    eliminar_jugador_de_partida(partida, jugador_eliminado);
-                }
-
-                strcpy(respuesta, "DESAFIO_OK/Desafío exitoso - Jugador eliminado");
-            }
-            else
-            {
-                // EL JUGADOR DESAFIADO NO MINTIÓ - Desafío fallido
-                sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
-
-                // Añadir las cartas que SÍ eran válidas
-                for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
-                {
-                    char temp[50];
-                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
-                    strcat(mensaje_resultado, temp);
-                }
-
-                printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
-                broadcast_to_group(partida->grupo_id, mensaje_resultado);
-
-                // ELIMINAR AL JUGADOR QUE DESAFIÓ INCORRECTAMENTE
-                printf("[DESAFÍO] Eliminando al jugador que desafió incorrectamente: %s\n", usuario);
-
-                // Notificar eliminación del desafiante
-                char mensaje_eliminacion[100];
-                sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", usuario);
-                broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
-
-                // Eliminar de la partida
-                eliminar_jugador_de_partida(partida, usuario);
-
-                strcpy(respuesta, "DESAFIO_OK/Desafío fallido - Tú has sido eliminado");
-            }
-        }
-        else if (codigo == 25) // Confirmar eliminación después de desafío
-        {
-            // Formato: 25/usuario
-            // Este mensaje lo envía el cliente cuando está listo para que se elimine al jugador
-
-            GameInfo *partida = obtener_partida_por_jugador(usuario);
-            if (partida != NULL && partida->eliminacion_pendiente)
-            {
-                // Proceder con la eliminación pendiente
-                char jugador_a_eliminar[50];
-                strcpy(jugador_a_eliminar, partida->jugador_pendiente_eliminacion);
-
-                // Eliminar al jugador (esto también avanzará a la siguiente ronda)
-                int resultado_eliminacion = eliminar_jugador_de_partida(partida, jugador_a_eliminar);
-
-                // Notificar sobre la eliminación
-                char mensaje_eliminacion[100];
-                sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_a_eliminar);
-                printf("[ELIMINACIÓN] Enviando notificación: %s\n", mensaje_eliminacion);
-                broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
-
-                // Restablecer estado
-                partida->eliminacion_pendiente = 0;
-                partida->jugador_pendiente_eliminacion[0] = '\0';
-
-                // Verificar si queda solo un jugador (ganador)
-                if (partida->num_jugadores_activos == 1)
-                {
-                    // Buscar al jugador activo restante
-                    char *ganador = NULL;
-                    for (int i = 0; i < partida->num_jugadores; i++)
-                    {
-                        if (!partida->jugadores_eliminados[i])
-                        {
-                            ganador = partida->jugadores[i];
-                            break;
-                        }
-                    }
-                    // Notificar fin de partida con ganador
-                    if (ganador != NULL)
-                    {
-                        char mensaje_ganador[100];
-                        sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
-                        broadcast_to_group(partida->grupo_id, mensaje_ganador);
-                        partida->estado = 2; // Finalizada
-                    }
-                }
-
-                strcpy(respuesta, "ELIMINACION_OK");
-            }
-            else if (partida && !partida->eliminacion_pendiente)
-            {
-                strcpy(respuesta, "ERROR/No hay eliminación pendiente");
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en una partida activa");
-            }
-        }
-        else if (codigo == 26) // Obtener carta de la ronda actual
-        {
-            GameInfo *partida = obtener_partida_por_jugador(usuario);
-            if (partida != NULL)
-            {
-                char carta_ronda[10] = {0};
-                obtener_carta_ronda_actual(partida, carta_ronda);
-                snprintf(respuesta, sizeof(respuesta), "CARTA_RONDA/%s", carta_ronda);
-                printf("[RONDA] Usuario %s solicita carta de ronda: %s\n", usuario, carta_ronda);
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en una partida activa");
-            }
-        }
-        else if (codigo == 27) // Abandonar partida
-        {
-            // Formato: 27/nombre_usuario
-
-            // Verificar si el usuario está en una partida
-            GameInfo *partida = obtener_partida_por_jugador(usuario);
-            if (partida != NULL)
-            {
-                // Verificar si la partida está en curso
-                if (partida->estado == 1) // Estado 1 = En curso
-                {
-                    // Marcar que el jugador abandona (similar a eliminarlo)
-                    int indice_jugador = -1;
-                    for (int i = 0; i < partida->num_jugadores; i++)
-                    {
-                        if (strcmp(partida->jugadores[i], usuario) == 0)
-                        {
-                            indice_jugador = i;
-                            break;
-                        }
-                    }
-
-                    if (indice_jugador != -1)
-                    {
-                        // Marcar como eliminado
-                        partida->jugadores_eliminados[indice_jugador] = 1;
-                        partida->num_jugadores_activos--;
-
-                        // Notificar a los demás jugadores
-                        char mensaje_abandono[100];
-                        sprintf(mensaje_abandono, "JUGADOR_ABANDONO/%s", usuario);
-                        broadcast_to_group(partida->grupo_id, mensaje_abandono);
-
-                        printf("[PARTIDA] Jugador %s abandonó la partida %d\n",
-                               usuario, partida->partida_id);
-
-                        // Si era el turno de este jugador, avanzar el turno
-                        if (partida->turno_actual == indice_jugador)
-                        {
-                            avanzar_turno(partida->partida_id);
-                        }
-
-                        // Si solo queda un jugador activo, terminar la partida
-                        if (partida->num_jugadores_activos == 1)
-                        {
-                            // Buscar al ganador...
-                            char *ganador = NULL;
-                            for (int i = 0; i < partida->num_jugadores; i++)
-                            {
-                                if (partida->jugadores_eliminados[i] == 0)
-                                {
-                                    ganador = partida->jugadores[i];
-                                    break;
-                                }
-                            }
-
-                            if (ganador != NULL)
-                            {
-                                char mensaje_ganador[100];
-                                sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
-                                broadcast_to_group(partida->grupo_id, mensaje_ganador);
-
-                                // DECLARAR Y USAR grupo_id correctamente:
-                                int grupo_id = partida->grupo_id; // ← Añadir esta línea
-                                partida->estado = 2;              // Finalizada
-
-                                // Esperar un momento para que se procese el mensaje de fin
-                                usleep(500000); // 0.5 segundos
-
-                                // Disolver el grupo
-                                disolver_grupo(grupo_id);
-
-                                printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
-                                       partida->partida_id, grupo_id);
-                            }
-                        }
-
-                        strcpy(respuesta, "ABANDONO_OK");
-                    }
-                    else
-                    {
-                        strcpy(respuesta, "ERROR/No se encontró al jugador en la partida");
-                    }
-                }
-                else
-                {
-                    strcpy(respuesta, "ERROR/La partida no está en curso");
-                }
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en una partida");
-            }
-        }
-        else if (codigo == 28) // Salir de partida después de eliminación
-        {
-            // Formato: 28/usuario/accion (donde accion puede ser "ESPECTADOR" o "SALIR")
-
-            GameInfo *partida = obtener_partida_por_jugador(usuario);
-            if (partida != NULL)
-            {
-                if (strcmp(contrasena, "SALIR") == 0)
-                {
-                    // El jugador quiere salir del grupo completamente
-                    int grupo_id = obtener_grupo_id(usuario);
-
-                    if (grupo_id > 0)
-                    {
-                        // Notificar salida del grupo
-                        char mensaje_salida[256];
-                        snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
-                        broadcast_to_group(grupo_id, mensaje_salida);
-
-                        // Remover del grupo
-                        pthread_mutex_lock(&client_list_mutex);
-                        ClientNode *current = client_list;
-                        while (current != NULL)
-                        {
-                            if (strcmp(current->usuario, usuario) == 0)
-                            {
-                                current->grupo_id = 0;
-                                break;
-                            }
-                            current = current->next;
-                        }
-                        pthread_mutex_unlock(&client_list_mutex);
-
-                        printf("[PARTIDA] Jugador %s salió del grupo %d después de eliminación\n",
-                               usuario, grupo_id);
-
-                        strcpy(respuesta, "SALIDA_OK");
-                    }
-                }
-                else if (strcmp(contrasena, "ESPECTADOR") == 0)
-                {
-                    // El jugador se queda como espectador
-                    printf("[PARTIDA] Jugador %s se queda como espectador\n", usuario);
-                    strcpy(respuesta, "ESPECTADOR_OK");
-                }
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/No estás en una partida");
-            }
-        }
-        else if (codigo == 29) // Eliminar cuenta de usuario
-        {
-            printf("[BAJA] Solicitud de eliminación para usuario: %s\n", usuario);
-
-            // Verificar que el usuario existe
-            if (usuarioExiste(conn, usuario))
-            {
-                // Actualizar estado a desconectado
-                actualizarEstado(conn, usuario, 0);
-
-                // Eliminar el usuario
-                int resultado = eliminarUsuario(conn, usuario);
-
-                if (resultado == 0)
-                {
-                    printf("[BAJA] Usuario %s eliminado exitosamente\n", usuario);
-                    strcpy(respuesta, "BAJA_OK/Cuenta eliminada exitosamente");
-
-                    // **ENVIAR RESPUESTA PRIMERO**
-                    send(sock_conn, respuesta, strlen(respuesta), 0);
-
-                    // **LIMPIAR ESTE CLIENTE DE LA LISTA ANTES DEL BROADCAST**
-                    limpiar_cliente_desconectado(sock_conn, conn);
-
-                    // **ACTUALIZAR LISTA SOLO SI HAY OTROS CLIENTES**
-                    pthread_mutex_lock(&client_list_mutex);
-                    if (client_list != NULL)
-                    {
-                        char buffer[1024] = {0};
-                        listarConectados(conn, buffer, sizeof(buffer));
-                        broadcast_to_all(buffer);
-                    }
-                    pthread_mutex_unlock(&client_list_mutex);
-
-                    printf("[BAJA] Proceso de eliminación completado para %s\n", usuario);
-
-                    // **MARCAR PARA SALIR DEL BUCLE**
-                    break;
-                }
-                else
-                {
-                    strcpy(respuesta, "ERROR/Error al eliminar la cuenta");
-                }
-            }
-            else
-            {
-                strcpy(respuesta, "ERROR/El usuario no existe");
+                strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
             }
         }
         else
         {
-            strcpy(respuesta, "ERROR/Comando desconocido");
-        }
-
-        printf("Resultado: %s\n", respuesta);
-        if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
-        {
-            perror("Error al escribir en socket");
-            break;
+            strncpy(respuesta, "ERROR/No es tu turno para pasar", sizeof(respuesta));
         }
     }
-
-    // CLIENTE SE DESCONECTÓ - Limpiar recursos
-    printf("[DESCONEXIÓN] Cliente desconectado (socket %d)\n", sock_conn);
-
-    // Actualizar estado en base de datos si corresponde
-    if (strlen(usuario) > 0)
+    // Para código 23 (pedir turno)
+    else if (codigo == 23)
     {
-        actualizarEstado(conn, usuario, 0);
-        printf("[DESCONEXIÓN] Estado de %s actualizado a desconectado\n", usuario);
-    }
-
-    // Limpiar cliente de la lista global de forma segura
-    pthread_mutex_lock(&client_list_mutex);
-
-    ClientNode *current = client_list;
-    ClientNode *previous = NULL;
-    int grupo_usuario = 0;
-
-    while (current != NULL)
-    {
-        if (current->socket == sock_conn)
+        // Formato esperado: 23/usuario
+        // Aquí podríamos implementar una lógica para obtener el estado de la partida
+        GameInfo *partida = obtener_partida_por_jugador(usuario);
+        if (partida != NULL)
         {
-            // Guardar información del grupo antes de eliminar
-            grupo_usuario = current->grupo_id;
+            char mensaje_turno[100];
+            snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
+                     partida->jugadores[partida->turno_actual]);
+            printf("[TURNO] Enviando primer turno: '%s'\n", mensaje_turno);
+            broadcast_to_group(partida->grupo_id, mensaje_turno);
+            strcpy(respuesta, "PARTIDA/OK");
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/Error al obtener el turno");
+        }
+    }
+    else if (codigo == 24) // Desafío
+    {
+        printf("[DESAFÍO] Procesando desafío de usuario: %s\n", usuario);
 
-            printf("[DESCONEXIÓN] Removiendo usuario %s del grupo %d\n",
-                   current->usuario ? current->usuario : "desconocido", grupo_usuario);
+        GameInfo *partida = obtener_partida_por_jugador(usuario);
+        if (partida == NULL)
+        {
+            strcpy(respuesta, "ERROR/No estás en una partida activa");
+            continue;
+        }
 
-            // Remover de la lista
-            if (previous == NULL)
+        // Verificar si hay una jugada que desafiar
+        if (partida->num_cartas_ultima_jugada == 0)
+        {
+            strcpy(respuesta, "ERROR/No hay jugada que desafiar");
+            continue;
+        }
+
+        // Verificar cada carta de la última jugada
+        int cartas_invalidas = 0;
+        int mintiendo = 0;
+
+        for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+        {
+            if (partida->resultados_verificacion[i] == 0)
             {
-                client_list = current->next;
+                cartas_invalidas++;
+                mintiendo = 1;
+            }
+        }
+
+        printf("[DESAFÍO] Verificación completada. Mintiendo: %s\n", mintiendo ? "SÍ" : "NO");
+
+        char mensaje_resultado[512] = {0};
+
+        if (mintiendo)
+        {
+            // EL JUGADOR DESAFIADO MINTIÓ - Desafío exitoso
+            sprintf(mensaje_resultado, "DESAFIO/EXITO");
+
+            // Añadir las cartas que fueron jugadas
+            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+            {
+                char temp[50];
+                sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
+                strcat(mensaje_resultado, temp);
+            }
+
+            printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
+            broadcast_to_group(partida->grupo_id, mensaje_resultado);
+
+            // ELIMINAR AL JUGADOR QUE FUE DESAFIADO (el que mintió)
+            char *jugador_eliminado = partida->ultimo_jugador;
+            if (jugador_eliminado != NULL)
+            {
+                printf("[DESAFÍO] Eliminando al jugador que mintió: %s\n", jugador_eliminado);
+
+                // Notificar eliminación
+                char mensaje_eliminacion[100];
+                sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_eliminado);
+                broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
+
+                // Eliminar de la partida
+                eliminar_jugador_de_partida(partida, jugador_eliminado);
+            }
+
+            strcpy(respuesta, "DESAFIO_OK/Desafío exitoso - Jugador eliminado");
+        }
+        else
+        {
+            // EL JUGADOR DESAFIADO NO MINTIÓ - Desafío fallido
+            sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
+
+            // Añadir las cartas que SÍ eran válidas
+            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+            {
+                char temp[50];
+                sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
+                strcat(mensaje_resultado, temp);
+            }
+
+            printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
+            broadcast_to_group(partida->grupo_id, mensaje_resultado);
+
+            // ELIMINAR AL JUGADOR QUE DESAFIÓ INCORRECTAMENTE
+            printf("[DESAFÍO] Eliminando al jugador que desafió incorrectamente: %s\n", usuario);
+
+            // Notificar eliminación del desafiante
+            char mensaje_eliminacion[100];
+            sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", usuario);
+            broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
+
+            // Eliminar de la partida
+            eliminar_jugador_de_partida(partida, usuario);
+
+            strcpy(respuesta, "DESAFIO_OK/Desafío fallido - Tú has sido eliminado");
+        }
+    }
+    else if (codigo == 25) // Confirmar eliminación después de desafío
+    {
+        // Formato: 25/usuario
+        // Este mensaje lo envía el cliente cuando está listo para que se elimine al jugador
+
+        GameInfo *partida = obtener_partida_por_jugador(usuario);
+        if (partida != NULL && partida->eliminacion_pendiente)
+        {
+            // Proceder con la eliminación pendiente
+            char jugador_a_eliminar[50];
+            strcpy(jugador_a_eliminar, partida->jugador_pendiente_eliminacion);
+
+            // Eliminar al jugador (esto también avanzará a la siguiente ronda)
+            int resultado_eliminacion = eliminar_jugador_de_partida(partida, jugador_a_eliminar);
+
+            // Notificar sobre la eliminación
+            char mensaje_eliminacion[100];
+            sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_a_eliminar);
+            printf("[ELIMINACIÓN] Enviando notificación: %s\n", mensaje_eliminacion);
+            broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
+
+            // Restablecer estado
+            partida->eliminacion_pendiente = 0;
+            partida->jugador_pendiente_eliminacion[0] = '\0';
+
+            // Verificar si queda solo un jugador (ganador)
+            if (partida->num_jugadores_activos == 1)
+            {
+                // Buscar al jugador activo restante
+                char *ganador = NULL;
+                for (int i = 0; i < partida->num_jugadores; i++)
+                {
+                    if (!partida->jugadores_eliminados[i])
+                    {
+                        ganador = partida->jugadores[i];
+                        break;
+                    }
+                }
+                // Notificar fin de partida con ganador
+                if (ganador != NULL)
+                {
+                    char mensaje_ganador[100];
+                    sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+                    broadcast_to_group(partida->grupo_id, mensaje_ganador);
+                    partida->estado = 2; // Finalizada
+                }
+            }
+
+            strcpy(respuesta, "ELIMINACION_OK");
+        }
+        else if (partida && !partida->eliminacion_pendiente)
+        {
+            strcpy(respuesta, "ERROR/No hay eliminación pendiente");
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/No estás en una partida activa");
+        }
+    }
+    else if (codigo == 26) // Obtener carta de la ronda actual
+    {
+        GameInfo *partida = obtener_partida_por_jugador(usuario);
+        if (partida != NULL)
+        {
+            char carta_ronda[10] = {0};
+            obtener_carta_ronda_actual(partida, carta_ronda);
+            snprintf(respuesta, sizeof(respuesta), "CARTA_RONDA/%s", carta_ronda);
+            printf("[RONDA] Usuario %s solicita carta de ronda: %s\n", usuario, carta_ronda);
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/No estás en una partida activa");
+        }
+    }
+    else if (codigo == 27) // Abandonar partida
+    {
+        // Formato: 27/nombre_usuario
+
+        // Verificar si el usuario está en una partida
+        GameInfo *partida = obtener_partida_por_jugador(usuario);
+        if (partida != NULL)
+        {
+            // Verificar si la partida está en curso
+            if (partida->estado == 1) // Estado 1 = En curso
+            {
+                // Marcar que el jugador abandona (similar a eliminarlo)
+                int indice_jugador = -1;
+                for (int i = 0; i < partida->num_jugadores; i++)
+                {
+                    if (strcmp(partida->jugadores[i], usuario) == 0)
+                    {
+                        indice_jugador = i;
+                        break;
+                    }
+                }
+
+                if (indice_jugador != -1)
+                {
+                    // Marcar como eliminado
+                    partida->jugadores_eliminados[indice_jugador] = 1;
+                    partida->num_jugadores_activos--;
+
+                    // Notificar a los demás jugadores
+                    char mensaje_abandono[100];
+                    sprintf(mensaje_abandono, "JUGADOR_ABANDONO/%s", usuario);
+                    broadcast_to_group(partida->grupo_id, mensaje_abandono);
+
+                    printf("[PARTIDA] Jugador %s abandonó la partida %d\n",
+                           usuario, partida->partida_id);
+
+                    // Si era el turno de este jugador, avanzar el turno
+                    if (partida->turno_actual == indice_jugador)
+                    {
+                        avanzar_turno(partida->partida_id);
+                    }
+
+                    // Si solo queda un jugador activo, terminar la partida
+                    if (partida->num_jugadores_activos == 1)
+                    {
+                        // Buscar al ganador...
+                        char *ganador = NULL;
+                        for (int i = 0; i < partida->num_jugadores; i++)
+                        {
+                            if (partida->jugadores_eliminados[i] == 0)
+                            {
+                                ganador = partida->jugadores[i];
+                                break;
+                            }
+                        }
+
+                        if (ganador != NULL)
+                        {
+                            char mensaje_ganador[100];
+                            sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+                            broadcast_to_group(partida->grupo_id, mensaje_ganador);
+
+                            // DECLARAR Y USAR grupo_id correctamente:
+                            int grupo_id = partida->grupo_id; // ← Añadir esta línea
+                            partida->estado = 2;              // Finalizada
+
+                            // Esperar un momento para que se procese el mensaje de fin
+                            usleep(500000); // 0.5 segundos
+
+                            // Disolver el grupo
+                            disolver_grupo(grupo_id);
+
+                            printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
+                                   partida->partida_id, grupo_id);
+                        }
+                    }
+
+                    strcpy(respuesta, "ABANDONO_OK");
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/No se encontró al jugador en la partida");
+                }
             }
             else
             {
-                previous->next = current->next;
+                strcpy(respuesta, "ERROR/La partida no está en curso");
             }
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/No estás en una partida");
+        }
+    }
+    else if (codigo == 28) // Salir de partida después de eliminación
+    {
+        // Formato: 28/usuario/accion (donde accion puede ser "ESPECTADOR" o "SALIR")
 
-            // Liberar memoria
-            if (current->usuario)
+        GameInfo *partida = obtener_partida_por_jugador(usuario);
+        if (partida != NULL)
+        {
+            if (strcmp(contrasena, "SALIR") == 0)
             {
-                free(current->usuario);
+                // El jugador quiere salir del grupo completamente
+                int grupo_id = obtener_grupo_id(usuario);
+
+                if (grupo_id > 0)
+                {
+                    // Notificar salida del grupo
+                    char mensaje_salida[256];
+                    snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
+                    broadcast_to_group(grupo_id, mensaje_salida);
+
+                    // Remover del grupo
+                    pthread_mutex_lock(&client_list_mutex);
+                    ClientNode *current = client_list;
+                    while (current != NULL)
+                    {
+                        if (strcmp(current->usuario, usuario) == 0)
+                        {
+                            current->grupo_id = 0;
+                            break;
+                        }
+                        current = current->next;
+                    }
+                    pthread_mutex_unlock(&client_list_mutex);
+
+                    printf("[PARTIDA] Jugador %s salió del grupo %d después de eliminación\n",
+                           usuario, grupo_id);
+
+                    strcpy(respuesta, "SALIDA_OK");
+                }
             }
-            free(current);
-            break;
+            else if (strcmp(contrasena, "ESPECTADOR") == 0)
+            {
+                // El jugador se queda como espectador
+                printf("[PARTIDA] Jugador %s se queda como espectador\n", usuario);
+                strcpy(respuesta, "ESPECTADOR_OK");
+            }
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/No estás en una partida");
+        }
+    }
+    else if (codigo == 29) // Eliminar cuenta de usuario
+    {
+        printf("[BAJA] Solicitud de eliminación para usuario: %s\n", usuario);
+
+        // Verificar que el usuario existe
+        if (usuarioExiste(conn, usuario))
+        {
+            // Actualizar estado a desconectado
+            actualizarEstado(conn, usuario, 0);
+
+            // Eliminar el usuario
+            int resultado = eliminarUsuario(conn, usuario);
+
+            if (resultado == 0)
+            {
+                printf("[BAJA] Usuario %s eliminado exitosamente\n", usuario);
+                strcpy(respuesta, "BAJA_OK/Cuenta eliminada exitosamente");
+
+                // **ENVIAR RESPUESTA PRIMERO**
+                send(sock_conn, respuesta, strlen(respuesta), 0);
+
+                // **LIMPIAR ESTE CLIENTE DE LA LISTA ANTES DEL BROADCAST**
+                limpiar_cliente_desconectado(sock_conn, conn);
+
+                // **ACTUALIZAR LISTA SOLO SI HAY OTROS CLIENTES**
+                pthread_mutex_lock(&client_list_mutex);
+                if (client_list != NULL)
+                {
+                    char buffer[1024] = {0};
+                    listarConectados(conn, buffer, sizeof(buffer));
+                    broadcast_to_all(buffer);
+                }
+                pthread_mutex_unlock(&client_list_mutex);
+
+                printf("[BAJA] Proceso de eliminación completado para %s\n", usuario);
+
+                // **MARCAR PARA SALIR DEL BUCLE**
+                break;
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Error al eliminar la cuenta");
+            }
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/El usuario no existe");
+        }
+    }
+    else
+    {
+        strcpy(respuesta, "ERROR/Comando desconocido");
+    }
+
+    printf("Resultado: %s\n", respuesta);
+    if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
+    {
+        perror("Error al escribir en socket");
+        break;
+    }
+}
+
+// CLIENTE SE DESCONECTÓ - Limpiar recursos
+printf("[DESCONEXIÓN] Cliente desconectado (socket %d)\n", sock_conn);
+
+// Actualizar estado en base de datos si corresponde
+if (strlen(usuario) > 0)
+{
+    actualizarEstado(conn, usuario, 0);
+    printf("[DESCONEXIÓN] Estado de %s actualizado a desconectado\n", usuario);
+}
+
+// Limpiar cliente de la lista global de forma segura
+pthread_mutex_lock(&client_list_mutex);
+
+ClientNode *current = client_list;
+ClientNode *previous = NULL;
+int grupo_usuario = 0;
+
+while (current != NULL)
+{
+    if (current->socket == sock_conn)
+    {
+        // Guardar información del grupo antes de eliminar
+        grupo_usuario = current->grupo_id;
+
+        printf("[DESCONEXIÓN] Removiendo usuario %s del grupo %d\n",
+               current->usuario ? current->usuario : "desconocido", grupo_usuario);
+
+        // Remover de la lista
+        if (previous == NULL)
+        {
+            client_list = current->next;
+        }
+        else
+        {
+            previous->next = current->next;
         }
 
-        previous = current;
-        current = current->next;
+        // Liberar memoria
+        if (current->usuario)
+        {
+            free(current->usuario);
+        }
+        free(current);
+        break;
     }
 
-    pthread_mutex_unlock(&client_list_mutex);
+    previous = current;
+    current = current->next;
+}
 
-    // Notificar al grupo DESPUÉS de liberar el mutex
-    if (grupo_usuario > 0 && strlen(usuario) > 0)
-    {
-        char mensaje_desconexion[256];
-        snprintf(mensaje_desconexion, sizeof(mensaje_desconexion),
-                 "JUGADOR_DESCONECTADO/%s", usuario);
+pthread_mutex_unlock(&client_list_mutex);
 
-        printf("[DESCONEXIÓN] Notificando desconexión al grupo %d\n", grupo_usuario);
+// Notificar al grupo DESPUÉS de liberar el mutex
+if (grupo_usuario > 0 && strlen(usuario) > 0)
+{
+    char mensaje_desconexion[256];
+    snprintf(mensaje_desconexion, sizeof(mensaje_desconexion),
+             "JUGADOR_DESCONECTADO/%s", usuario);
 
-        // Esta llamada ya no incluirá al socket cerrado porque lo removimos de la lista
-        broadcast_to_group(grupo_usuario, mensaje_desconexion);
-    }
+    printf("[DESCONEXIÓN] Notificando desconexión al grupo %d\n", grupo_usuario);
 
-    // Cerrar socket de forma segura
-    if (sock_conn > 0)
-    {
-        shutdown(sock_conn, SHUT_RDWR);
-        close(sock_conn);
-        printf("[DESCONEXIÓN] Socket %d cerrado correctamente\n", sock_conn);
-    }
+    // Esta llamada ya no incluirá al socket cerrado porque lo removimos de la lista
+    broadcast_to_group(grupo_usuario, mensaje_desconexion);
+}
 
-    // Cerrar conexión MySQL
-    if (conn)
-    {
-        mysql_close(conn);
-    }
+// Cerrar socket de forma segura
+if (sock_conn > 0)
+{
+    shutdown(sock_conn, SHUT_RDWR);
+    close(sock_conn);
+    printf("[DESCONEXIÓN] Socket %d cerrado correctamente\n", sock_conn);
+}
 
-    printf("[DESCONEXIÓN] Limpieza completa para socket %d\n", sock_conn);
+// Cerrar conexión MySQL
+if (conn)
+{
+    mysql_close(conn);
+}
 
-    return NULL;
+printf("[DESCONEXIÓN] Limpieza completa para socket %d\n", sock_conn);
+
+return NULL;
 }
 
 int main(int argc, char *argv[])
