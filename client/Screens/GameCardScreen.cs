@@ -426,11 +426,6 @@ namespace Duska.Screens
             {
                 Debug.WriteLine($"[DISPOSE] Cerrando GameCardScreen con partida ID: {_partidaId}");
 
-                if (_partidaId > 0)
-                {
-                    MultiGameManager.Instance.CerrarVentanaJuego(_partidaId);
-                }
-
                 stopMessageListener = true;
 
                 if (server != null)

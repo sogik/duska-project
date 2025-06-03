@@ -55,7 +55,7 @@ namespace Duska.Screens
             base.LoadContent();
 
             // **INICIALIZAR MultiGameManager**
-            MultiGameManager.Instance.Initialize(Game, usuario, ScreenManager, GraphicsDevice);
+            GameWindowManager.Instance.Initialize(usuario);
 
             // IMPORTANTE: Limpiar y reinicializar la interfaz de usuario SIEMPRE
             if (UserInterface.Active != null)
@@ -170,43 +170,122 @@ namespace Duska.Screens
 
         private void MostrarPanelPartidas()
         {
-            Panel panel = new Panel(new Vector2(450, -1));
-            panel.Visible = true;
-            UserInterface.Active.AddEntity(panel);
-
-            panel.AddChild(new Header("Mis Partidas Activas"));
-            panel.AddChild(new HorizontalLine());
-
-            // Obtener partidas activas del MultiGameManager
-            var partidasActivas = MultiGameManager.Instance.GetPartidaActivas();
-
-            if (partidasActivas.Count > 0)
+            try
             {
-                foreach (int partidaId in partidasActivas)
+                Panel panel = new Panel(new Vector2(450, 400));
+                panel.Visible = true;
+                UserInterface.Active.AddEntity(panel);
+
+                panel.AddChild(new Header("Mis Partidas Activas"));
+                panel.AddChild(new HorizontalLine());
+
+                // **OBTENER PARTIDAS ACTIVAS**
+                var partidasActivas = GameWindowManager.Instance.GetPartidasActivas();
+
+                if (partidasActivas.Count > 0)
                 {
-                    Button partidaBtn = new Button($"Partida #{partidaId}");
-                    partidaBtn.OnClick = (Entity btn) =>
+                    panel.AddChild(new Paragraph($"Tienes {partidasActivas.Count} partida(s) activa(s):"));
+                    panel.AddChild(new HorizontalLine());
+
+                    foreach (int partidaId in partidasActivas)
                     {
-                        // Enfocar en la ventana de esta partida (implementar según necesidades)
-                        Debug.WriteLine($"[MULTI] Enfocando partida {partidaId}");
-                    };
-                    panel.AddChild(partidaBtn);
+                        Panel partidaPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
+
+                        Paragraph partidaInfo = new Paragraph($"🎮 Partida #{partidaId}");
+                        partidaInfo.FillColor = Color.LightGreen;
+                        partidaPanel.AddChild(partidaInfo);
+
+                        Button enfocarBtn = new Button("Enfocar Ventana");
+                        enfocarBtn.Size = new Vector2(150, 30);
+                        enfocarBtn.Anchor = Anchor.TopRight;
+                        enfocarBtn.OnClick = (Entity btn) =>
+                        {
+                            Debug.WriteLine($"[PARTIDAS] Enfocando partida {partidaId}");
+                            // Aquí podrías implementar lógica para enfocar la ventana específica
+                        };
+                        partidaPanel.AddChild(enfocarBtn);
+
+                        panel.AddChild(partidaPanel);
+                    }
                 }
-            }
-            else
-            {
-                panel.AddChild(new Paragraph("No tienes partidas activas"));
-            }
+                else
+                {
+                    panel.AddChild(new Paragraph("No tienes partidas activas"));
+                    panel.AddChild(new Paragraph("Acepta una invitación o crea un grupo para empezar"));
+                }
 
-            panel.AddChild(new HorizontalLine());
+                panel.AddChild(new HorizontalLine());
 
-            Button cerrarBtn = new Button("Cerrar");
-            cerrarBtn.OnClick = (Entity btn) =>
+                Button cerrarBtn = new Button("Cerrar");
+                cerrarBtn.OnClick = (Entity btn) =>
+                {
+                    panel.Visible = false;
+                    UserInterface.Active.RemoveEntity(panel);
+                };
+                panel.AddChild(cerrarBtn);
+
+                Debug.WriteLine($"[PARTIDAS] Panel mostrado con {partidasActivas.Count} partidas");
+            }
+            catch (Exception ex)
             {
-                panel.Visible = false;
-                UserInterface.Active.RemoveEntity(panel);
-            };
-            panel.AddChild(cerrarBtn);
+                Debug.WriteLine($"[ERROR] Error mostrando panel de partidas: {ex.Message}");
+            }
+        }
+
+        private void MostrarPanelNuevaPartida(int partidaId)
+        {
+            try
+            {
+                Debug.WriteLine($"[PANEL] Creando panel para partida {partidaId}");
+
+                Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
+                panel.Visible = true;
+                UserInterface.Active.AddEntity(panel);
+
+                panel.AddChild(new Header("¡Nueva Partida Iniciada!"));
+                panel.AddChild(new HorizontalLine());
+
+                panel.AddChild(new Paragraph($"Se ha iniciado la partida #{partidaId}"));
+                panel.AddChild(new Paragraph("¿Quieres abrir una nueva ventana de juego?"));
+                panel.AddChild(new HorizontalLine());
+
+                Button abrirBtn = new Button("Abrir Nueva Ventana");
+                abrirBtn.OnClick = (Entity btn) =>
+                {
+                    try
+                    {
+                        Debug.WriteLine($"[PANEL] Solicitando nueva ventana para partida {partidaId}");
+
+                        string mensaje = $"30/{usuario}/{partidaId}";
+                        byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
+                        server.Send(msg);
+
+                        panel.Visible = false;
+                        UserInterface.Active.RemoveEntity(panel);
+
+                        Debug.WriteLine($"[PANEL] Solicitud enviada para partida {partidaId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] Error al solicitar ventana: {ex.Message}");
+                    }
+                };
+                panel.AddChild(abrirBtn);
+
+                Button cerrarBtn = new Button("Más Tarde");
+                cerrarBtn.OnClick = (Entity btn) =>
+                {
+                    panel.Visible = false;
+                    UserInterface.Active.RemoveEntity(panel);
+                };
+                panel.AddChild(cerrarBtn);
+
+                Debug.WriteLine($"[PANEL] Panel creado correctamente para partida {partidaId}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error creando panel: {ex.Message}");
+            }
         }
 
         private void SolicitarEstadoLider()
@@ -1127,21 +1206,19 @@ namespace Duska.Screens
                 if (int.TryParse(partidaIdStr, out int partidaId))
                 {
                     Debug.WriteLine($"[MULTI] Nueva partida iniciada: {partidaId}");
-
-                    // Mostrar panel de confirmación para abrir nueva ventana
                     MostrarPanelNuevaPartida(partidaId);
                 }
                 return;
             }
-            else if (message.StartsWith("ABRIR_VENTANA_JUEGO/"))
+            if (message.StartsWith("ABRIR_VENTANA_JUEGO/"))
             {
                 string partidaIdStr = message.Substring(20);
                 if (int.TryParse(partidaIdStr, out int partidaId))
                 {
                     Debug.WriteLine($"[MULTI] Confirmación para abrir ventana de partida: {partidaId}");
 
-                    // **ABRIR NUEVA VENTANA DE JUEGO INMEDIATAMENTE**
-                    MultiGameManager.Instance.AbrirNuevaVentanaJuego(partidaId, server);
+                    // **ABRIR NUEVA VENTANA REAL**
+                    GameWindowManager.Instance.AbrirNuevaVentanaPartida(partidaId, server);
                 }
                 return;
             }

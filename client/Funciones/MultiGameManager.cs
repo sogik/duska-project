@@ -1,106 +1,94 @@
 using System;
 using System.Collections.Generic;
-using System.Net.Sockets;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics; // **AÑADIR ESTA LÍNEA**
 using System.Diagnostics;
-using MonoGame.Extended.Screens;
-using MonoGame.Extended.Screens.Transitions;
-using Duska.Screens;
+using System.Threading;
+using Microsoft.Xna.Framework;
+using System.Net.Sockets;
 
 namespace Duska.Core
 {
-    public class MultiGameManager
+    public class GameWindowManager
     {
-        private static MultiGameManager _instance;
-        public static MultiGameManager Instance
+        private static GameWindowManager _instance;
+        public static GameWindowManager Instance
         {
             get
             {
                 if (_instance == null)
-                    _instance = new MultiGameManager();
+                    _instance = new GameWindowManager();
                 return _instance;
             }
         }
 
-        private Dictionary<int, GameCardScreen> _ventanasJuego;
-        private Dictionary<int, Socket> _socketsPartida;
-        private Game _game;
+        private Dictionary<int, GameWindowInstance> _ventanasAbiertas;
         private string _usuario;
-        private ScreenManager _screenManager;
-        private GraphicsDevice _graphicsDevice;
 
-        private MultiGameManager()
+        private GameWindowManager()
         {
-            _ventanasJuego = new Dictionary<int, GameCardScreen>();
-            _socketsPartida = new Dictionary<int, Socket>();
+            _ventanasAbiertas = new Dictionary<int, GameWindowInstance>();
         }
 
-        public void Initialize(Game game, string usuario, ScreenManager screenManager, GraphicsDevice graphicsDevice)
+        public void Initialize(string usuario)
         {
-            _game = game;
             _usuario = usuario;
-            _screenManager = screenManager;
-            _graphicsDevice = graphicsDevice;
-            Debug.WriteLine("[MULTI] MultiGameManager inicializado correctamente");
+            Debug.WriteLine("[WINDOW_MANAGER] Inicializado para usuario: " + usuario);
         }
 
-        public void AbrirNuevaVentanaJuego(int partidaId, Socket socketPrincipal)
+        public void AbrirNuevaVentanaPartida(int partidaId, Socket socketBase)
         {
             try
             {
-                Debug.WriteLine($"[MULTI] Abriendo nueva ventana de juego para partida {partidaId}");
+                Debug.WriteLine($"[WINDOW_MANAGER] Creando nueva ventana para partida {partidaId}");
 
-                if (_ventanasJuego.ContainsKey(partidaId))
+                if (_ventanasAbiertas.ContainsKey(partidaId))
                 {
-                    Debug.WriteLine($"[MULTI] La partida {partidaId} ya está abierta");
+                    Debug.WriteLine($"[WINDOW_MANAGER] La partida {partidaId} ya tiene ventana abierta");
                     return;
                 }
 
-                // **CREAR NUEVA PANTALLA DE JUEGO**
-                var gameScreen = new GameCardScreen(_game, _usuario);
-                gameScreen.SetPartidaId(partidaId);
-
-                // **USAR EL SOCKET EXISTENTE PARA ESTA NUEVA PANTALLA**
-                gameScreen.SetExistingSocket(socketPrincipal);
-
-                // **GUARDAR REFERENCIA**
-                _ventanasJuego[partidaId] = gameScreen;
-                _socketsPartida[partidaId] = socketPrincipal;
-
-                // **CAMBIAR A LA PANTALLA DE JUEGO**
-                if (_screenManager != null)
+                // **CREAR NUEVA VENTANA DE JUEGO EN HILO SEPARADO**
+                Thread windowThread = new Thread(() =>
                 {
-                    _screenManager.LoadScreen(gameScreen, new FadeTransition(_graphicsDevice, Color.Black, 0.5f));
-                    Debug.WriteLine($"[MULTI] Cambiando a pantalla de juego para partida {partidaId}");
-                }
-                else
-                {
-                    Debug.WriteLine("[ERROR] ScreenManager es null - no se puede cambiar de pantalla");
-                }
+                    try
+                    {
+                        Debug.WriteLine($"[WINDOW_THREAD] Iniciando ventana para partida {partidaId}");
+
+                        // Crear nueva instancia del juego
+                        var gameInstance = new GameWindowInstance(_usuario, partidaId, socketBase);
+                        _ventanasAbiertas[partidaId] = gameInstance;
+
+                        // Ejecutar el juego (esto abrirá una nueva ventana)
+                        gameInstance.RunOneFrame();
+
+                        Debug.WriteLine($"[WINDOW_THREAD] Ventana de partida {partidaId} iniciada");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] Error en hilo de ventana: {ex.Message}");
+                    }
+                });
+
+                windowThread.SetApartmentState(ApartmentState.STA);
+                windowThread.Start();
+
+                Debug.WriteLine($"[WINDOW_MANAGER] Hilo de ventana iniciado para partida {partidaId}");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[ERROR] Error al abrir ventana de juego: {ex.Message}");
+                Debug.WriteLine($"[ERROR] Error al crear ventana: {ex.Message}");
             }
         }
 
-        public void CerrarVentanaJuego(int partidaId)
+        public void CerrarVentanaPartida(int partidaId)
         {
             try
             {
-                if (_ventanasJuego.ContainsKey(partidaId))
+                if (_ventanasAbiertas.ContainsKey(partidaId))
                 {
-                    _ventanasJuego[partidaId]?.Dispose();
-                    _ventanasJuego.Remove(partidaId);
+                    _ventanasAbiertas[partidaId].Dispose();
+                    _ventanasAbiertas.Remove(partidaId);
+                    Debug.WriteLine($"[WINDOW_MANAGER] Ventana de partida {partidaId} cerrada");
                 }
-
-                if (_socketsPartida.ContainsKey(partidaId))
-                {
-                    _socketsPartida.Remove(partidaId);
-                }
-
-                Debug.WriteLine($"[MULTI] Ventana de juego {partidaId} cerrada");
             }
             catch (Exception ex)
             {
@@ -108,23 +96,117 @@ namespace Duska.Core
             }
         }
 
-        public List<int> GetPartidaActivas()
+        public List<int> GetPartidasActivas()
         {
-            return new List<int>(_ventanasJuego.Keys);
+            return new List<int>(_ventanasAbiertas.Keys);
         }
 
-        public bool TienePartidaActiva(int partidaId)
+        public bool TieneVentanaAbierta(int partidaId)
         {
-            return _ventanasJuego.ContainsKey(partidaId);
+            return _ventanasAbiertas.ContainsKey(partidaId);
+        }
+    }
+
+    // **CLASE PARA INSTANCIA DE VENTANA DE JUEGO**
+    public class GameWindowInstance : Game
+    {
+        private GraphicsDeviceManager _graphics;
+        private string _usuario;
+        private int _partidaId;
+        private Socket _socket;
+        private Duska.Screens.GameCardScreen _gameScreen;
+
+        public GameWindowInstance(string usuario, int partidaId, Socket socket)
+        {
+            _graphics = new GraphicsDeviceManager(this);
+            Content.RootDirectory = "Content";
+
+            _usuario = usuario;
+            _partidaId = partidaId;
+            _socket = socket;
+
+            // Configurar ventana
+            Window.Title = $"Duska - Partida #{partidaId} - {usuario}";
+            _graphics.PreferredBackBufferWidth = 1280;
+            _graphics.PreferredBackBufferHeight = 720;
+
+            Debug.WriteLine($"[GAME_INSTANCE] Instancia creada para partida {partidaId}");
         }
 
-        public GameCardScreen GetGameScreen(int partidaId)
+        protected override void LoadContent()
         {
-            if (_ventanasJuego.ContainsKey(partidaId))
+            try
             {
-                return _ventanasJuego[partidaId];
+                Debug.WriteLine($"[GAME_INSTANCE] Cargando contenido para partida {_partidaId}");
+
+                // Crear y configurar la pantalla de juego
+                _gameScreen = new Duska.Screens.GameCardScreen(this, _usuario);
+                _gameScreen.SetPartidaId(_partidaId);
+                _gameScreen.SetExistingSocket(_socket);
+
+                // Cargar contenido de la pantalla
+                _gameScreen.LoadContent();
+
+                Debug.WriteLine($"[GAME_INSTANCE] Contenido cargado para partida {_partidaId}");
             }
-            return null;
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al cargar contenido: {ex.Message}");
+            }
+        }
+
+        protected override void Update(GameTime gameTime)
+        {
+            try
+            {
+                if (_gameScreen != null)
+                {
+                    _gameScreen.Update(gameTime);
+                }
+                base.Update(gameTime);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error en Update: {ex.Message}");
+            }
+        }
+
+        protected override void Draw(GameTime gameTime)
+        {
+            try
+            {
+                GraphicsDevice.Clear(Color.DarkBlue);
+
+                if (_gameScreen != null)
+                {
+                    _gameScreen.Draw(gameTime);
+                }
+
+                base.Draw(gameTime);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error en Draw: {ex.Message}");
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            try
+            {
+                Debug.WriteLine($"[GAME_INSTANCE] Dispose de partida {_partidaId}");
+
+                _gameScreen?.Dispose();
+
+                // Remover de la lista de ventanas activas
+                GameWindowManager.Instance.CerrarVentanaPartida(_partidaId);
+
+                base.Dispose(disposing);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error en Dispose: {ex.Message}");
+            }
         }
     }
 }
