@@ -398,6 +398,9 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
     {
         strcat(lista, "PARTIDAS/");
 
+        // **FIX 1: Contar las filas antes del bucle**
+        uint64_t num_filas = mysql_num_rows(res);
+
         while ((row = mysql_fetch_row(res)))
         {
             char entrada[256];
@@ -413,8 +416,12 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
                      row[7] ? row[7] : "0",            // ronda_actual
                      row[8] ? row[8] : "No_definida"); // carta_designada
 
-            // Verificar que no se exceda el tamaño del buffer
-            if (strlen(lista) + strlen(entrada) < tamano_lista - 1)
+            // **FIX 2: Cast explícito para evitar warning de signedness**
+            size_t longitud_actual = strlen(lista);
+            size_t longitud_entrada = strlen(entrada);
+            size_t tamano_maximo = (size_t)(tamano_lista - 1);
+
+            if (longitud_actual + longitud_entrada < tamano_maximo)
             {
                 strcat(lista, entrada);
             }
@@ -425,7 +432,9 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
         }
 
         mysql_free_result(res);
-        printf("[BD] Lista de partidas generada con %d entradas\n", mysql_num_rows(res));
+
+        // **FIX 3: Cast para el printf**
+        printf("[BD] Lista de partidas generada con %lu entradas\n", (unsigned long)num_filas);
     }
     else
     {
