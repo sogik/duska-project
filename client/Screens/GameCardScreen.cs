@@ -35,6 +35,8 @@ namespace Duska.Screens
         private int rondaActual = 0;
         private Socket server;
         private Thread messageListenerThread;
+
+        private const float DURACION_DESAFIO = 3.0f;
         private bool isReconnecting = false;
         private volatile bool stopMessageListener = false;
         private bool conectado = false;
@@ -971,11 +973,14 @@ namespace Duska.Screens
                 Debug.WriteLine("[UI] *** Panel partida cancelada creado exitosamente ***");
 
                 // Auto-regresar después de 10 segundos
-                System.Threading.Tasks.Task.Delay(10000).ContinueWith(_ =>
+                // En MostrarPanelPartidaCancelada, cambiar el auto-regreso:
+
+                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS**
+                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
                 {
                     if (panel.Visible)
                     {
-                        Debug.WriteLine("[PARTIDA_CANCELADA] Auto-regreso al menú después de 10 segundos");
+                        Debug.WriteLine("[PARTIDA_CANCELADA] Auto-regreso al menú después de 15 segundos");
                         RegresarAlMenuPrincipal();
                     }
                 });
@@ -1137,13 +1142,16 @@ namespace Duska.Screens
                 Debug.WriteLine("[UI] *** Panel fin de partida creado y añadido exitosamente ***");
 
                 // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS**
-                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
+                // En MostrarPanelFinPartida, cambiar el auto-regreso:
+
+                // **AUTO-REGRESAR DESPUÉS DE 20 SEGUNDOS EN LUGAR DE 15**
+                System.Threading.Tasks.Task.Delay(20000).ContinueWith(_ =>
                 {
                     try
                     {
                         if (panel != null && panel.Visible)
                         {
-                            Debug.WriteLine("[UI] Auto-regreso después de 15 segundos");
+                            Debug.WriteLine("[UI] Auto-regreso después de 20 segundos");
                             RegresarAlMenuPrincipal();
                         }
                     }
@@ -1235,6 +1243,9 @@ namespace Duska.Screens
 
             Debug.WriteLine($"[DESAFÍO] Preparando {cartasJugadas.Length} cartas para visualización");
 
+            // **AÑADIR MENSAJE AL CHAT**
+            ChatPanel(true, "Sistema/Mostrando resultado del desafío durante 3 segundos...");
+
             // Para cada carta jugada, determinar si es válida según la carta de ronda
             foreach (string nombreCarta in cartasJugadas)
             {
@@ -1250,13 +1261,15 @@ namespace Duska.Screens
                     bool esValida = EsCartaValidaParaRonda(nombreCarta, carta_ronda_actual);
                     cartasDesafioValidas.Add(esValida);
 
-                    Debug.WriteLine($"[DESAFÍO] Carta {nombreCarta}: {(esValida ? "VÁLIDA" : "INVÁLIDA")}");
+                    Debug.WriteLine($"[DESAFÍO] Carta {nombreCarta}: {(esValida ? "VÁLIDA (verde)" : "INVÁLIDA (roja)")}");
                 }
             }
 
-            // Activar la visualización y reiniciar el temporizador
+            // **ACTIVAR LA VISUALIZACIÓN Y REINICIAR EL TEMPORIZADOR**
             mostrandoDesafio = true;
             tiempoDesafio = 0f;
+
+            Debug.WriteLine("[DESAFÍO] Iniciando visualización de 3 segundos");
         }
 
         // Método para determinar si una carta es válida para la ronda actual
@@ -2298,21 +2311,24 @@ namespace Duska.Screens
                     ratónSobreUI = UserInterface.Active.TargetEntity != null && UserInterface.Active.TargetEntity.IsMouseOver;
                 }
 
-                /*if (mostrandoDesafio)
+                if (mostrandoDesafio)
                 {
-                    // Incrementar el contador de tiempo
+                    // **INCREMENTAR EL CONTADOR DE TIEMPO**
                     tiempoDesafio += (float)gameTime.ElapsedGameTime.TotalSeconds;
 
-                    // Verificar si ha pasado el tiempo de visualización
+                    // **VERIFICAR SI HA PASADO EL TIEMPO (3 SEGUNDOS)**
                     if (tiempoDesafio >= DURACION_DESAFIO)
                     {
-                        // Finalizar la visualización
+                        // **FINALIZAR LA VISUALIZACIÓN**
                         mostrandoDesafio = false;
 
-                        // Enviar confirmación al servidor para que proceda con la eliminación
-                        EnviarConfirmacionEliminacion();
+                        Debug.WriteLine("[DESAFÍO] Tiempo de visualización completado (3 segundos)");
+
+                        // **LIMPIAR LAS LISTAS DE DESAFÍO**
+                        cartasDesafio.Clear();
+                        cartasDesafioValidas.Clear();
                     }
-                }*/
+                }
 
                 // Solo procesar teclas de juego si el ratón no está sobre la UI
                 if (!ratónSobreUI)
@@ -2478,13 +2494,16 @@ namespace Duska.Screens
                 Debug.WriteLine("[PANEL] *** PANEL DE ELIMINACIÓN CREADO Y MOSTRADO ***");
 
                 // **AUTO-REGRESAR DESPUÉS DE 8 SEGUNDOS**
-                System.Threading.Tasks.Task.Delay(8000).ContinueWith(_ =>
+                // En MostrarPanelEliminacionDefinitivo, cambiar el auto-regreso:
+
+                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 8**
+                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
                 {
                     try
                     {
                         if (panelEliminacion != null && panelEliminacion.Visible && estoyEliminado)
                         {
-                            Debug.WriteLine("[PANEL] Auto-regreso después de 8 segundos");
+                            Debug.WriteLine("[PANEL] Auto-regreso después de 15 segundos");
                             RegresarAlMenuPrincipal();
                         }
                     }
@@ -2697,11 +2716,14 @@ namespace Duska.Screens
                 Debug.WriteLine("[UI] *** PANEL ELIMINACIÓN GEONBIT CREADO Y VISIBLE ***");
 
                 // **AUTO-REGRESAR MÁS RÁPIDO**
-                System.Threading.Tasks.Task.Delay(7000).ContinueWith(_ =>
+                // En MostrarPanelEliminacionGeonbit, cambiar el auto-regreso:
+
+                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 7**
+                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
                 {
                     if (panel != null && panel.Visible && estoyEliminado)
                     {
-                        Debug.WriteLine("[UI] Auto-regreso por timeout");
+                        Debug.WriteLine("[UI] Auto-regreso por timeout después de 15 segundos");
                         RegresarAlMenuPrincipal();
                     }
                 });
