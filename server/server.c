@@ -477,7 +477,7 @@ void broadcast_to_all(const char *mensaje)
     printf("[BROADCAST] Broadcast completado\n");
 }
 
-void limpiar_cliente_desconectado(int socket)
+void limpiar_cliente_desconectado(int socket, MYSQL *conn)
 {
     pthread_mutex_lock(&client_list_mutex);
 
@@ -490,10 +490,9 @@ void limpiar_cliente_desconectado(int socket)
         {
             printf("[CLEANUP] Limpiando cliente: %s (socket %d)\n", current->usuario, socket);
 
-            // Actualizar estado en base de datos
-            if (strlen(current->usuario) > 0)
+            // Actualizar estado en base de datos si conn es válido
+            if (conn != NULL && strlen(current->usuario) > 0)
             {
-                extern MYSQL *conn; // Asumiendo que conn es global
                 actualizarEstado(conn, current->usuario, 0);
             }
 
@@ -824,8 +823,8 @@ void *cliente(void *socket_ptr)
                 printf("[DESCONEXION] Error de conexión con %s: %s\n", usuario, strerror(errno));
             }
 
-            // Limpiar cliente de la lista
-            limpiar_cliente_desconectado(sock_conn);
+            // **PASAR conn COMO PARÁMETRO**
+            limpiar_cliente_desconectado(sock_conn, conn);
 
             // Actualizar estado en base de datos
             if (strlen(usuario) > 0)
@@ -1787,7 +1786,7 @@ void *cliente(void *socket_ptr)
                     send(sock_conn, respuesta, strlen(respuesta), 0);
 
                     // **LIMPIAR ESTE CLIENTE DE LA LISTA ANTES DEL BROADCAST**
-                    limpiar_cliente_desconectado(sock_conn);
+                    limpiar_cliente_desconectado(sock, conn);
 
                     // **ACTUALIZAR LISTA SOLO SI HAY OTROS CLIENTES**
                     pthread_mutex_lock(&client_list_mutex);
