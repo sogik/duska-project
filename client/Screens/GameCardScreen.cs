@@ -2142,7 +2142,7 @@ namespace Duska.Screens
             }
         }
 
-        private void EnviarConfirmacionEliminacion()
+        /*private void EnviarConfirmacionEliminacion()
         {
             try
             {
@@ -2157,7 +2157,7 @@ namespace Duska.Screens
             {
                 Debug.WriteLine($"[ERROR] Error al enviar confirmación de eliminación: {ex.Message}");
             }
-        }
+        }*/
 
         private void LimpiarCartasEnviadas()
         {
@@ -2239,17 +2239,14 @@ namespace Duska.Screens
                         {
                             Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL GEONBIT DE ELIMINACIÓN ***");
                             MostrarPanelEliminacionGeonbit();
-                        }
-                        else if (mensaje == "MOSTRAR_PANEL_ELIMINADO")
-                        {
-                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL SIMPLE DE ELIMINACIÓN ***");
-                            MostrarPanelEliminacionDefinitivo();
+                            return; // **SALIR INMEDIATAMENTE**
                         }
                         else if (mensaje.StartsWith("MOSTRAR_PANEL_FIN_PARTIDA/"))
                         {
                             string ganador = mensaje.Substring(26);
                             Debug.WriteLine($"[UPDATE] *** MOSTRANDO PANEL FIN PARTIDA - GANADOR: {ganador} ***");
                             MostrarPanelFinPartida(ganador);
+                            return; // **SALIR INMEDIATAMENTE**
                         }
                         else if (mensaje.StartsWith("CARDS/"))
                         {
@@ -2262,18 +2259,12 @@ namespace Duska.Screens
                             Debug.WriteLine("[UPDATE] *** ACTUALIZANDO CHAT ***");
                             ActualizarSoloPanelMensajes();
                         }
-                        else if (mensaje == "MOSTRAR_PANEL_ELIMINADO_GEONBIT")
-                        {
-                            Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL GEONBIT DE ELIMINACIÓN ***");
-                            MostrarPanelEliminacionGeonbit();
-                        }
                         else
                         {
                             Debug.WriteLine($"[UPDATE] Mensaje no reconocido: {mensaje}");
                         }
                     }
                 }
-
                 // **ACTUALIZAR UI SI HAY CAMBIOS EN CHAT**
                 if (mensajesProcesados)
                 {
@@ -2307,7 +2298,7 @@ namespace Duska.Screens
                     ratónSobreUI = UserInterface.Active.TargetEntity != null && UserInterface.Active.TargetEntity.IsMouseOver;
                 }
 
-                if (mostrandoDesafio)
+                /*if (mostrandoDesafio)
                 {
                     // Incrementar el contador de tiempo
                     tiempoDesafio += (float)gameTime.ElapsedGameTime.TotalSeconds;
@@ -2321,7 +2312,7 @@ namespace Duska.Screens
                         // Enviar confirmación al servidor para que proceda con la eliminación
                         EnviarConfirmacionEliminacion();
                     }
-                }
+                }*/
 
                 // Solo procesar teclas de juego si el ratón no está sobre la UI
                 if (!ratónSobreUI)

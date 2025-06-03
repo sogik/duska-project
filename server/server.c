@@ -1500,23 +1500,29 @@ void *cliente(void *socket_ptr)
         }
         else if (codigo == 24) // Desafío
         {
-            printf("[DESAFÍO] Procesando desafío de usuario: %s\n", usuario);
+            printf("[DESAFÍO] ===== PROCESANDO DESAFÍO =====\n");
+            printf("[DESAFÍO] Usuario que desafía: %s\n", usuario);
 
             GameInfo *partida = obtener_partida_por_jugador(usuario);
             if (partida == NULL)
             {
                 strcpy(respuesta, "ERROR/No estás en una partida activa");
+                printf("[DESAFÍO] Error: Usuario no está en partida\n");
                 continue;
             }
 
             // Verificar si hay una jugada que desafiar
-            if (partida->num_cartas_ultima_jugada == 0)
+            if (partida->num_cartas_ultima_jugada == 0 || strlen(partida->ultimo_jugador) == 0)
             {
                 strcpy(respuesta, "ERROR/No hay jugada que desafiar");
+                printf("[DESAFÍO] Error: No hay jugada previa\n");
                 continue;
             }
 
-            // Verificar cada carta de la última jugada
+            printf("[DESAFÍO] Última jugada: %d cartas de %s\n",
+                   partida->num_cartas_ultima_jugada, partida->ultimo_jugador);
+
+            // **VERIFICAR CADA CARTA DE LA ÚLTIMA JUGADA**
             int cartas_invalidas = 0;
             int mintiendo = 0;
 
@@ -1527,18 +1533,23 @@ void *cliente(void *socket_ptr)
                     cartas_invalidas++;
                     mintiendo = 1;
                 }
+                printf("[DESAFÍO] Carta %d (%s): %s\n",
+                       i + 1, partida->cartas_ultima_jugada[i],
+                       partida->resultados_verificacion[i] ? "VÁLIDA" : "INVÁLIDA");
             }
 
-            printf("[DESAFÍO] Verificación completada. Mintiendo: %s\n", mintiendo ? "SÍ" : "NO");
+            printf("[DESAFÍO] Cartas inválidas: %d, Mintiendo: %s\n",
+                   cartas_invalidas, mintiendo ? "SÍ" : "NO");
 
             char mensaje_resultado[512] = {0};
+            char *jugador_eliminado = NULL;
 
             if (mintiendo)
             {
-                // EL JUGADOR DESAFIADO MINTIÓ - Desafío exitoso
-                sprintf(mensaje_resultado, "DESAFIO/EXITO");
+                // **EL JUGADOR DESAFIADO MINTIÓ - ELIMINAR AL QUE MINTIÓ**
+                jugador_eliminado = partida->ultimo_jugador;
 
-                // Añadir las cartas que fueron jugadas
+                sprintf(mensaje_resultado, "DESAFIO/EXITO");
                 for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
                 {
                     char temp[50];
@@ -1546,32 +1557,15 @@ void *cliente(void *socket_ptr)
                     strcat(mensaje_resultado, temp);
                 }
 
-                printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
-                broadcast_to_group(partida->grupo_id, mensaje_resultado);
-
-                // ELIMINAR AL JUGADOR QUE FUE DESAFIADO (el que mintió)
-                char *jugador_eliminado = partida->ultimo_jugador;
-                if (jugador_eliminado != NULL)
-                {
-                    printf("[DESAFÍO] Eliminando al jugador que mintió: %s\n", jugador_eliminado);
-
-                    // Notificar eliminación
-                    char mensaje_eliminacion[100];
-                    sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_eliminado);
-                    broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
-
-                    // Eliminar de la partida
-                    eliminar_jugador_de_partida(partida, jugador_eliminado);
-                }
-
+                printf("[DESAFÍO] Desafío exitoso - Eliminando a %s (mintió)\n", jugador_eliminado);
                 strcpy(respuesta, "DESAFIO_OK/Desafío exitoso - Jugador eliminado");
             }
             else
             {
-                // EL JUGADOR DESAFIADO NO MINTIÓ - Desafío fallido
-                sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
+                // **EL JUGADOR DESAFIADO NO MINTIÓ - ELIMINAR AL QUE DESAFIÓ**
+                jugador_eliminado = usuario; // El que desafía incorrectamente
 
-                // Añadir las cartas que SÍ eran válidas
+                sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
                 for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
                 {
                     char temp[50];
@@ -1579,24 +1573,42 @@ void *cliente(void *socket_ptr)
                     strcat(mensaje_resultado, temp);
                 }
 
-                printf("[DESAFÍO] Enviando mensaje: %s\n", mensaje_resultado);
-                broadcast_to_group(partida->grupo_id, mensaje_resultado);
-
-                // ELIMINAR AL JUGADOR QUE DESAFIÓ INCORRECTAMENTE
-                printf("[DESAFÍO] Eliminando al jugador que desafió incorrectamente: %s\n", usuario);
-
-                // Notificar eliminación del desafiante
-                char mensaje_eliminacion[100];
-                sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", usuario);
-                broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
-
-                // Eliminar de la partida
-                eliminar_jugador_de_partida(partida, usuario);
-
+                printf("[DESAFÍO] Desafío fallido - Eliminando a %s (desafió incorrectamente)\n", jugador_eliminado);
                 strcpy(respuesta, "DESAFIO_OK/Desafío fallido - Tú has sido eliminado");
             }
+
+            // **ENVIAR RESULTADO DEL DESAFÍO PRIMERO**
+            printf("[DESAFÍO] Enviando resultado: %s\n", mensaje_resultado);
+            broadcast_to_group(partida->grupo_id, mensaje_resultado);
+
+            // **ESPERAR UN MOMENTO PARA QUE SE PROCESE**
+            usleep(500000); // 0.5 segundos
+
+            // **ELIMINAR AL JUGADOR INMEDIATAMENTE**
+            if (jugador_eliminado != NULL)
+            {
+                printf("[DESAFÍO] Eliminando jugador: %s\n", jugador_eliminado);
+
+                int resultado_eliminacion = eliminar_jugador_de_partida(partida, jugador_eliminado);
+
+                if (resultado_eliminacion == 1)
+                {
+                    printf("[DESAFÍO] Partida terminada después de eliminación\n");
+                    // La partida ya terminó, no hacer nada más
+                }
+                else if (resultado_eliminacion == 0)
+                {
+                    printf("[DESAFÍO] Eliminación exitosa, partida continúa\n");
+                }
+                else
+                {
+                    printf("[DESAFÍO] Error en eliminación: código %d\n", resultado_eliminacion);
+                }
+            }
+
+            printf("[DESAFÍO] ===== FIN PROCESAMIENTO DESAFÍO =====\n");
         }
-        else if (codigo == 25) // Confirmar eliminación después de desafío
+        /*else if (codigo == 25) // Confirmar eliminación después de desafío
         {
             // Formato: 25/usuario
             // Este mensaje lo envía el cliente cuando está listo para que se elimine al jugador
@@ -1654,7 +1666,7 @@ void *cliente(void *socket_ptr)
             {
                 strcpy(respuesta, "ERROR/No estás en una partida activa");
             }
-        }
+        }*/
         else if (codigo == 26) // Obtener carta de la ronda actual
         {
             GameInfo *partida = obtener_partida_por_jugador(usuario);
