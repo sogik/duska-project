@@ -1589,24 +1589,66 @@ namespace Duska.Screens
                 SolicitarInformacionSala();
                 return;
             }
-            else if (message.StartsWith("START_GAME_OK") || message.StartsWith("GAME_STARTED") ||
-        message.Contains("PARTIDA_INICIADA") || message.StartsWith("GAMESTART/"))
+            eelse if (message.StartsWith("GAMESTART/") || message.StartsWith("START_GAME_OK") ||
+         message.Contains("PARTIDA_INICIADA") || message.Contains("GAME_STARTED"))
             {
-                Debug.WriteLine("[JUEGO] Notificación de inicio de partida recibida");
+                Debug.WriteLine("[JUEGO] *** MENSAJE DE INICIO DE PARTIDA DETECTADO ***");
+                Debug.WriteLine($"[JUEGO] Mensaje completo: {message}");
 
-                // **LIMPIAR INFORMACIÓN DEL GRUPO AL INICIAR PARTIDA**
-                jugadoresGrupo.Clear();
-
-                // Cambiar a la pantalla de juego
                 try
                 {
-                    // ... resto del código existente ...
+                    // **DETENER EL HILO DE ESCUCHA ANTES DE CAMBIAR PANTALLA**
+                    stopMessageListener = true;
+
+                    // **LIMPIAR INFORMACIÓN DEL GRUPO AL INICIAR PARTIDA**
+                    jugadoresGrupo.Clear();
+
+                    // **ESPERAR UN MOMENTO PARA QUE SE DETENGA EL HILO**
+                    System.Threading.Tasks.Task.Delay(200).ContinueWith(_ =>
+                    {
+                        try
+                        {
+                            Debug.WriteLine("[JUEGO] *** INICIANDO CAMBIO A PANTALLA DE JUEGO ***");
+
+                            // **LIMPIAR LA UI ANTES DEL CAMBIO**
+                            if (UserInterface.Active != null)
+                            {
+                                UserInterface.Active.Clear();
+                                Debug.WriteLine("[JUEGO] UI limpiada antes del cambio");
+                            }
+
+                            // **CREAR LA NUEVA PANTALLA DE JUEGO**
+                            var gameScreen = new GameCardScreen(Game, usuario);
+
+                            // **TRANSFERIR EL SOCKET SI ESTÁ DISPONIBLE**
+                            if (server != null && server.Connected)
+                            {
+                                gameScreen.SetExistingSocket(server);
+                                Debug.WriteLine("[JUEGO] Socket transferido a GameCardScreen");
+                            }
+                            else
+                            {
+                                Debug.WriteLine("[JUEGO] ADVERTENCIA: Socket no disponible para transferir");
+                            }
+
+                            // **CAMBIAR A LA PANTALLA DE JUEGO**
+                            ScreenManager.LoadScreen(gameScreen, new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
+
+                            Debug.WriteLine("[JUEGO] *** CAMBIO A PANTALLA DE JUEGO COMPLETADO ***");
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[ERROR] *** ERROR CRÍTICO AL CAMBIAR A PANTALLA DE JUEGO: {ex.Message} ***");
+                            Debug.WriteLine($"[ERROR] Stack trace: {ex.StackTrace}");
+                        }
+                    });
+
+                    return; // **IMPORTANTE: SALIR INMEDIATAMENTE**
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[ERROR] Error al cambiar a pantalla de juego: {ex.Message}");
+                    Debug.WriteLine($"[ERROR] Error al procesar inicio de partida: {ex.Message}");
                 }
-                return;
             }
             else if (message.StartsWith("LIST/"))
             {

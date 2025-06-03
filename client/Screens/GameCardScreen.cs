@@ -2830,8 +2830,21 @@ namespace Duska.Screens
 
         public void SetExistingSocket(Socket existingSocket)
         {
+            Debug.WriteLine($"[GAME_SCREEN] *** RECIBIENDO SOCKET EXISTENTE ***");
+            Debug.WriteLine($"[GAME_SCREEN] Socket válido: {existingSocket != null}");
+            Debug.WriteLine($"[GAME_SCREEN] Socket conectado: {existingSocket?.Connected ?? false}");
+
             this.server = existingSocket;
-            this.conectado = true;
+            this.conectado = existingSocket != null && existingSocket.Connected;
+
+            if (conectado)
+            {
+                Debug.WriteLine("[GAME_SCREEN] Socket configurado exitosamente");
+            }
+            else
+            {
+                Debug.WriteLine("[GAME_SCREEN] ADVERTENCIA: Socket no está conectado");
+            }
         }
     }
 }
