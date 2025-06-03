@@ -27,7 +27,7 @@ int crear_partida(int grupo_id)
     nueva_partida->partida_id = next_partida_id++;
     nueva_partida->grupo_id = grupo_id;
     nueva_partida->estado = 0; // ESTADO_CREADA
-    nueva_partida->turno_actual = -1;
+    nueva_partida->turno_current = -1;
     nueva_partida->num_jugadores = 0;
     nueva_partida->jugadores = NULL;
     nueva_partida->next = partidas_lista;
@@ -100,7 +100,7 @@ int iniciar_partida(int partida_id)
     MYSQL *conn = mysql_init(NULL);
     if (mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
     {
-        int partida_bd_id = insertarPartida(conn, partida->grupo_id, num_jug, jugadores_bd);
+        int partida_bd_id = insertarPartida(conn, num_jug, jugadores_bd);
         if (partida_bd_id > 0)
         {
             partida->partida_bd_id = partida_bd_id; // Guardar el ID de la BD
@@ -127,9 +127,9 @@ int iniciar_partida(int partida_id)
         conn = mysql_init(NULL);
         if (mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
         {
-            actualizarRondaPartida(conn, partida->partida_bd_id,
+            /*actualizarRondaPartida(conn, partida->partida_bd_id,
                                    partida->ronda_actual + 1,
-                                   partida->cartas_ronda[partida->ronda_actual]);
+                                   partida->cartas_ronda[partida->ronda_actual]);*/
             mysql_close(conn);
         }
     }
@@ -279,7 +279,7 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
 
             printf("[PARTIDA] Mensaje de fin enviado: %s\n", mensaje_ganador);
 
-            // **ACTUALIZAR EN BASE DE DATOS**
+            // **ACTUALIZAR EN BASE DE DATOS SOLO AL FINAL**
             if (partida->partida_bd_id > 0)
             {
                 MYSQL *conn = mysql_init(NULL);

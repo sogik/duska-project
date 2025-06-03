@@ -15,14 +15,11 @@ CREATE TABLE IF NOT EXISTS Jugadores (
 
 CREATE TABLE IF NOT EXISTS Partidas (
     id_partida INT AUTO_INCREMENT PRIMARY KEY,
-    grupo_id INT NOT NULL,
     fecha_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_fin TIMESTAMP NULL,
     estado VARCHAR(20) DEFAULT 'ACTIVA',
     ganador_id INT NULL,
-    num_jugadores INT NOT NULL,
-    ronda_actual INT DEFAULT 0,
-    carta_designada VARCHAR(20),
+    num_jugadores INT NOT NULL DEFAULT 2,
     FOREIGN KEY (ganador_id) REFERENCES Jugadores(id_jugador)
 );
 
@@ -31,7 +28,6 @@ CREATE TABLE IF NOT EXISTS Partida_Jugadores (
     id_partida INT NOT NULL,
     id_jugador INT NOT NULL,
     nombre_usuario VARCHAR(50) NOT NULL,
-    eliminado BOOLEAN DEFAULT FALSE,
     posicion_turno INT NOT NULL,
     FOREIGN KEY (id_partida) REFERENCES Partidas(id_partida),
     FOREIGN KEY (id_jugador) REFERENCES Jugadores(id_jugador)

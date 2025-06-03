@@ -241,15 +241,15 @@ int obtenerIdJugadorPorNombre(MYSQL *conn, const char *nombre_usuario)
     return id_jugador;
 }
 
-int insertarPartida(MYSQL *conn, int grupo_id, int num_jugadores, char jugadores[10][50])
+int insertarPartida(MYSQL *conn, int num_jugadores, char jugadores[10][50])
 {
     char consulta[512];
     int partida_id = -1;
 
-    // Insertar la partida principal
+    // **INSERTAR SIN GRUPO_ID**
     snprintf(consulta, sizeof(consulta),
-             "INSERT INTO Partidas (grupo_id, num_jugadores, estado) VALUES (%d, %d, 'ACTIVA')",
-             grupo_id, num_jugadores);
+             "INSERT INTO Partidas (num_jugadores, estado) VALUES (%d, 'ACTIVA')",
+             num_jugadores);
 
     int err = mysql_query(conn, consulta);
     if (err != 0)
@@ -377,7 +377,7 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
 
     lista[0] = '\0';
 
-    // **CONSULTA SIMPLE: solo ID, hora y ganador**
+    // **CONSULTA SIMPLE SIN JOINS COMPLEJOS**
     snprintf(consulta, sizeof(consulta),
              "SELECT p.id_partida, DATE_FORMAT(p.fecha_inicio, '%%H:%%i'), "
              "COALESCE(j.nombre_usuario, 'En curso') as ganador "
@@ -400,13 +400,11 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
         {
             char entrada[100];
 
-            // **FORMATO: Partida X - Hora - Ganador**
             snprintf(entrada, sizeof(entrada), "Partida %s - %s - %s/",
-                     row[0] ? row[0] : "?",            // id_partida
-                     row[1] ? row[1] : "??:??",        // hora (HH:MM)
-                     row[2] ? row[2] : "Sin ganador"); // ganador
+                     row[0] ? row[0] : "?",         // id_partida
+                     row[1] ? row[1] : "??:??",     // hora (HH:MM)
+                     row[2] ? row[2] : "En curso"); // ganador
 
-            // Verificar que no se exceda el buffer
             if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))
             {
                 strcat(lista, entrada);
