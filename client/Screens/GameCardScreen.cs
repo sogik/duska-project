@@ -419,6 +419,8 @@ namespace Duska.Screens
 
         // Añadir este nuevo método a GameCardScreen:
 
+        // Simplificar ActualizarSoloPanelMensajes:
+
         private void ActualizarSoloPanelMensajes()
         {
             try
@@ -434,7 +436,7 @@ namespace Duska.Screens
                     int altoPanel = (int)mensajesPanel.Size.Y;
                     AgregarMensajesAlPanel(mensajesPanel, altoPanel);
 
-                    Debug.WriteLine("[CHAT] Panel de mensajes actualizado eficientemente");
+                    Debug.WriteLine("[CHAT] Panel de mensajes actualizado");
                 }
                 else
                 {
@@ -445,6 +447,8 @@ namespace Duska.Screens
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error actualizando panel de mensajes: {ex.Message}");
+                // **FALLBACK: RECREAR TODO**
+                CrearInterfazChatCompleta(true);
             }
         }
 
@@ -535,25 +539,25 @@ namespace Duska.Screens
                 {
                     string jugadorTurno = message.Substring(5).Trim();
 
-                    // **EVITAR SPAM DE TURNOS - SOLO PROCESAR SI CAMBIÓ**
+                    // **ACTUALIZAR VARIABLES DIRECTAMENTE**
                     if (jugadorTurno != jugadorConTurnoActual)
                     {
                         esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
                         _permitirAccionesJuego = esMiTurno;
                         jugadorConTurnoActual = jugadorTurno;
 
-                        // **SOLO ACTUALIZAR LA INFO DE TURNO, NO RECREAR TODO**
+                        // **RECREAR LA INTERFAZ SIMPLE**
                         if (System.Threading.Thread.CurrentThread.IsBackground)
                         {
                             lock (mensajesLock)
                             {
-                                mensajesPendientes.Add("ACTUALIZAR_INFO_JUEGO");
+                                mensajesPendientes.Add("RECREAR_CHAT");
                                 hayNuevosMensajes = true;
                             }
                         }
                         else
                         {
-                            ActualizarInfoJuegoEnPanel();
+                            CrearInterfazChatCompleta(true);
                         }
 
                         Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
@@ -1510,107 +1514,23 @@ namespace Duska.Screens
 
         // Agregar este método para manejar la info de juego:
 
-        private void AgregarInfoJuego(Panel infoPanel)
-        {
-            try
-            {
-                // **CARTA DE RONDA - MÁS PROMINENTE**
-                if (!string.IsNullOrEmpty(carta_ronda_actual))
-                {
-                    Header cartaRonda = new Header($"CARTA: {carta_ronda_actual.ToUpper()}");
-                    cartaRonda.FillColor = Color.Gold;
-                    cartaRonda.Scale = 1.1f;
-                    infoPanel.AddChild(cartaRonda);
-
-                    // **RECORDATORIO SOBRE JOKERS**
-                    Paragraph recordatorioJokers = new Paragraph("Los Jokers son comodin");
-                    recordatorioJokers.FillColor = Color.Orange;
-                    recordatorioJokers.Scale = 0.8f;
-                    infoPanel.AddChild(recordatorioJokers);
-                }
-                else
-                {
-                    Header sinCarta = new Header("Esperando carta de ronda...");
-                    sinCarta.FillColor = Color.Gray;
-                    sinCarta.Scale = 0.9f;
-                    infoPanel.AddChild(sinCarta);
-                }
-
-                // **INFORMACIÓN DE TURNO SIN EMOJIS**
-                if (!string.IsNullOrEmpty(jugadorConTurnoActual))
-                {
-                    Paragraph turnoInfo = new Paragraph(esMiTurno ?
-                        "[TU TURNO]" : $"Turno de: {jugadorConTurnoActual}");
-                    turnoInfo.FillColor = esMiTurno ? Color.LightGreen : Color.LightBlue;
-                    turnoInfo.Scale = 1.0f;
-                    infoPanel.AddChild(turnoInfo);
-                }
-                else
-                {
-                    Paragraph sinTurno = new Paragraph("Esperando turno...");
-                    sinTurno.FillColor = Color.Gray;
-                    sinTurno.Scale = 0.8f;
-                    infoPanel.AddChild(sinTurno);
-                }
-
-                Debug.WriteLine($"[INFO] Info actualizada - Carta: {carta_ronda_actual}, Turno: {jugadorConTurnoActual}");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error añadiendo info de juego: {ex.Message}");
-            }
-        }
-
-        private void ActualizarInfoJuegoEnPanel()
-        {
-            try
-            {
-                // **BUSCAR EL PANEL DE INFO DE JUEGO EXISTENTE**
-                Panel panelPrincipal = UserInterface.Active?.Root?.Find("PanelChatPrincipal") as Panel;
-                Panel infoJuegoPanel = panelPrincipal?.Find("InfoJuegoPanel") as Panel;
-
-                if (infoJuegoPanel != null)
-                {
-                    // **LIMPIAR SOLO EL PANEL DE INFO**
-                    infoJuegoPanel.ClearChildren();
-
-                    // **VOLVER A AÑADIR LA INFO ACTUALIZADA**
-                    AgregarInfoJuego(infoJuegoPanel);
-
-                    Debug.WriteLine("[CHAT] Info de juego actualizada sin recrear todo");
-                }
-                else
-                {
-                    Debug.WriteLine("[CHAT] Panel de info no encontrado, recreando interfaz");
-                    CrearInterfazChatCompleta(true);
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error actualizando info de juego: {ex.Message}");
-            }
-        }
-
         // Método para crear los botones:
 
         private void CrearBotonesChat(Panel panel, TextInput text)
         {
             try
             {
-                // **PANEL ESPECÍFICO PARA BOTONES CON ALTURA FIJA**
-                Panel botonesPanel = new Panel(new Vector2(0, 80), PanelSkin.None);
-
-                // **BOTÓN ENVIAR MENSAJE - PRIMERA FILA**
-                Button enviarBtn = new Button("Enviar Mensaje");
-                enviarBtn.Size = new Vector2(180, 35);
+                // **BOTÓN ENVIAR MENSAJE**
+                Button enviarBtn = new Button("Enviar");
+                enviarBtn.Size = new Vector2(150, 35);
                 enviarBtn.Anchor = Anchor.TopLeft;
                 enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
-                botonesPanel.AddChild(enviarBtn);
+                panel.AddChild(enviarBtn);
 
-                // **BOTÓN PEDIR CARTAS - SEGUNDA FILA**
+                // **BOTÓN PEDIR CARTAS**
                 Button cartasBtn = new Button("Pedir Cartas");
-                cartasBtn.Size = new Vector2(180, 35);
-                cartasBtn.Anchor = Anchor.BottomLeft;
+                cartasBtn.Size = new Vector2(150, 35);
+                cartasBtn.Anchor = Anchor.TopRight;
 
                 bool cartasYaPedidas = VerificarCartasYaPedidas();
 
@@ -1628,12 +1548,9 @@ namespace Duska.Screens
                 }
 
                 cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartasConLimite();
-                botonesPanel.AddChild(cartasBtn);
+                panel.AddChild(cartasBtn);
 
-                // **AGREGAR EL PANEL DE BOTONES AL PANEL PRINCIPAL**
-                panel.AddChild(botonesPanel);
-
-                Debug.WriteLine("[BOTONES] Botones organizados en panel separado");
+                Debug.WriteLine("[BOTONES] Botones creados correctamente");
             }
             catch (Exception ex)
             {
@@ -1641,16 +1558,16 @@ namespace Duska.Screens
             }
         }
 
+        // Mantener AgregarMensajesAlPanel como está, pero con menos mensajes:
+
         private void AgregarMensajesAlPanel(Panel mensajesPanel, int altoPanelMensajes)
         {
             try
             {
-                // **CALCULAR MENSAJES BASADO EN EL ALTO REAL**
-                int mensajesPorPantalla = Math.Min(6, Math.Max(4, altoPanelMensajes / 35)); // **REDUCIR MÁS**
+                // **REDUCIR MENSAJES PARA MEJOR RENDIMIENTO**
+                int mensajesPorPantalla = Math.Min(8, Math.Max(5, (altoPanelMensajes - 20) / 25));
                 int totalMensajes = historialChat?.Count ?? 0;
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
-
-                Debug.WriteLine($"[CHAT] Mostrando {mensajesPorPantalla} mensajes en {altoPanelMensajes}px");
 
                 if (historialChat != null && totalMensajes > 0)
                 {
@@ -1662,7 +1579,7 @@ namespace Duska.Screens
                             if (!string.IsNullOrEmpty(msg))
                             {
                                 Paragraph mensajeParagraph = new Paragraph(msg);
-                                mensajeParagraph.Scale = 0.7f; // **AÚN MÁS PEQUEÑO**
+                                mensajeParagraph.Scale = 0.75f;
                                 mensajeParagraph.WrapWords = true;
 
                                 // **COLOREAR MENSAJES**
@@ -1688,7 +1605,7 @@ namespace Duska.Screens
                 {
                     Paragraph noMensajes = new Paragraph("No hay mensajes aún...");
                     noMensajes.FillColor = Color.Gray;
-                    noMensajes.Scale = 0.7f;
+                    noMensajes.Scale = 0.75f;
                     mensajesPanel.AddChild(noMensajes);
                 }
             }
@@ -1702,23 +1619,15 @@ namespace Duska.Screens
         {
             try
             {
-                // **EVITAR RECREAR SI YA EXISTE Y SOLO CAMBIÓ EL TURNO**
-                if (UserInterface.Active != null && UserInterface.Active.Root.Children.Count > 0)
-                {
-                    // **SOLO ACTUALIZAR LA INFORMACIÓN DE TURNO/CARTA SIN RECREAR TODO**
-                    ActualizarInfoJuegoEnPanel();
-                    return;
-                }
-
                 // **LIMPIAR SOLO SI ES NECESARIO**
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Clear();
                 }
 
-                // **CREAR EL PANEL PRINCIPAL - MÁS ANCHO PARA MEJOR VISIBILIDAD**
+                // Crear el panel principal
                 Panel panel = new Panel(
-                    new Vector2(400, GraphicsDevice.Viewport.Height),
+                    new Vector2(350, GraphicsDevice.Viewport.Height),
                     PanelSkin.Simple,
                     Anchor.TopRight);
 
@@ -1727,26 +1636,35 @@ namespace Duska.Screens
                 panel.Identifier = "PanelChatPrincipal";
                 UserInterface.Active.AddEntity(panel);
 
-                // **1. ENCABEZADO**
-                Header header = new Header("Chat de Juego");
-                header.Scale = 1.0f;
+                // Encabezado
+                Header header = new Header("Chat");
                 panel.AddChild(header);
                 panel.AddChild(new HorizontalLine());
 
-                // **2. INFORMACIÓN DE JUEGO FIJA EN LA PARTE SUPERIOR**
-                Panel infoJuegoPanel = new Panel(new Vector2(0, 100), PanelSkin.None);
-                infoJuegoPanel.Identifier = "InfoJuegoPanel";
-                panel.AddChild(infoJuegoPanel);
+                // **INFORMACIÓN DE JUEGO VISIBLE COMO ANTES**
+                // Carta de ronda
+                if (!string.IsNullOrEmpty(carta_ronda_actual))
+                {
+                    Header cartaRonda = new Header($"Carta: {carta_ronda_actual}");
+                    cartaRonda.FillColor = Color.Yellow;
+                    cartaRonda.Scale = 0.85f;
+                    panel.AddChild(cartaRonda);
+                }
 
-                // **AÑADIR INFORMACIÓN INICIAL**
-                AgregarInfoJuego(infoJuegoPanel);
+                // Información de turno
+                if (!string.IsNullOrEmpty(jugadorConTurnoActual))
+                {
+                    Paragraph turnoInfo = new Paragraph(esMiTurno ?
+                        "¡ES TU TURNO!" : $"Turno: {jugadorConTurnoActual}");
+                    turnoInfo.FillColor = esMiTurno ? Color.LightGreen : Color.LightBlue;
+                    turnoInfo.Scale = 0.9f;
+                    panel.AddChild(turnoInfo);
+                }
 
                 panel.AddChild(new HorizontalLine());
 
-                // **3. PANEL DE MENSAJES - AJUSTAR PARA QUE QUEDE ESPACIO PARA BOTONES**
-                int altoTotal = GraphicsDevice.Viewport.Height;
-                int altoOcupado = 200; // Header + Info + Botones + Padding
-                int altoPanelMensajes = altoTotal - altoOcupado;
+                // **PANEL DE MENSAJES**
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 400; // Dejar espacio para botones
 
                 Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.ListBackground);
                 mensajesPanel.Padding = new Vector2(8, 8);
@@ -1756,19 +1674,19 @@ namespace Duska.Screens
                 AgregarMensajesAlPanel(mensajesPanel, altoPanelMensajes);
                 panel.AddChild(mensajesPanel);
 
-                // **4. SEPARADOR ANTES DE CONTROLES**
+                // **SEPARADOR**
                 panel.AddChild(new HorizontalLine());
 
-                // **5. CAMPO DE TEXTO PARA ESCRIBIR**
+                // **CAMPO DE TEXTO**
                 TextInput text = new TextInput(false);
                 text.PlaceholderText = "Escribe un mensaje...";
-                text.Size = new Vector2(0, 35);
+                text.Size = new Vector2(0, 40);
                 panel.AddChild(text);
 
-                // **6. BOTONES AL FINAL - SIEMPRE VISIBLES**
+                // **BOTONES AL FINAL**
                 CrearBotonesChat(panel, text);
 
-                Debug.WriteLine("[CHAT] Interfaz reorganizada - Info arriba, botones abajo");
+                Debug.WriteLine("[CHAT] Interfaz completa creada correctamente");
             }
             catch (Exception ex)
             {
@@ -2349,14 +2267,14 @@ namespace Duska.Screens
                         {
                             Debug.WriteLine("[UPDATE] *** MOSTRANDO PANEL GEONBIT DE ELIMINACIÓN ***");
                             MostrarPanelEliminacionGeonbit();
-                            return; // **SALIR INMEDIATAMENTE**
+                            return;
                         }
                         else if (mensaje.StartsWith("MOSTRAR_PANEL_FIN_PARTIDA/"))
                         {
                             string ganador = mensaje.Substring(26);
                             Debug.WriteLine($"[UPDATE] *** MOSTRANDO PANEL FIN PARTIDA - GANADOR: {ganador} ***");
                             MostrarPanelFinPartida(ganador);
-                            return; // **SALIR INMEDIATAMENTE**
+                            return;
                         }
                         else if (mensaje.StartsWith("CARDS/"))
                         {
@@ -2369,10 +2287,10 @@ namespace Duska.Screens
                             Debug.WriteLine("[UPDATE] *** ACTUALIZANDO CHAT ***");
                             ActualizarSoloPanelMensajes();
                         }
-                        else if (mensaje == "ACTUALIZAR_INFO_JUEGO")
+                        else if (mensaje == "RECREAR_CHAT")
                         {
-                            Debug.WriteLine("[UPDATE] *** ACTUALIZANDO INFO DE JUEGO ***");
-                            ActualizarInfoJuegoEnPanel();
+                            Debug.WriteLine("[UPDATE] *** RECREANDO CHAT COMPLETO ***");
+                            CrearInterfazChatCompleta(true);
                         }
                         else
                         {

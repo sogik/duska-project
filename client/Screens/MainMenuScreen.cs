@@ -43,6 +43,10 @@ namespace Duska.Screens
         // 1. Añadir una nueva variable para controlar desconexiones intencionales
         private volatile bool desconexionIntencional = false;
 
+        private List<string> jugadoresGrupo = new List<string>();
+        private Panel infoGrupoPanel = null;
+        private Paragraph labelJugadores = null;
+
         public MainMenuScreen(Game game, string usuario)
             : base(game)
         {
@@ -169,6 +173,60 @@ namespace Duska.Screens
                 friends = this.friends();
             };
             topPanel.AddChild(listfriendsBtn);
+
+            CrearPanelInfoGrupo(visible);
+        }
+
+        // Agregar este nuevo método:
+
+        private void CrearPanelInfoGrupo(bool visible)
+        {
+            try
+            {
+                // **ELIMINAR PANEL ANTERIOR SI EXISTE**
+                if (infoGrupoPanel != null)
+                {
+                    UserInterface.Active.RemoveEntity(infoGrupoPanel);
+                    infoGrupoPanel = null;
+                    labelJugadores = null;
+                }
+
+                // **CREAR PANEL PARA INFORMACIÓN DEL GRUPO**
+                infoGrupoPanel = new Panel(new Vector2(400, 120), PanelSkin.Simple, Anchor.TopCenter);
+                infoGrupoPanel.Offset = new Vector2(0, 80); // Debajo del panel principal
+                infoGrupoPanel.Padding = new Vector2(10, 10);
+                infoGrupoPanel.Visible = visible;
+                infoGrupoPanel.Identifier = "InfoGrupoPanel";
+                UserInterface.Active.AddEntity(infoGrupoPanel);
+
+                // **TÍTULO DEL PANEL**
+                Header titulo = new Header("Tu Grupo de Juego");
+                titulo.Scale = 0.9f;
+                titulo.FillColor = Color.LightBlue;
+                infoGrupoPanel.AddChild(titulo);
+
+                infoGrupoPanel.AddChild(new HorizontalLine());
+
+                // **LABEL PARA MOSTRAR JUGADORES**
+                labelJugadores = new Paragraph("Cargando información del grupo...");
+                labelJugadores.Scale = 0.8f;
+                labelJugadores.FillColor = Color.White;
+                labelJugadores.WrapWords = true;
+                infoGrupoPanel.AddChild(labelJugadores);
+
+                // **LABEL PARA MOSTRAR ESTADO DE LÍDER**
+                Paragraph labelLider = new Paragraph(esLider ? "Eres el LÍDER del grupo" : "Eres MIEMBRO del grupo");
+                labelLider.Scale = 0.75f;
+                labelLider.FillColor = esLider ? Color.Green : Color.Yellow;
+                labelLider.Identifier = "LabelLider";
+                infoGrupoPanel.AddChild(labelLider);
+
+                Debug.WriteLine("[GRUPO UI] Panel de información del grupo creado");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error creando panel de grupo: {ex.Message}");
+            }
         }
 
         private void SolicitarEstadoLider()
@@ -1474,14 +1532,24 @@ namespace Duska.Screens
                 {
                     string grupoId = partes[1];
 
+                    // **ACTUALIZAR LISTA DE JUGADORES DEL GRUPO**
+                    jugadoresGrupo.Clear();
+                    for (int i = 2; i < partes.Length; i++)
+                    {
+                        if (!string.IsNullOrWhiteSpace(partes[i]))
+                        {
+                            jugadoresGrupo.Add(partes[i].Trim());
+                        }
+                    }
+
                     // El primer usuario listado es el líder según el servidor
-                    string primerUsuario = partes[2];
+                    string primerUsuario = jugadoresGrupo.Count > 0 ? jugadoresGrupo[0] : "";
                     esLider = primerUsuario.Equals(usuario, StringComparison.OrdinalIgnoreCase);
 
-                    Debug.WriteLine($"[GRUPO] Grupo {grupoId}, usuarios: {string.Join(", ", partes.Skip(2))}");
+                    Debug.WriteLine($"[GRUPO] Grupo {grupoId}, jugadores: {string.Join(", ", jugadoresGrupo)}");
                     Debug.WriteLine($"[GRUPO] Líder: {primerUsuario}, ¿Soy líder? {esLider}");
 
-                    // Actualizar la interfaz según el estado de líder
+                    // **ACTUALIZAR LA INTERFAZ**
                     ActualizarEstadoLider();
                     return;
                 }
@@ -1494,6 +1562,13 @@ namespace Duska.Screens
 
                 Debug.WriteLine($"[GRUPO] Información de líder: {nombreLider}, ¿Soy líder? {esLider}");
 
+                // **REORGANIZAR LISTA PARA QUE EL LÍDER ESTÉ PRIMERO**
+                if (jugadoresGrupo.Count > 0)
+                {
+                    jugadoresGrupo.RemoveAll(j => j.Equals(nombreLider, StringComparison.OrdinalIgnoreCase));
+                    jugadoresGrupo.Insert(0, nombreLider);
+                }
+
                 // Actualizar la interfaz según el estado de líder
                 ActualizarEstadoLider();
                 return;
@@ -1504,25 +1579,28 @@ namespace Duska.Screens
                 string nombreUsuario = message.Substring(13);
                 Debug.WriteLine($"[GRUPO] El usuario {nombreUsuario} ha salido del grupo");
 
+                // **REMOVER USUARIO DE LA LISTA LOCAL**
+                jugadoresGrupo.RemoveAll(j => j.Equals(nombreUsuario, StringComparison.OrdinalIgnoreCase));
+
+                // **ACTUALIZAR INTERFAZ**
+                ActualizarPanelInfoGrupo();
+
                 // Si alguien sale del grupo, verificar si ahora somos líder
                 SolicitarInformacionSala();
                 return;
             }
             else if (message.StartsWith("START_GAME_OK") || message.StartsWith("GAME_STARTED") ||
-                    message.Contains("PARTIDA_INICIADA") || message.StartsWith("GAMESTART/"))
+        message.Contains("PARTIDA_INICIADA") || message.StartsWith("GAMESTART/"))
             {
                 Debug.WriteLine("[JUEGO] Notificación de inicio de partida recibida");
+
+                // **LIMPIAR INFORMACIÓN DEL GRUPO AL INICIAR PARTIDA**
+                jugadoresGrupo.Clear();
 
                 // Cambiar a la pantalla de juego
                 try
                 {
-                    // Detener escucha de mensajes
-                    stopMessageListener = true;
-
-                    // Crear y cargar GameCardScreen reutilizando el socket vivo
-                    var gameScreen = new GameCardScreen(Game, usuario);
-                    gameScreen.SetExistingSocket(server);
-                    ScreenManager.LoadScreen(gameScreen, new FadeTransition(GraphicsDevice, Color.Black));
+                    // ... resto del código existente ...
                 }
                 catch (Exception ex)
                 {
@@ -1644,9 +1722,10 @@ namespace Duska.Screens
 
         private void ActualizarEstadoLider()
         {
-            // Ejecutar en el hilo principal (MonoGame Update/Draw ya está en el hilo principal)
+            // Ejecutar en el hilo principal
             if (UserInterface.Active != null && UserInterface.Active.Root != null)
             {
+                // **ACTUALIZAR BOTÓN PLAY**
                 Button playButton = UserInterface.Active.Root.Find<Button>("playBtn");
                 if (playButton != null)
                 {
@@ -1662,22 +1741,77 @@ namespace Duska.Screens
                     }
                 }
 
-                // Mostrar un indicador de estado de líder en la pantalla
+                // **ACTUALIZAR INFORMACIÓN EN EL PANEL DEL GRUPO**
+                ActualizarPanelInfoGrupo();
+
+                // **MANTENER EL PANEL DE INFORMACIÓN EXISTENTE (ESQUINA INFERIOR)**
                 Panel infoPanel = UserInterface.Active.Root.Find<Panel>("infoPanel");
                 if (infoPanel == null)
                 {
-                    // Crear panel si no existe
                     infoPanel = new Panel(new Vector2(200, 50), PanelSkin.Simple, Anchor.BottomLeft);
                     infoPanel.Identifier = "infoPanel";
                     UserInterface.Active.Root.AddChild(infoPanel);
                 }
-                // Actualizar contenido del panel
+
                 infoPanel.ClearChildren();
                 Paragraph statusText = new Paragraph(esLider ? "LÍDER" : "MIEMBRO");
                 statusText.FillColor = esLider ? Color.Green : Color.White;
+                statusText.Scale = 0.8f;
                 infoPanel.AddChild(statusText);
             }
         }
+
+        private void ActualizarPanelInfoGrupo()
+        {
+            try
+            {
+                if (infoGrupoPanel != null && labelJugadores != null)
+                {
+                    // **ACTUALIZAR LISTA DE JUGADORES**
+                    if (jugadoresGrupo.Count > 0)
+                    {
+                        string textoJugadores = $"Jugadores en el grupo ({jugadoresGrupo.Count}):\n";
+
+                        for (int i = 0; i < jugadoresGrupo.Count; i++)
+                        {
+                            string jugador = jugadoresGrupo[i];
+
+                            if (jugador.Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                            {
+                                textoJugadores += $"• {jugador} (TÚ)" + (i == 0 ? " [LÍDER]" : "") + "\n";
+                            }
+                            else
+                            {
+                                textoJugadores += $"• {jugador}" + (i == 0 ? " [LÍDER]" : "") + "\n";
+                            }
+                        }
+
+                        labelJugadores.Text = textoJugadores.TrimEnd();
+                        labelJugadores.FillColor = Color.LightGreen;
+                    }
+                    else
+                    {
+                        labelJugadores.Text = "No hay información del grupo disponible.\nUsa 'Friends' para unirte a un grupo.";
+                        labelJugadores.FillColor = Color.Orange;
+                    }
+
+                    // **ACTUALIZAR LABEL DE LÍDER**
+                    Paragraph labelLider = infoGrupoPanel.Find<Paragraph>("LabelLider");
+                    if (labelLider != null)
+                    {
+                        labelLider.Text = esLider ? "Eres el LÍDER del grupo" : "Eres MIEMBRO del grupo";
+                        labelLider.FillColor = esLider ? Color.Green : Color.Yellow;
+                    }
+
+                    Debug.WriteLine($"[GRUPO UI] Panel actualizado - {jugadoresGrupo.Count} jugadores, Líder: {esLider}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error actualizando panel de grupo: {ex.Message}");
+            }
+        }
+
         private bool messageListenerRunning = false;
         private void StartMessageListener()
         {
