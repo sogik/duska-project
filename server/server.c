@@ -1731,9 +1731,6 @@ void *cliente(void *socket_ptr)
                         char buffer[1024] = {0};
                         listarConectados(conn, buffer, sizeof(buffer));
                         broadcast_to_all(buffer);
-
-                        // Marcar para cerrar la conexión después de enviar la respuesta
-                        stopMessageListener = true;
                     }
                     else if (resultado == -2)
                     {
