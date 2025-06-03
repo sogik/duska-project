@@ -377,13 +377,13 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
 
     lista[0] = '\0';
 
-    // Consulta que une las tablas para obtener información completa
+    // **CONSULTA SIMPLE: solo ID, hora y ganador**
     snprintf(consulta, sizeof(consulta),
-             "SELECT p.id_partida, p.grupo_id, p.fecha_inicio, p.fecha_fin, p.estado, "
-             "j.nombre_usuario as ganador, p.num_jugadores, p.ronda_actual, p.carta_designada "
+             "SELECT p.id_partida, DATE_FORMAT(p.fecha_inicio, '%%H:%%i'), "
+             "COALESCE(j.nombre_usuario, 'En curso') as ganador "
              "FROM Partidas p "
              "LEFT JOIN Jugadores j ON p.ganador_id = j.id_jugador "
-             "ORDER BY p.fecha_inicio DESC LIMIT 50");
+             "ORDER BY p.fecha_inicio DESC LIMIT 30");
 
     int err = mysql_query(conn, consulta);
     if (err != 0)
@@ -396,49 +396,32 @@ void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
     res = mysql_store_result(conn);
     if (res)
     {
-        strcat(lista, "PARTIDAS/");
-
-        // **FIX 1: Contar las filas antes del bucle**
-        uint64_t num_filas = mysql_num_rows(res);
-
         while ((row = mysql_fetch_row(res)))
         {
-            char entrada[256];
-            snprintf(entrada, sizeof(entrada),
-                     "ID:%s|Grupo:%s|Inicio:%s|Fin:%s|Estado:%s|Ganador:%s|Jugadores:%s|Ronda:%s|Carta:%s/",
-                     row[0] ? row[0] : "",             // id_partida
-                     row[1] ? row[1] : "",             // grupo_id
-                     row[2] ? row[2] : "",             // fecha_inicio
-                     row[3] ? row[3] : "En_curso",     // fecha_fin
-                     row[4] ? row[4] : "",             // estado
-                     row[5] ? row[5] : "En_curso",     // ganador
-                     row[6] ? row[6] : "",             // num_jugadores
-                     row[7] ? row[7] : "0",            // ronda_actual
-                     row[8] ? row[8] : "No_definida"); // carta_designada
+            char entrada[100];
 
-            // **FIX 2: Cast explícito para evitar warning de signedness**
-            size_t longitud_actual = strlen(lista);
-            size_t longitud_entrada = strlen(entrada);
-            size_t tamano_maximo = (size_t)(tamano_lista - 1);
+            // **FORMATO: Partida X - Hora - Ganador**
+            snprintf(entrada, sizeof(entrada), "Partida %s - %s - %s/",
+                     row[0] ? row[0] : "?",            // id_partida
+                     row[1] ? row[1] : "??:??",        // hora (HH:MM)
+                     row[2] ? row[2] : "Sin ganador"); // ganador
 
-            if (longitud_actual + longitud_entrada < tamano_maximo)
+            // Verificar que no se exceda el buffer
+            if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))
             {
                 strcat(lista, entrada);
             }
             else
             {
-                break; // Evitar desbordamiento
+                break;
             }
         }
 
         mysql_free_result(res);
-
-        // **FIX 3: Cast para el printf**
-        printf("[BD] Lista de partidas generada con %lu entradas\n", (unsigned long)num_filas);
+        printf("[BD] Lista de partidas enviada\n");
     }
     else
     {
-        printf("Error al obtener resultado: %s\n", mysql_error(conn));
         strcpy(lista, "ERROR/No se pudieron obtener las partidas");
     }
 }

@@ -592,18 +592,23 @@ namespace Duska.Screens
             if (partidasList != null)
             {
                 partidasList.ClearItems();
-                string[] friendsArray = partidas.Split('/');
-                foreach (string friend in friendsArray)
+
+                // **DIVIDIR POR '/' COMO ESTÁ**
+                string[] partidasArray = partidas.Split('/');
+
+                foreach (string partida in partidasArray)
                 {
-                    if (!string.IsNullOrWhiteSpace(friend)) // Evitar agregar entradas vacías
+                    if (!string.IsNullOrWhiteSpace(partida) && !partida.StartsWith("ERROR"))
                     {
-                        Debug.WriteLine($"Agregando partida a la lista: {friend}");
-                        // Aquí podrías agregar lógica para formatear o procesar el nombre de la partida si es necesario
-                        // Por ejemplo, podrías dividir por comas o espacios si es necesario
-                        // string[] parts = friend.Split(',');
-                        // string formattedFriend = parts[0].Trim(); // Solo tomar el primer elemento si hay varios
-                        partidasList.AddItem(friend);
+                        Debug.WriteLine($"Agregando partida a la lista: {partida}");
+                        partidasList.AddItem(partida);
                     }
+                }
+
+                // Si no hay partidas, mostrar mensaje
+                if (partidasList.Count == 0)
+                {
+                    partidasList.AddItem("No hay partidas registradas");
                 }
 
                 panel.Visible = visible;
@@ -686,7 +691,7 @@ namespace Duska.Screens
                 // Mostrar un panel de carga mientras se espera la respuesta
                 ListaPartidasPanel(true, "Cargando...");
 
-                string mensaje = "3/brr/brr";
+                string mensaje = $"3/{usuario}/brr";
                 byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                 server.Send(msg);
 
@@ -1326,6 +1331,12 @@ namespace Duska.Screens
                 Debug.WriteLine("[INVITACIÓN] Respuesta a invitación recibida");
 
                 InvitacionPanel(2, true, respuestaInv);
+                return;
+            }
+            else if (message.StartsWith("Partida ") || message.Contains("Partida"))
+            {
+                Debug.WriteLine("[PARTIDAS] Lista de partidas recibida");
+                ListaPartidasPanel(true, message);
                 return;
             }
             else if (message.StartsWith("ERROR/"))
