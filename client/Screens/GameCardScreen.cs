@@ -30,6 +30,8 @@ namespace Duska.Screens
         private MonoGame.Extended.Input.KeyboardStateExtended _estadoTecladoAnterior;
         private List<Texture2D> _cartasDisponibles = new List<Texture2D>();
         private BuiltinThemes _currTheme;
+        private bool cartasPedidasEstaRonda = false;
+        private string rondaActual = "";
         private Socket server;
         private Thread messageListenerThread;
         private bool isReconnecting = false;
@@ -421,13 +423,16 @@ namespace Duska.Screens
 
                 if (message.StartsWith("CARDS/"))
                 {
-                    Debug.WriteLine($"[SERVER] *** MENSAJE DE CARTAS RECIBIDO *** : {message}");
+                    Debug.WriteLine($"[SERVER] *** CARTAS RECIBIDAS ***");
+
+                    // **CONFIRMAR QUE SE RECIBIERON LAS CARTAS**
+                    historialChat.Add("Sistema: ✅ Cartas recibidas correctamente");
+                    CrearInterfazChatCompleta(true);
+
                     PedirTurno();
 
-                    // Solo procesa o encola, pero no ambos
                     if (System.Threading.Thread.CurrentThread.IsBackground)
                     {
-                        // Si estamos en un hilo background, encola para procesamiento en hilo principal
                         lock (mensajesLock)
                         {
                             mensajesPendientes.Add(message);
@@ -437,9 +442,7 @@ namespace Duska.Screens
                     }
                     else
                     {
-                        // Si estamos en el hilo principal, procesa directamente
                         ProcesarCartasDelServidor(message);
-                        // Forzar actualización inmediata
                         _mostrarTodas = true;
                     }
                     return;
@@ -608,37 +611,40 @@ namespace Duska.Screens
                     if (carta.StartsWith("/"))
                         carta = carta.Substring(1);
 
-                    carta_ronda_actual = carta;
+                    // **DETECTAR NUEVA RONDA**
+                    if (carta_ronda_actual != carta)
+                    {
+                        carta_ronda_actual = carta;
 
-                    // **AÑADIR MENSAJE DE SISTEMA**
-                    historialChat.Add($"Sistema: 🎴 Nueva ronda - Carta: {carta_ronda_actual.ToUpper()}");
-                    CrearInterfazChatCompleta(true);
+                        // **RESETEAR CONTROL DE CARTAS PARA NUEVA RONDA**
+                        cartasPedidasEstaRonda = false;
+                        rondaActual = carta;
 
-                    Debug.WriteLine($"[JUEGO] Carta de la ronda actual: {carta_ronda_actual}");
+                        historialChat.Add($"Sistema: 🎴 Nueva ronda - Carta: {carta_ronda_actual.ToUpper()}");
+                        historialChat.Add("Sistema: 🔄 Ya puedes pedir cartas nuevamente");
+                        CrearInterfazChatCompleta(true);
+
+                        Debug.WriteLine($"[JUEGO] Nueva ronda detectada: {carta_ronda_actual}");
+                    }
                     return;
                 }
                 else if (message.StartsWith("NUEVA_RONDA/"))
                 {
-                    // Formato: NUEVA_RONDA/numero_ronda
-                    string[] partes = message.Split('/');
+                    // **TAMBIÉN RESETEAR EN MENSAJE EXPLÍCITO DE NUEVA RONDA**
+                    cartasPedidasEstaRonda = false;
+                    historialChat.Add("Sistema: 🔄 Nueva ronda iniciada - Ya puedes pedir cartas");
+                    CrearInterfazChatCompleta(true);
 
+                    string[] partes = message.Split('/');
                     if (partes.Length >= 2)
                     {
-                        // Obtener número de ronda y carta
                         string numeroRonda = partes[1];
-
                         obtener_carta_ronda();
-
-                        // Notificar al usuario
                         ChatPanel(true, $"Sistema/¡Comienza la ronda {numeroRonda}! Carta designada: {carta_ronda_actual}");
 
-                        // Solicitar nuevas cartas para esta ronda
                         if (conectado || ConnectToServerIfNeeded())
                         {
-                            // Solicitar cartas nuevas para la nueva ronda
-                            GetCards(usuario);
                             PedirTurno();
-
                             Debug.WriteLine($"[RONDA] Nueva ronda {numeroRonda}, carta: {carta_ronda_actual}. Solicitando nuevas cartas.");
                         }
                     }
@@ -1427,14 +1433,14 @@ namespace Duska.Screens
 
                 panel.AddChild(new HorizontalLine());
 
-                // **PANEL DE MENSAJES - MÁS ALTO**
-                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 350; // Más espacio
+                // **PANEL DE MENSAJES - AJUSTADO PARA NO SOBREPONERSE**
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 450;
                 Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.None, Anchor.TopCenter);
                 mensajesPanel.Padding = new Vector2(10, 10);
                 panel.AddChild(mensajesPanel);
 
                 // Mostrar últimos mensajes
-                int mensajesPorPantalla = 15; // Más mensajes visibles
+                int mensajesPorPantalla = 12;
                 int totalMensajes = historialChat?.Count ?? 0;
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
 
@@ -1467,29 +1473,47 @@ namespace Duska.Screens
                     }
                 }
 
-                // **CAMPO DE TEXTO Y BOTONES AL FINAL**
+                // **LÍNEA SEPARADORA ANTES DE LOS CONTROLES**
                 panel.AddChild(new HorizontalLine());
 
+                // **CAMPO DE TEXTO PARA ESCRIBIR**
                 TextInput text = new TextInput(false);
                 text.PlaceholderText = "Escribe un mensaje...";
                 text.Size = new Vector2(0, 40);
                 panel.AddChild(text);
 
-                // **PANEL DE BOTONES HORIZONTAL**
-                Panel botonesPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
-                botonesPanel.Padding = new Vector2(10, 10);
+                // **LÍNEA SEPARADORA DESPUÉS DEL CAMPO DE TEXTO**
+                panel.AddChild(new HorizontalLine());
+
+                // **PANEL DE BOTONES DEBAJO DEL CAMPO DE TEXTO**
+                Panel botonesPanel = new Panel(new Vector2(0, 80), PanelSkin.None);
+                botonesPanel.Padding = new Vector2(5, 5);
                 panel.AddChild(botonesPanel);
 
-                Button enviarBtn = new Button("Enviar");
-                enviarBtn.Size = new Vector2(150, 35);
-                enviarBtn.Anchor = Anchor.TopLeft;
+                // **BOTÓN ENVIAR - ARRIBA**
+                Button enviarBtn = new Button("Enviar Mensaje");
+                enviarBtn.Size = new Vector2(0, 35);
+                enviarBtn.Anchor = Anchor.TopCenter;
                 enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
                 botonesPanel.AddChild(enviarBtn);
 
-                Button cartasBtn = new Button("Pedir Cartas");
-                cartasBtn.Size = new Vector2(150, 35);
-                cartasBtn.Anchor = Anchor.TopRight;
-                cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartas();
+                // **BOTÓN PEDIR CARTAS - CON CONTROL DE RONDA**
+                Button cartasBtn = new Button(cartasPedidasEstaRonda ? "Ya pediste cartas" : "Pedir Cartas");
+                cartasBtn.Size = new Vector2(0, 35);
+                cartasBtn.Anchor = Anchor.TopCenter;
+                cartasBtn.Offset = new Vector2(0, 40);
+
+                // **DESHABILITAR SI YA SE PIDIERON CARTAS**
+                if (cartasPedidasEstaRonda)
+                {
+                    cartasBtn.Enabled = false;
+                    cartasBtn.FillColor = Color.Gray;
+                }
+                else
+                {
+                    cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartas();
+                }
+
                 botonesPanel.AddChild(cartasBtn);
 
                 Debug.WriteLine("[CHAT] Panel de chat inicializado correctamente");
@@ -1504,22 +1528,34 @@ namespace Duska.Screens
         {
             try
             {
+                // **VERIFICAR SI YA SE PIDIERON CARTAS EN ESTA RONDA**
+                if (cartasPedidasEstaRonda)
+                {
+                    historialChat.Add("Sistema: ❌ Ya pediste cartas en esta ronda");
+                    CrearInterfazChatCompleta(true);
+                    return;
+                }
+
                 if (conectado || ConnectToServerIfNeeded())
                 {
                     GetCards(usuario);
-                    historialChat.Add("Sistema: Solicitando nuevas cartas...");
-                    // NO recrear UI aquí, solo añadir mensaje
+
+                    // **MARCAR QUE YA SE PIDIERON CARTAS**
+                    cartasPedidasEstaRonda = true;
+
+                    historialChat.Add("Sistema: ✅ Solicitando nuevas cartas...");
+                    CrearInterfazChatCompleta(true); // Actualizar UI para deshabilitar botón
                 }
                 else
                 {
-                    historialChat.Add("Sistema: ERROR - No hay conexión al servidor");
+                    historialChat.Add("Sistema: ❌ ERROR - No hay conexión al servidor");
                     CrearInterfazChatCompleta(true);
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error solicitando cartas: {ex.Message}");
-                historialChat.Add($"Sistema: ERROR - {ex.Message}");
+                historialChat.Add($"Sistema: ❌ ERROR - {ex.Message}");
                 CrearInterfazChatCompleta(true);
             }
         }
