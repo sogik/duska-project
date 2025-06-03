@@ -395,21 +395,22 @@ namespace Duska.Screens
 
             Debug.WriteLine($"[TURNOS] Acciones de juego {(permitir ? "HABILITADAS" : "BLOQUEADAS")}");
         }
+
         private string GetTipoCartaPorTextura(Texture2D textura)
         {
-            // Compara directamente con las texturas cargadas en _cartas[]
+            // **DEVOLVER NOMBRES EXACTOS QUE ESPERA EL SERVIDOR**
             if (textura == _cartas[0]) // ace
                 return "ace";
-            else if (textura == _cartas[1]) // jack
+            else if (textura == _cartas[1]) // jack  
                 return "jack";
             else if (textura == _cartas[2]) // king
                 return "king";
             else if (textura == _cartas[3]) // queen
                 return "queen";
             else if (textura == _cartas[4]) // cardback
-                return "0";
+                return "cardback";
             else
-                return "0"; // Desconocido
+                return "desconocida";
         }
 
         // Añadir este nuevo método a GameCardScreen:
@@ -2007,17 +2008,24 @@ namespace Duska.Screens
                 }
 
                 // Construir el mensaje con la cantidad de cartas y sus tipos
-                string datosCartas = $"{cartasConFiltroCount}/{string.Join(",", tiposCartas)}";
+                string mensaje = $"21/{usuario}/JUGAR/{cartasConFiltroCount}";
 
-                // Enviar acción al servidor
-                string mensaje = $"21/{usuario}/PLAY/{datosCartas}";
+                // Añadir cada carta al mensaje
+                foreach (string tipoCarta in tiposCartas)
+                {
+                    mensaje += $"/{tipoCarta}";
+                }
+
+                Debug.WriteLine($"[CARTAS] *** MENSAJE CONSTRUIDO: '{mensaje}' ***");
+
+                // Enviar al servidor
                 byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                 server.Send(msg);
 
-                Debug.WriteLine($"[ACCIÓN] Enviadas {cartasConFiltroCount} cartas: {datosCartas}");
-                ChatPanel(true, $"Sistema/Has enviado {cartasConFiltroCount} carta(s)");
+                Debug.WriteLine($"[ACCIÓN] Enviadas {cartasConFiltroCount} cartas: {string.Join(", ", tiposCartas)}");
+                ChatPanel(true, $"Sistema/Has enviado {cartasConFiltroCount} carta(s): {string.Join(", ", tiposCartas)}");
 
-                // Opcional: Limpiar las cartas enviadas de tu mano
+                // Limpiar las cartas enviadas de tu mano
                 LimpiarCartasEnviadas();
             }
             catch (Exception ex)
@@ -2741,35 +2749,6 @@ namespace Duska.Screens
         {
             this.server = existingSocket;
             this.conectado = true;
-        }
-
-        // Método para enviar acciones al servidor
-        private void EnviarAccionJuego(string accion, string datos)
-        {
-            try
-            {
-                if (!esMiTurno)
-                {
-                    ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
-                    return;
-                }
-
-                // Formato correcto para el servidor: 21/usuario/accion/datos
-                string mensaje = $"21/{usuario}/{accion}/{datos}";
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                server.Send(msg);
-
-                Debug.WriteLine($"[ACCIÓN] Enviada: {accion} {datos}");
-
-                // Opcional: deshabilitar los controles inmediatamente mientras se procesa la acción
-                // para evitar acciones duplicadas
-                _permitirAccionesJuego = false;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al enviar acción: {ex.Message}");
-                ChatPanel(true, $"Sistema/ERROR: {ex.Message}");
-            }
         }
     }
 }

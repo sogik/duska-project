@@ -97,36 +97,47 @@ void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int 
     // Obtener el tipo de carta designado para la ronda actual
     const char *tipo_ronda = partida->cartas_ronda[partida->ronda_actual];
 
-    printf("[VERIFICACIÓN] Ronda %d: tipo designado '%s', verificando %d cartas individualmente\n",
-           partida->ronda_actual + 1, tipo_ronda, num_cartas);
-
-    printf("[VERIFICACIÓN] Revisando %d cartas:\n", num_cartas);
-    for (int i = 0; i < num_cartas; i++)
-    {
-        printf("[VERIFICACIÓN] Carta recibida %d: '%s' (longitud: %lu)\n",
-               i + 1, cartas[i], strlen(cartas[i]));
-    }
+    printf("[VERIFICACIÓN] === INICIO VERIFICACIÓN ===\n");
+    printf("[VERIFICACIÓN] Ronda %d: tipo designado '%s'\n",
+           partida->ronda_actual + 1, tipo_ronda);
+    printf("[VERIFICACIÓN] Verificando %d cartas:\n", num_cartas);
 
     // Verificar cada carta jugada de forma individual
     for (int i = 0; i < num_cartas; i++)
     {
+        printf("[VERIFICACIÓN] === CARTA %d ===\n", i + 1);
+        printf("[VERIFICACIÓN] Carta recibida: '%s' (longitud: %lu)\n",
+               cartas[i], strlen(cartas[i]));
+
         // Determinar el tipo de carta basado en el valor
         char tipo_carta[20] = {0};
 
-        // Clasificar la carta según su primer carácter
-        if (strcmp(cartas[i], "ace") == 0)
+        // **LIMPIEZA Y CLASIFICACIÓN MEJORADA**
+        char carta_limpia[20] = {0};
+        strncpy(carta_limpia, cartas[i], sizeof(carta_limpia) - 1);
+
+        // Convertir a minúsculas para comparación consistente
+        for (int j = 0; carta_limpia[j]; j++)
+        {
+            carta_limpia[j] = tolower(carta_limpia[j]);
+        }
+
+        printf("[VERIFICACIÓN] Carta limpia: '%s'\n", carta_limpia);
+
+        // Clasificar la carta según su valor
+        if (strcmp(carta_limpia, "ace") == 0 || strstr(carta_limpia, "ace") != NULL)
         {
             strcpy(tipo_carta, "ACES");
         }
-        else if (strcmp(cartas[i], "king") == 0)
+        else if (strcmp(carta_limpia, "king") == 0 || strstr(carta_limpia, "king") != NULL)
         {
             strcpy(tipo_carta, "REYES");
         }
-        else if (strcmp(cartas[i], "queen") == 0)
+        else if (strcmp(carta_limpia, "queen") == 0 || strstr(carta_limpia, "queen") != NULL)
         {
             strcpy(tipo_carta, "REINAS");
         }
-        else if (strcmp(cartas[i], "jack") == 0)
+        else if (strcmp(carta_limpia, "jack") == 0 || strstr(carta_limpia, "jack") != NULL)
         {
             strcpy(tipo_carta, "JOKERS");
         }
@@ -135,20 +146,23 @@ void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int 
             strcpy(tipo_carta, "OTRO");
         }
 
+        printf("[VERIFICACIÓN] Tipo clasificado: '%s'\n", tipo_carta);
+        printf("[VERIFICACIÓN] Tipo requerido: '%s'\n", tipo_ronda);
+
         // Verificar si esta carta específica coincide con el tipo de la ronda
         if (strcmp(tipo_carta, tipo_ronda) == 0)
         {
             resultados[i] = 1; // Carta válida
-            printf("[VERIFICACIÓN] Carta %d: '%s' (tipo: '%s') - VÁLIDA\n",
-                   i + 1, cartas[i], tipo_carta);
+            printf("[VERIFICACIÓN] ✓ CARTA VÁLIDA\n");
         }
         else
         {
             resultados[i] = 0; // Carta no válida
-            printf("[VERIFICACIÓN] Carta %d: '%s' (tipo: '%s') - NO VÁLIDA\n",
-                   i + 1, cartas[i], tipo_carta);
+            printf("[VERIFICACIÓN] ✗ CARTA NO VÁLIDA\n");
         }
     }
+
+    printf("[VERIFICACIÓN] === FIN VERIFICACIÓN ===\n");
 }
 
 // Función para crear un nuevo grupo con dos usuarios
@@ -1287,64 +1301,84 @@ void *cliente(void *socket_ptr)
         // Reemplazar todo el bloque del código 21 con esto:
         else if (codigo == 21)
         {
-            printf("[DEBUG-INICIAL] ====== PROCESANDO CÓDIGO 21 ======\n");
-            printf("[DEBUG-INICIAL] Usuario: '%s'\n", usuario);
-            printf("[DEBUG-INICIAL] Contrasena: '%s'\n", contrasena);
-            printf("[DEBUG-INICIAL] Mensaje: '%s'\n", mensaje ? mensaje : "NULL");
+            printf("[DEBUG-21] ====== PROCESANDO CÓDIGO 21 ======\n");
+            printf("[DEBUG-21] Usuario: '%s'\n", usuario);
+            printf("[DEBUG-21] Petición completa: '%s'\n", peticion);
 
             char accion[10] = {0};
             int cantidad = 0;
             char cartas_jugadas[10][10] = {{0}};
             int resultados_verificacion[10] = {0};
 
-            // Extraer acción
-            strncpy(accion, contrasena, sizeof(accion) - 1);
-            printf("[DEBUG] Acción extraída: '%s'\n", accion);
+            // **PARSING MEJORADO DE LA PETICIÓN COMPLETA**
+            char peticion_copia[512];
+            strncpy(peticion_copia, peticion, sizeof(peticion_copia) - 1);
+            peticion_copia[sizeof(peticion_copia) - 1] = '\0';
 
-            if (mensaje != NULL && strlen(mensaje) > 0)
+            printf("[DEBUG-21] Parseando petición: '%s'\n", peticion_copia);
+
+            // Dividir por "/" para obtener todas las partes
+            char *partes[20] = {NULL}; // Máximo 20 partes
+            int num_partes = 0;
+
+            char *token = strtok(peticion_copia, "/");
+            while (token != NULL && num_partes < 20)
             {
-                cantidad = atoi(mensaje);
-                printf("[DEBUG] Cantidad extraída del mensaje: %d\n", cantidad);
-
-                printf("[DEBUG] Intentando método alternativo para obtener las cartas...\n");
-
-                // SOLUCIÓN TEMPORAL MEJORADA: Procesar tanto una carta como múltiples cartas
-                // Esto es solo para debugging hasta que solucionemos el problema del parseo
-
-                if (cantidad == 1)
-                {
-                    // Una sola carta - usar la que sabemos que funciona
-                    strcpy(cartas_jugadas[0], "jack"); // Carta temporal para pruebas
-                    printf("[DEBUG-TEMP] Carta única temporal asignada: 'jack'\n");
-                }
-                else if (cantidad == 2)
-                {
-                    // Dos cartas - simular las que sabemos que se están enviando
-                    strcpy(cartas_jugadas[0], "jack");
-                    strcpy(cartas_jugadas[1], "king");
-                    printf("[DEBUG-TEMP] Cartas múltiples temporales asignadas: 'jack', 'king'\n");
-                }
-                else if (cantidad >= 3)
-                {
-                    // Múltiples cartas - usar una lista temporal
-                    char *cartas_temp[] = {"jack", "king", "queen", "ace", "joker"};
-                    for (int i = 0; i < cantidad && i < 5 && i < 10; i++)
-                    {
-                        strcpy(cartas_jugadas[i], cartas_temp[i]);
-                        printf("[DEBUG-TEMP] Carta %d temporal asignada: '%s'\n", i + 1, cartas_jugadas[i]);
-                    }
-                }
+                partes[num_partes] = token;
+                printf("[DEBUG-21] Parte %d: '%s'\n", num_partes, token);
+                num_partes++;
+                token = strtok(NULL, "/");
             }
 
-            // Verificación final
-            printf("[DEBUG-FINAL] Cartas procesadas:\n");
+            // **FORMATO ESPERADO: 21/usuario/accion/cantidad/carta1/carta2/carta3/...**
+            if (num_partes >= 4)
+            {
+                // Extraer acción (parte 2)
+                strncpy(accion, partes[2], sizeof(accion) - 1);
+
+                // Extraer cantidad (parte 3)
+                cantidad = atoi(partes[3]);
+
+                printf("[DEBUG-21] Acción: '%s', Cantidad: %d\n", accion, cantidad);
+
+                // **EXTRAER LAS CARTAS REALES (partes 4 en adelante)**
+                int cartas_extraidas = 0;
+                for (int i = 4; i < num_partes && cartas_extraidas < cantidad && cartas_extraidas < 10; i++)
+                {
+                    if (partes[i] && strlen(partes[i]) > 0)
+                    {
+                        strncpy(cartas_jugadas[cartas_extraidas], partes[i], sizeof(cartas_jugadas[cartas_extraidas]) - 1);
+                        cartas_jugadas[cartas_extraidas][sizeof(cartas_jugadas[cartas_extraidas]) - 1] = '\0';
+
+                        printf("[DEBUG-21] Carta %d extraída: '%s'\n", cartas_extraidas + 1, cartas_jugadas[cartas_extraidas]);
+                        cartas_extraidas++;
+                    }
+                }
+
+                // Verificar que tengamos todas las cartas esperadas
+                if (cartas_extraidas != cantidad)
+                {
+                    printf("[DEBUG-21] ADVERTENCIA: Se esperaban %d cartas pero se extrajeron %d\n", cantidad, cartas_extraidas);
+                    cantidad = cartas_extraidas; // Ajustar cantidad a las cartas realmente extraídas
+                }
+            }
+            else
+            {
+                printf("[DEBUG-21] ERROR: Formato de petición incorrecto. Se esperaban al menos 4 partes, se obtuvieron %d\n", num_partes);
+                strcpy(respuesta, "ERROR/Formato de petición incorrecto");
+                printf("[DEBUG-21] ====== FIN CÓDIGO 21 (ERROR) ======\n");
+                continue;
+            }
+
+            // **MOSTRAR CARTAS FINALES PROCESADAS**
+            printf("[DEBUG-21] === CARTAS FINALES PROCESADAS ===\n");
             for (int i = 0; i < cantidad; i++)
             {
-                printf("[DEBUG-FINAL]   Carta %d: '%s' (longitud: %lu)\n",
+                printf("[DEBUG-21] Carta %d: '%s' (longitud: %lu)\n",
                        i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
             }
 
-            // Verificar que es el turno del jugador
+            // **CONTINUAR CON LA LÓGICA EXISTENTE**
             if (es_turno_de_jugador(usuario))
             {
                 GameInfo *partida = obtener_partida_por_jugador(usuario);
@@ -1365,7 +1399,7 @@ void *cliente(void *socket_ptr)
                     // Formato del mensaje: ACTION/jugador/accion/cantidad
                     char mensaje_accion[1024];
                     snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%d",
-                             usuario, accion, cantidad); // Cambiar datos por cantidad
+                             usuario, accion, cantidad);
 
                     // Notificar a todos los jugadores de la partida
                     broadcast_to_group(partida->grupo_id, mensaje_accion);
@@ -1394,7 +1428,7 @@ void *cliente(void *socket_ptr)
                 strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", sizeof(respuesta));
             }
 
-            printf("[DEBUG-INICIAL] ====== FIN CÓDIGO 21 ======\n");
+            printf("[DEBUG-21] ====== FIN CÓDIGO 21 ======\n");
         }
         // Para código 22 (pasar turno)
         else if (codigo == 22)
