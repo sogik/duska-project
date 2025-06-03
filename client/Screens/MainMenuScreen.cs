@@ -554,11 +554,20 @@ namespace Duska.Screens
                 string[] friendsArray = usuarios.Split('/');
                 foreach (string friend in friendsArray)
                 {
-                    if (!string.IsNullOrWhiteSpace(friend) && friend != usuario) // Evitar agregar el propio usuario
+                    // **EXCLUIR EL PROPIO USUARIO TAMBIÉN EN LA LISTA DE USUARIOS**
+                    if (!string.IsNullOrWhiteSpace(friend) &&
+                        !friend.Equals(usuario, StringComparison.OrdinalIgnoreCase) &&
+                        friend != "LISTU" &&
+                        !friend.StartsWith("Error"))
                     {
                         Debug.WriteLine($"Agregando usuario a la lista: {friend}");
                         usuariosList.AddItem(friend);
                     }
+                }
+
+                if (usuariosList.Count == 0)
+                {
+                    usuariosList.AddItem("No hay otros usuarios registrados");
                 }
             }
 
@@ -891,7 +900,22 @@ namespace Duska.Screens
                 string[] friendsArray = friends.Split('/');
                 foreach (string friend in friendsArray)
                 {
-                    friendsList.AddItem(friend);
+                    // **DOBLE VERIFICACIÓN: EXCLUIR EL PROPIO USUARIO**
+                    if (!string.IsNullOrWhiteSpace(friend) &&
+                        !friend.Equals(usuario, StringComparison.OrdinalIgnoreCase) &&
+                        friend != "LIST" &&
+                        !friend.StartsWith("Error") &&
+                        !friend.Contains("No hay"))
+                    {
+                        Debug.WriteLine($"Agregando amigo a la lista: {friend}");
+                        friendsList.AddItem(friend);
+                    }
+                }
+
+                // Si no hay amigos para mostrar
+                if (friendsList.Count == 0)
+                {
+                    friendsList.AddItem("No hay otros usuarios conectados");
                 }
             }
 

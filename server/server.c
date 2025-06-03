@@ -919,7 +919,9 @@ void *cliente(void *socket_ptr)
         }
         else if (codigo == 5)
         {
-            listarConectados(conn, respuesta, sizeof(respuesta));
+            printf("[AMIGOS] Solicitud de lista de amigos de usuario: %s\n", usuario);
+            listarAmigos(conn, usuario, respuesta, sizeof(respuesta));
+            printf("[AMIGOS] Lista de amigos enviada (excluido el solicitante)\n");
         }
         else if (codigo == 6)
         {

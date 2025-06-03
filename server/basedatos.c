@@ -498,30 +498,99 @@ void listarConectados(MYSQL *conn, char *lista, int tamano_lista)
 {
     MYSQL_RES *res;
     MYSQL_ROW row;
+    char consulta[256];
 
     lista[0] = '\0';
 
-    int err = mysql_query(conn, "SELECT nombre_usuario FROM Jugadores WHERE estado = 1");
+    snprintf(consulta, sizeof(consulta), "SELECT nombre_usuario FROM Jugadores WHERE estado = 1 ORDER BY nombre_usuario");
+
+    int err = mysql_query(conn, consulta);
     if (err != 0)
     {
-        printf("Error al consultar: %s\n", mysql_error(conn));
-        lista[0] = '\0'; // Establecer string vacío
+        printf("Error al consultar jugadores conectados: %s\n", mysql_error(conn));
         return;
     }
 
-    res = mysql_use_result(conn);
+    res = mysql_store_result(conn);
     if (res)
     {
         strcat(lista, "LIST/");
         while ((row = mysql_fetch_row(res)))
         {
-            strcat(lista, row[0]);
-            strcat(lista, "/");
+            char entrada[100];
+            snprintf(entrada, sizeof(entrada), "%s/", row[0]);
+
+            if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 1))
+            {
+                strcat(lista, entrada);
+            }
+            else
+            {
+                break;
+            }
         }
         mysql_free_result(res);
     }
     else
     {
-        printf("Error al obtener el resultado: %s\n", mysql_error(conn));
+        printf("Error al obtener resultado: %s\n", mysql_error(conn));
+    }
+}
+
+void listarAmigos(MYSQL *conn, const char *usuario_solicitante, char *lista, int tamano_lista)
+{
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    char consulta[256];
+
+    lista[0] = '\0';
+
+    // **CONSULTA QUE EXCLUYE AL USUARIO SOLICITANTE**
+    snprintf(consulta, sizeof(consulta),
+             "SELECT nombre_usuario FROM Jugadores WHERE estado = 1 AND nombre_usuario != '%s' ORDER BY nombre_usuario",
+             usuario_solicitante);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al consultar amigos: %s\n", mysql_error(conn));
+        strcpy(lista, "LIST/Error al obtener lista de amigos");
+        return;
+    }
+
+    res = mysql_store_result(conn);
+    if (res)
+    {
+        strcat(lista, "LIST/");
+        int contador = 0;
+
+        while ((row = mysql_fetch_row(res)))
+        {
+            char entrada[100];
+            snprintf(entrada, sizeof(entrada), "%s/", row[0]);
+
+            if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))
+            {
+                strcat(lista, entrada);
+                contador++;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // Si no hay otros usuarios conectados
+        if (contador == 0)
+        {
+            strcat(lista, "No hay otros usuarios conectados/");
+        }
+
+        mysql_free_result(res);
+        printf("[BD] Lista de amigos para %s: %d usuarios (excluido el solicitante)\n", usuario_solicitante, contador);
+    }
+    else
+    {
+        strcpy(lista, "LIST/Error al procesar lista de amigos");
     }
 }
