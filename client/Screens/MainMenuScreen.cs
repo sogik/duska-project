@@ -47,6 +47,10 @@ namespace Duska.Screens
         {
             this.usuario = usuario;
             game.IsMouseVisible = false;
+
+            // **DEBUG TEMPORAL**
+            Debug.WriteLine($"[CONSTRUCTOR] MainMenuScreen creado para usuario: {usuario}");
+            Debug.WriteLine($"[CONSTRUCTOR] Socket inicial: {(server != null ? "Existe" : "Null")}");
         }
 
         public override void LoadContent()
@@ -66,16 +70,25 @@ namespace Duska.Screens
             _spriteBatch = new SpriteBatch(GraphicsDevice);
             _background = Content.Load<Texture2D>("bg2");
 
-            // Solo iniciar conexión si no hay socket
-            if (server == null || !conectado)
+            // **SOLO CONECTAR SI NO HAY SOCKET VÁLIDO**
+            if (server == null || !conectado || !server.Connected)
             {
+                Debug.WriteLine("[MAIN MENU] No hay socket válido, creando nueva conexión");
                 int estado1 = this.estado(usuario, "1");
                 ConnectToServer();
                 StartMessageListener();
             }
+            else
+            {
+                Debug.WriteLine("[MAIN MENU] Socket existente válido, reutilizando conexión");
+                // **ASEGURAR QUE EL HILO DE ESCUCHA ESTÉ ACTIVO**
+                if (!messageListenerRunning)
+                {
+                    StartMessageListener();
+                }
+            }
 
             SolicitarEstadoLider();
-
             Menu(true);
         }
 
@@ -1357,7 +1370,23 @@ namespace Duska.Screens
             {
                 // Invitación recibida
                 string invitacion = message.Substring(4);
-                Debug.WriteLine("[INVITACIÓN] Invitación recibida");
+                Debug.WriteLine($"[INVITACIÓN] *** INVITACIÓN RECIBIDA: '{invitacion}' ***");
+
+                // **LIMPIAR UI ANTES DE MOSTRAR INVITACIÓN**
+                if (UserInterface.Active != null)
+                {
+                    // Buscar y cerrar paneles existentes que puedan interferir
+                    var panelsToRemove = UserInterface.Active.Root.Children
+                        .Where(child => child is Panel panel &&
+                               (panel.Identifier?.Contains("Menu") == true ||
+                                panel.Identifier?.Contains("Options") == true))
+                        .ToList();
+
+                    foreach (var panel in panelsToRemove)
+                    {
+                        UserInterface.Active.RemoveEntity(panel);
+                    }
+                }
 
                 InvitacionPanel(1, true, invitacion);
                 return;
@@ -1366,7 +1395,7 @@ namespace Duska.Screens
             {
                 // Respuesta a invitación
                 string respuestaInv = message.Substring(5);
-                Debug.WriteLine("[INVITACIÓN] Respuesta a invitación recibida");
+                Debug.WriteLine($"[INVITACIÓN] *** RESPUESTA RECIBIDA: '{respuestaInv}' ***");
 
                 InvitacionPanel(2, true, respuestaInv);
                 return;
@@ -1583,9 +1612,49 @@ namespace Duska.Screens
         // Método para recibir el socket existente desde TitleScreen
         public void SetExistingSocket(Socket existingSocket)
         {
-            this.server = existingSocket;
-            this.conectado = true;
-            StartMessageListener(); // Iniciar el hilo de escucha inmediatamente
+            try
+            {
+                Debug.WriteLine("[SOCKET] Recibiendo socket existente del GameScreen");
+
+                // **DETENER CUALQUIER HILO ANTERIOR**
+                stopMessageListener = true;
+                if (messageListenerThread != null && messageListenerThread.IsAlive)
+                {
+                    messageListenerThread.Join(1000); // Esperar máximo 1 segundo
+                }
+
+                // **CONFIGURAR EL SOCKET EXISTENTE**
+                this.server = existingSocket;
+                this.conectado = true;
+
+                Debug.WriteLine($"[SOCKET] Socket configurado. Conectado: {conectado}, Válido: {server != null && server.Connected}");
+
+                // **REINICIAR EL HILO DE ESCUCHA INMEDIATAMENTE**
+                messageListenerRunning = false; // Resetear flag
+                StartMessageListener();
+
+                // **ENVIAR ESTADO CONECTADO**
+                int estadoResult = estado(usuario, "1");
+                if (estadoResult == 0)
+                {
+                    Debug.WriteLine("[SOCKET] Estado 'conectado' enviado correctamente");
+                }
+
+                // **SOLICITAR INFORMACIÓN DE SALA/GRUPO**
+                SolicitarInformacionSala();
+                SolicitarEstadoLider();
+
+                Debug.WriteLine("[SOCKET] Socket existente configurado y hilo de escucha reiniciado");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error configurando socket existente: {ex.Message}");
+
+                // **FALLBACK: CREAR NUEVA CONEXIÓN**
+                conectado = false;
+                server = null;
+                ConnectToServer();
+            }
         }
     }
 }

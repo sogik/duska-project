@@ -1082,10 +1082,43 @@ namespace Duska.Screens
                 Button regresarBtn = new Button("Regresar al Menú", ButtonSkin.Default);
                 regresarBtn.Size = new Vector2(220, 60);
                 regresarBtn.FillColor = Color.LightGreen;
+                // En GameCardScreen.cs, en MostrarPanelFinPartida, cambiar el OnClick:
+
                 regresarBtn.OnClick = (Entity btn) =>
                 {
                     Debug.WriteLine("[FIN_PARTIDA] Botón regresar clickeado");
-                    RegresarAlMenuPrincipal();
+
+                    // **TRANSFERIR SOCKET EN LUGAR DE CREAR NUEVA CONEXIÓN**
+                    try
+                    {
+                        // Detener escucha de mensajes
+                        stopMessageListener = true;
+
+                        // Limpiar la UI antes de cambiar
+                        if (UserInterface.Active != null)
+                        {
+                            UserInterface.Active.Clear();
+                        }
+
+                        // **TRANSFERIR SOCKET AL MENÚ PRINCIPAL**
+                        var mainMenuScreen = new MainMenuScreen(Game, usuario);
+
+                        if (server != null && server.Connected)
+                        {
+                            mainMenuScreen.SetExistingSocket(server);
+                            Debug.WriteLine("[FIN_PARTIDA] Socket transferido correctamente");
+                        }
+
+                        ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] Error en transferencia de socket: {ex.Message}");
+
+                        // Fallback: crear menú sin socket
+                        var mainMenuScreen = new MainMenuScreen(Game, usuario);
+                        ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
+                    }
                 };
                 panel.AddChild(regresarBtn);
 
@@ -1123,7 +1156,7 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[NAVEGACIÓN] Regresando al menú principal");
 
-                // Detener escucha de mensajes
+                // **NO DETENER EL SOCKET - MANTENERLO VIVO**
                 stopMessageListener = true;
 
                 // Limpiar la UI antes de cambiar
@@ -1132,8 +1165,16 @@ namespace Duska.Screens
                     UserInterface.Active.Clear();
                 }
 
-                // Regresar al menú principal
+                // **PASAR EL SOCKET EXISTENTE AL MENÚ PRINCIPAL**
                 var mainMenuScreen = new MainMenuScreen(Game, usuario);
+
+                // **IMPORTANTE: Pasar el socket vivo para mantener la conexión**
+                if (server != null && server.Connected)
+                {
+                    mainMenuScreen.SetExistingSocket(server);
+                    Debug.WriteLine("[NAVEGACIÓN] Socket transferido al menú principal");
+                }
+
                 ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
 
                 Debug.WriteLine("[NAVEGACIÓN] Cambio de pantalla iniciado");
