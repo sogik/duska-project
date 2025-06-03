@@ -398,22 +398,115 @@ int broadcast_to_group(int grupo_id, const char *mensaje)
 }
 
 // Función para enviar datos a todos los clientes
-void broadcast_to_all(const char *message)
+void broadcast_to_all(const char *mensaje)
+{
+    if (mensaje == NULL)
+        return;
+
+    printf("[BROADCAST] Enviando a todos: %s\n", mensaje);
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    ClientNode *prev = NULL;
+
+    while (current != NULL)
+    {
+        ClientNode *next = current->next; // Guardar el siguiente antes de posible eliminación
+
+        // Verificar si el socket está válido
+        if (current->socket > 0)
+        {
+            ssize_t bytes_sent = send(current->socket, mensaje, strlen(mensaje), MSG_NOSIGNAL);
+
+            if (bytes_sent == -1)
+            {
+                printf("[BROADCAST] Error enviando a %s (socket %d): %s\n",
+                       current->usuario, current->socket, strerror(errno));
+                printf("[BROADCAST] Eliminando cliente desconectado: %s\n", current->usuario);
+
+                // Eliminar el nodo de la lista
+                if (prev == NULL)
+                {
+                    client_list = next;
+                }
+                else
+                {
+                    prev->next = next;
+                }
+
+                // Liberar memoria
+                close(current->socket);
+                free(current);
+                current = NULL;
+            }
+            else
+            {
+                printf("[BROADCAST] Enviado correctamente a %s (%d bytes)\n", current->usuario, (int)bytes_sent);
+                prev = current;
+            }
+        }
+        else
+        {
+            printf("[BROADCAST] Socket inválido para %s, eliminando\n", current->usuario);
+
+            // Eliminar el nodo de la lista
+            if (prev == NULL)
+            {
+                client_list = next;
+            }
+            else
+            {
+                prev->next = next;
+            }
+
+            free(current);
+            current = NULL;
+        }
+
+        current = next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    printf("[BROADCAST] Broadcast completado\n");
+}
+
+void limpiar_cliente_desconectado(int socket)
 {
     pthread_mutex_lock(&client_list_mutex);
 
     ClientNode *current = client_list;
+    ClientNode *prev = NULL;
+
     while (current != NULL)
     {
-        if (write(current->socket, message, strlen(message)) < 0)
+        if (current->socket == socket)
         {
-            perror("Error al enviar broadcast");
-            // Si hay error, probablemente el cliente se desconectó
-            ClientNode *to_remove = current;
-            current = current->next;
-            remove_client(to_remove->socket);
-            continue;
+            printf("[CLEANUP] Limpiando cliente: %s (socket %d)\n", current->usuario, socket);
+
+            // Actualizar estado en base de datos
+            if (strlen(current->usuario) > 0)
+            {
+                extern MYSQL *conn; // Asumiendo que conn es global
+                actualizarEstado(conn, current->usuario, 0);
+            }
+
+            // Eliminar de la lista
+            if (prev == NULL)
+            {
+                client_list = current->next;
+            }
+            else
+            {
+                prev->next = current->next;
+            }
+
+            close(current->socket);
+            free(current);
+            break;
         }
+
+        prev = current;
         current = current->next;
     }
 
@@ -716,32 +809,30 @@ void *cliente(void *socket_ptr)
         ret = read(sock_conn, peticion, sizeof(peticion) - 1);
         if (ret <= 0)
         {
-            // Cliente desconectado
+            if (ret == 0)
+            {
+                printf("[DESCONEXION] Cliente %s se desconectó normalmente\n", usuario);
+            }
+            else
+            {
+                printf("[DESCONEXION] Error de conexión con %s: %s\n", usuario, strerror(errno));
+            }
+
+            // Limpiar cliente de la lista
+            limpiar_cliente_desconectado(sock_conn);
+
+            // Actualizar estado en base de datos
             if (strlen(usuario) > 0)
             {
-                // Obtener el grupo del usuario antes de eliminarlo
-                int grupo_id = obtener_grupo_id(usuario);
-
-                // Actualizar estado como desconectado
                 actualizarEstado(conn, usuario, 0);
 
-                // Enviar lista actualizada a todos
+                // Enviar lista actualizada a los clientes restantes
                 char buffer[1024] = {0};
                 listarConectados(conn, buffer, sizeof(buffer));
                 broadcast_to_all(buffer);
-
-                // Si estaba en un grupo, notificar a los demás miembros
-                if (grupo_id > 0)
-                {
-                    char notify_message[256];
-                    snprintf(notify_message, sizeof(notify_message), "GRUPO_SALIDA/%s", usuario);
-                    broadcast_to_group(grupo_id, notify_message);
-                }
-
-                // Eliminar de la lista de clientes
-                remove_client(sock_conn);
             }
-            break;
+
+            break; // Salir del bucle
         }
         peticion[ret] = '\0';
         printf("Peticion: %s\n", peticion);
