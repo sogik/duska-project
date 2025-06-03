@@ -4,7 +4,7 @@ CREATE DATABASE duska_project;
 
 USE duska_project;
 
-CREATE TABLE Jugadores (
+CREATE TABLE IF NOT EXISTS Jugadores (
     id_jugador INT AUTO_INCREMENT PRIMARY KEY,
     nombre_usuario VARCHAR(50) UNIQUE NOT NULL,
     contrasena VARCHAR(255) NOT NULL,
@@ -13,15 +13,31 @@ CREATE TABLE Jugadores (
     estado INT DEFAULT 0
 );
 
-CREATE TABLE Partidas (
+CREATE TABLE IF NOT EXISTS Partidas (
     id_partida INT AUTO_INCREMENT PRIMARY KEY,
-    fecha_inicio DATETIME DEFAULT CURRENT_TIMESTAMP,
-    duracion INT NOT NULL,
-    ganador_id INT NOT NULL,
+    grupo_id INT NOT NULL,
+    fecha_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    fecha_fin TIMESTAMP NULL,
+    estado VARCHAR(20) DEFAULT 'ACTIVA',
+    ganador_id INT NULL,
+    num_jugadores INT NOT NULL,
+    ronda_actual INT DEFAULT 0,
+    carta_designada VARCHAR(20),
     FOREIGN KEY (ganador_id) REFERENCES Jugadores(id_jugador)
 );
 
-CREATE TABLE Participantes (
+CREATE TABLE IF NOT EXISTS Partida_Jugadores (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    id_partida INT NOT NULL,
+    id_jugador INT NOT NULL,
+    nombre_usuario VARCHAR(50) NOT NULL,
+    eliminado BOOLEAN DEFAULT FALSE,
+    posicion_turno INT NOT NULL,
+    FOREIGN KEY (id_partida) REFERENCES Partidas(id_partida),
+    FOREIGN KEY (id_jugador) REFERENCES Jugadores(id_jugador)
+);
+
+CREATE TABLE IF NOT EXISTS Participantes (
     id_partida INT NOT NULL,
     id_jugador INT NOT NULL,
     fecha_participacion DATETIME DEFAULT CURRENT_TIMESTAMP,    
@@ -29,7 +45,7 @@ CREATE TABLE Participantes (
     FOREIGN KEY (id_jugador) REFERENCES Jugadores(id_jugador)
 );
 
-CREATE TABLE Invitaciones (
+CREATE TABLE IF NOT EXISTS Invitaciones (
     id_invitacion INT AUTO_INCREMENT PRIMARY KEY,
     id_invitador INT NOT NULL,
     id_invitado INT NOT NULL,

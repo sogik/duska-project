@@ -209,6 +209,231 @@ void listarPartidas(MYSQL *conn, char *lista, int tamano_lista)
     }
 }
 
+int obtenerIdJugadorPorNombre(MYSQL *conn, const char *nombre_usuario)
+{
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    char consulta[256];
+    int id_jugador = -1;
+
+    snprintf(consulta, sizeof(consulta),
+             "SELECT id_jugador FROM Jugadores WHERE nombre_usuario = '%s'",
+             nombre_usuario);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al consultar ID del jugador: %s\n", mysql_error(conn));
+        return -1;
+    }
+
+    res = mysql_store_result(conn);
+    if (res)
+    {
+        row = mysql_fetch_row(res);
+        if (row)
+        {
+            id_jugador = atoi(row[0]);
+        }
+        mysql_free_result(res);
+    }
+
+    return id_jugador;
+}
+
+int insertarPartida(MYSQL *conn, int grupo_id, int num_jugadores, char jugadores[10][50])
+{
+    char consulta[512];
+    int partida_id = -1;
+
+    // Insertar la partida principal
+    snprintf(consulta, sizeof(consulta),
+             "INSERT INTO Partidas (grupo_id, num_jugadores, estado) VALUES (%d, %d, 'ACTIVA')",
+             grupo_id, num_jugadores);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al insertar partida: %s\n", mysql_error(conn));
+        return -1;
+    }
+
+    // Obtener el ID de la partida recién creada
+    partida_id = (int)mysql_insert_id(conn);
+    printf("[BD] Partida creada con ID: %d\n", partida_id);
+
+    // Insertar los jugadores de la partida
+    for (int i = 0; i < num_jugadores; i++)
+    {
+        int id_jugador = obtenerIdJugadorPorNombre(conn, jugadores[i]);
+
+        if (id_jugador > 0)
+        {
+            snprintf(consulta, sizeof(consulta),
+                     "INSERT INTO Partida_Jugadores (id_partida, id_jugador, nombre_usuario, posicion_turno) "
+                     "VALUES (%d, %d, '%s', %d)",
+                     partida_id, id_jugador, jugadores[i], i);
+
+            err = mysql_query(conn, consulta);
+            if (err != 0)
+            {
+                printf("Error al insertar jugador %s en partida: %s\n", jugadores[i], mysql_error(conn));
+            }
+            else
+            {
+                printf("[BD] Jugador %s añadido a partida %d\n", jugadores[i], partida_id);
+            }
+        }
+        else
+        {
+            printf("[BD] No se encontró ID para jugador: %s\n", jugadores[i]);
+        }
+    }
+
+    return partida_id;
+}
+
+int actualizarPartidaFinalizada(MYSQL *conn, int partida_id, const char *ganador)
+{
+    char consulta[512];
+    int ganador_id = -1;
+
+    // Obtener el ID del ganador
+    if (ganador && strlen(ganador) > 0)
+    {
+        ganador_id = obtenerIdJugadorPorNombre(conn, ganador);
+    }
+
+    // Actualizar la partida como finalizada
+    if (ganador_id > 0)
+    {
+        snprintf(consulta, sizeof(consulta),
+                 "UPDATE Partidas SET estado = 'FINALIZADA', fecha_fin = NOW(), ganador_id = %d "
+                 "WHERE id_partida = %d",
+                 ganador_id, partida_id);
+    }
+    else
+    {
+        snprintf(consulta, sizeof(consulta),
+                 "UPDATE Partidas SET estado = 'FINALIZADA', fecha_fin = NOW() "
+                 "WHERE id_partida = %d",
+                 partida_id);
+    }
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al finalizar partida: %s\n", mysql_error(conn));
+        return -1;
+    }
+
+    printf("[BD] Partida %d finalizada con ganador: %s\n", partida_id, ganador ? ganador : "sin ganador");
+    return 0;
+}
+
+int actualizarEstadoPartida(MYSQL *conn, int partida_id, const char *estado)
+{
+    char consulta[256];
+
+    snprintf(consulta, sizeof(consulta),
+             "UPDATE Partidas SET estado = '%s' WHERE id_partida = %d",
+             estado, partida_id);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al actualizar estado de partida: %s\n", mysql_error(conn));
+        return -1;
+    }
+
+    printf("[BD] Estado de partida %d actualizado a: %s\n", partida_id, estado);
+    return 0;
+}
+
+int actualizarRondaPartida(MYSQL *conn, int partida_id, int ronda, const char *carta_designada)
+{
+    char consulta[256];
+
+    snprintf(consulta, sizeof(consulta),
+             "UPDATE Partidas SET ronda_actual = %d, carta_designada = '%s' WHERE id_partida = %d",
+             ronda, carta_designada, partida_id);
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al actualizar ronda de partida: %s\n", mysql_error(conn));
+        return -1;
+    }
+
+    printf("[BD] Partida %d - Ronda actualizada a %d, carta: %s\n", partida_id, ronda, carta_designada);
+    return 0;
+}
+
+void listarPartidasCompletas(MYSQL *conn, char *lista, int tamano_lista)
+{
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    char consulta[512];
+
+    lista[0] = '\0';
+
+    // Consulta que une las tablas para obtener información completa
+    snprintf(consulta, sizeof(consulta),
+             "SELECT p.id_partida, p.grupo_id, p.fecha_inicio, p.fecha_fin, p.estado, "
+             "j.nombre_usuario as ganador, p.num_jugadores, p.ronda_actual, p.carta_designada "
+             "FROM Partidas p "
+             "LEFT JOIN Jugadores j ON p.ganador_id = j.id_jugador "
+             "ORDER BY p.fecha_inicio DESC LIMIT 50");
+
+    int err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al consultar partidas: %s\n", mysql_error(conn));
+        strcpy(lista, "ERROR/Error al consultar partidas");
+        return;
+    }
+
+    res = mysql_store_result(conn);
+    if (res)
+    {
+        strcat(lista, "PARTIDAS/");
+
+        while ((row = mysql_fetch_row(res)))
+        {
+            char entrada[256];
+            snprintf(entrada, sizeof(entrada),
+                     "ID:%s|Grupo:%s|Inicio:%s|Fin:%s|Estado:%s|Ganador:%s|Jugadores:%s|Ronda:%s|Carta:%s/",
+                     row[0] ? row[0] : "",             // id_partida
+                     row[1] ? row[1] : "",             // grupo_id
+                     row[2] ? row[2] : "",             // fecha_inicio
+                     row[3] ? row[3] : "En_curso",     // fecha_fin
+                     row[4] ? row[4] : "",             // estado
+                     row[5] ? row[5] : "En_curso",     // ganador
+                     row[6] ? row[6] : "",             // num_jugadores
+                     row[7] ? row[7] : "0",            // ronda_actual
+                     row[8] ? row[8] : "No_definida"); // carta_designada
+
+            // Verificar que no se exceda el tamaño del buffer
+            if (strlen(lista) + strlen(entrada) < tamano_lista - 1)
+            {
+                strcat(lista, entrada);
+            }
+            else
+            {
+                break; // Evitar desbordamiento
+            }
+        }
+
+        mysql_free_result(res);
+        printf("[BD] Lista de partidas generada con %d entradas\n", mysql_num_rows(res));
+    }
+    else
+    {
+        printf("Error al obtener resultado: %s\n", mysql_error(conn));
+        strcpy(lista, "ERROR/No se pudieron obtener las partidas");
+    }
+}
+
 void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista, int tamano_lista)
 {
     MYSQL_RES *res;

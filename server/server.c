@@ -895,7 +895,7 @@ void *cliente(void *socket_ptr)
         }
         else if (codigo == 3)
         {
-            listarPartidas(conn, respuesta, sizeof(respuesta));
+            listarPartidasCompletas(conn, respuesta, sizeof(respuesta));
         }
         else if (codigo == 4)
         {

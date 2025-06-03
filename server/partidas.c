@@ -5,6 +5,7 @@
 #include "partidas.h"
 #include <unistd.h>
 #include "server.h"
+#include "basedatos.h"
 
 // Implementación para la lista global de partidas
 GameInfo *partidas_lista = NULL;
@@ -75,14 +76,41 @@ int iniciar_partida(int partida_id)
     if (!partida->jugadores)
         return -3;
 
+    // **PREPARAR ARRAY PARA LA BASE DE DATOS**
+    char jugadores_bd[10][50];
+
     // Copiar nombres de jugadores
     for (int i = 0; i < num_jug; i++)
     {
         char *nombre = obtener_usuario_grupo(partida->grupo_id, i);
         if (nombre)
+        {
             partida->jugadores[i] = strdup(nombre);
+            strncpy(jugadores_bd[i], nombre, sizeof(jugadores_bd[i]) - 1);
+            jugadores_bd[i][sizeof(jugadores_bd[i]) - 1] = '\0';
+        }
         else
+        {
             partida->jugadores[i] = NULL;
+            jugadores_bd[i][0] = '\0';
+        }
+    }
+
+    // **GUARDAR EN LA BASE DE DATOS**
+    MYSQL *conn = mysql_init(NULL);
+    if (mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
+    {
+        int partida_bd_id = insertarPartida(conn, partida->grupo_id, num_jug, jugadores_bd);
+        if (partida_bd_id > 0)
+        {
+            partida->partida_bd_id = partida_bd_id; // Guardar el ID de la BD
+            printf("[PARTIDA] Guardada en BD con ID: %d\n", partida_bd_id);
+        }
+        mysql_close(conn);
+    }
+    else
+    {
+        printf("[ERROR] No se pudo conectar a la BD para guardar partida\n");
     }
 
     // Asignar turno inicial aleatorio
@@ -92,6 +120,19 @@ int iniciar_partida(int partida_id)
     partida->ronda_actual = 0;
     partida->total_rondas = 4;
     generar_carta_para_ronda_actual(partida);
+
+    // **ACTUALIZAR RONDA EN BD**
+    if (conn && partida->partida_bd_id > 0)
+    {
+        conn = mysql_init(NULL);
+        if (mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
+        {
+            actualizarRondaPartida(conn, partida->partida_bd_id,
+                                   partida->ronda_actual + 1,
+                                   partida->cartas_ronda[partida->ronda_actual]);
+            mysql_close(conn);
+        }
+    }
 
     // Inicializar jugadores eliminados
     partida->num_jugadores_activos = partida->num_jugadores;
@@ -106,7 +147,7 @@ int iniciar_partida(int partida_id)
 
     // Notificar a todos los jugadores sobre el inicio de la partida
     char mensaje[100];
-    snprintf(mensaje, sizeof(mensaje), "GAMESTART/OK\n"); // Añadir salto de línea
+    snprintf(mensaje, sizeof(mensaje), "GAMESTART/OK\n");
     broadcast_to_group(partida->grupo_id, mensaje);
     return 0;
 }
@@ -237,6 +278,17 @@ int eliminar_jugador_de_partida(GameInfo *partida, char *jugador)
             broadcast_to_group(partida->grupo_id, mensaje_ganador);
 
             printf("[PARTIDA] Mensaje de fin enviado: %s\n", mensaje_ganador);
+
+            // **ACTUALIZAR EN BASE DE DATOS**
+            if (partida->partida_bd_id > 0)
+            {
+                MYSQL *conn = mysql_init(NULL);
+                if (mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
+                {
+                    actualizarPartidaFinalizada(conn, partida->partida_bd_id, ganador);
+                    mysql_close(conn);
+                }
+            }
 
             // Marcar partida como finalizada
             partida->estado = 2;

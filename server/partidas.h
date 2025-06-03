@@ -7,6 +7,7 @@
 typedef struct GameInfo
 {
     int partida_id;
+    int partida_bd_id;
     int grupo_id;
     int estado;
     int turno_actual;
