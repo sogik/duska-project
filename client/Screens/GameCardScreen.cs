@@ -449,29 +449,26 @@ namespace Duska.Screens
                     string chatMessage = message.Substring(5).Trim();
                     Debug.WriteLine("Mensaje de chat recibido: " + chatMessage);
 
-                    // **PROCESAR EN HILO PRINCIPAL**
-                    if (System.Threading.Thread.CurrentThread.IsBackground)
+                    // **PROCESAR INMEDIATAMENTE SIN IMPORTAR EL HILO**
+                    string[] partes = chatMessage.Split('/');
+                    if (partes.Length >= 2)
                     {
-                        lock (mensajesLock)
-                        {
-                            mensajesPendientes.Add(message);
-                            hayNuevosMensajes = true;
-                        }
-                    }
-                    else
-                    {
-                        // **NO DUPLICAR MENSAJES PROPIOS**
-                        string[] partes = chatMessage.Split('/');
-                        if (partes.Length >= 2)
-                        {
-                            string remitente = partes[0];
-                            string texto = partes[1];
+                        string remitente = partes[0];
+                        string texto = partes[1];
 
-                            // Solo añadir si no es nuestro mensaje (ya lo añadimos al enviar)
-                            if (!string.Equals(remitente, usuario, StringComparison.OrdinalIgnoreCase))
+                        // **AÑADIR TODOS LOS MENSAJES, INCLUSO LOS PROPIOS**
+                        // (Los propios se duplicarán pero se mostrarán inmediatamente)
+                        if (System.Threading.Thread.CurrentThread.IsBackground)
+                        {
+                            lock (mensajesLock)
                             {
-                                ChatPanel(true, chatMessage);
+                                mensajesPendientes.Add(message);
+                                hayNuevosMensajes = true;
                             }
+                        }
+                        else
+                        {
+                            ChatPanel(true, chatMessage);
                         }
                     }
                     return;
@@ -1396,61 +1393,48 @@ namespace Duska.Screens
                     UserInterface.Active.Clear();
                 }
 
-                // **PANEL PRINCIPAL MÁS ESTRECHO**
+                // **PANEL PRINCIPAL - TAMAÑO ORIGINAL**
                 Panel panel = new Panel(
-                    new Vector2(380, GraphicsDevice.Viewport.Height),
+                    new Vector2(350, GraphicsDevice.Viewport.Height),
                     PanelSkin.Simple,
                     Anchor.TopRight);
 
-                panel.Padding = new Vector2(10, 10);
+                panel.Padding = new Vector2(15, 15);
                 panel.Visible = visible;
                 UserInterface.Active.AddEntity(panel);
 
-                // **SECCIÓN SUPERIOR: INFORMACIÓN DEL JUEGO**
-                Panel infoPanel = new Panel(new Vector2(0, 120), PanelSkin.None);
-                infoPanel.Padding = new Vector2(5, 5);
-                panel.AddChild(infoPanel);
+                // **ENCABEZADO**
+                Header header = new Header("Chat");
+                panel.AddChild(header);
+                panel.AddChild(new HorizontalLine());
 
-                Header header = new Header("Información del Juego");
-                header.Scale = 0.9f;
-                infoPanel.AddChild(header);
-
+                // **INFORMACIÓN DEL JUEGO**
                 if (!string.IsNullOrEmpty(carta_ronda_actual))
                 {
-                    Paragraph cartaRonda = new Paragraph($"🃏 Carta Ronda: {carta_ronda_actual.ToUpper()}");
-                    cartaRonda.FillColor = Color.Gold;
+                    Header cartaRonda = new Header($"Carta Ronda: {carta_ronda_actual}");
+                    cartaRonda.FillColor = Color.Yellow;
                     cartaRonda.Scale = 0.8f;
-                    infoPanel.AddChild(cartaRonda);
+                    panel.AddChild(cartaRonda);
                 }
 
                 if (!string.IsNullOrEmpty(jugadorConTurnoActual))
                 {
                     Paragraph turnoInfo = new Paragraph(esMiTurno ?
-                        "🎯 ¡ES TU TURNO!" : $"⏳ Turno de: {jugadorConTurnoActual}");
+                        "¡ES TU TURNO!" : $"Turno de: {jugadorConTurnoActual}");
                     turnoInfo.FillColor = esMiTurno ? Color.LightGreen : Color.LightBlue;
-                    turnoInfo.Scale = 0.8f;
-                    infoPanel.AddChild(turnoInfo);
+                    panel.AddChild(turnoInfo);
                 }
 
-                infoPanel.AddChild(new HorizontalLine());
+                panel.AddChild(new HorizontalLine());
 
-                // **SECCIÓN MEDIA: MENSAJES DE CHAT**
-                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 300; // Más espacio para mensajes
-                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.None);
-                mensajesPanel.Padding = new Vector2(5, 5);
+                // **PANEL DE MENSAJES - MÁS ALTO**
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 350; // Más espacio
+                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.None, Anchor.TopCenter);
+                mensajesPanel.Padding = new Vector2(10, 10);
                 panel.AddChild(mensajesPanel);
 
-                Header chatHeader = new Header("💬 Chat");
-                chatHeader.Scale = 0.8f;
-                mensajesPanel.AddChild(chatHeader);
-
-                // **CONTENEDOR DE MENSAJES CON SCROLL**
-                Panel scrollPanel = new Panel(new Vector2(0, altoPanelMensajes - 60), PanelSkin.Simple);
-                scrollPanel.Padding = new Vector2(8, 8);
-                mensajesPanel.AddChild(scrollPanel);
-
                 // Mostrar últimos mensajes
-                int mensajesPorPantalla = 10;
+                int mensajesPorPantalla = 15; // Más mensajes visibles
                 int totalMensajes = historialChat?.Count ?? 0;
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
 
@@ -1464,10 +1448,10 @@ namespace Duska.Screens
                             if (!string.IsNullOrEmpty(msg))
                             {
                                 Paragraph mensajeParagraph = new Paragraph(msg);
-                                mensajeParagraph.Scale = 0.75f;
+                                mensajeParagraph.Scale = 0.85f;
                                 mensajeParagraph.WrapWords = true;
 
-                                // **COLOREAR MENSAJES PROPIOS**
+                                // **COLOREAR MENSAJES PROPIOS Y DEL SISTEMA**
                                 if (msg.StartsWith($"{usuario}:"))
                                 {
                                     mensajeParagraph.FillColor = Color.LightCyan;
@@ -1477,53 +1461,38 @@ namespace Duska.Screens
                                     mensajeParagraph.FillColor = Color.Yellow;
                                 }
 
-                                scrollPanel.AddChild(mensajeParagraph);
+                                mensajesPanel.AddChild(mensajeParagraph);
                             }
                         }
                     }
                 }
-                else
-                {
-                    Paragraph sinMensajes = new Paragraph("No hay mensajes aún...");
-                    sinMensajes.FillColor = Color.Gray;
-                    sinMensajes.Scale = 0.7f;
-                    scrollPanel.AddChild(sinMensajes);
-                }
 
-                // **SECCIÓN INFERIOR: CONTROLES ALINEADOS**
-                Panel controlesPanel = new Panel(new Vector2(0, 140), PanelSkin.None);
-                controlesPanel.Padding = new Vector2(5, 5);
-                panel.AddChild(controlesPanel);
+                // **CAMPO DE TEXTO Y BOTONES AL FINAL**
+                panel.AddChild(new HorizontalLine());
 
-                controlesPanel.AddChild(new HorizontalLine());
-
-                // **CAMPO DE TEXTO PARA MENSAJES**
                 TextInput text = new TextInput(false);
                 text.PlaceholderText = "Escribe un mensaje...";
-                text.Size = new Vector2(0, 35);
-                controlesPanel.AddChild(text);
+                text.Size = new Vector2(0, 40);
+                panel.AddChild(text);
 
-                // **FILA DE BOTONES CENTRADOS**
-                Panel botonesPanel = new Panel(new Vector2(0, 90), PanelSkin.None);
-                controlesPanel.AddChild(botonesPanel);
+                // **PANEL DE BOTONES HORIZONTAL**
+                Panel botonesPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
+                botonesPanel.Padding = new Vector2(10, 10);
+                panel.AddChild(botonesPanel);
 
-                // **BOTÓN ENVIAR MENSAJE - CENTRADO**
-                Button enviarBtn = new Button("📤 Enviar");
-                enviarBtn.Size = new Vector2(160, 35);
-                enviarBtn.Anchor = Anchor.TopCenter;
-                enviarBtn.Offset = new Vector2(0, 5);
+                Button enviarBtn = new Button("Enviar");
+                enviarBtn.Size = new Vector2(150, 35);
+                enviarBtn.Anchor = Anchor.TopLeft;
                 enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
                 botonesPanel.AddChild(enviarBtn);
 
-                // **BOTÓN PEDIR CARTAS - CENTRADO DEBAJO**
-                Button cartasBtn = new Button("🃏 Pedir Cartas");
-                cartasBtn.Size = new Vector2(160, 35);
-                cartasBtn.Anchor = Anchor.TopCenter;
-                cartasBtn.Offset = new Vector2(0, 45);
+                Button cartasBtn = new Button("Pedir Cartas");
+                cartasBtn.Size = new Vector2(150, 35);
+                cartasBtn.Anchor = Anchor.TopRight;
                 cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartas();
                 botonesPanel.AddChild(cartasBtn);
 
-                Debug.WriteLine("[CHAT] Interfaz completa creada correctamente");
+                Debug.WriteLine("[CHAT] Panel de chat inicializado correctamente");
             }
             catch (Exception ex)
             {
