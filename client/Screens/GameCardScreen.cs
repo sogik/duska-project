@@ -2419,9 +2419,6 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[PANEL] *** CREANDO PANEL DE ELIMINACIÓN DEFINITIVO ***");
 
-                // **LIMPIAR TODOS LOS ESTADOS PRIMERO**
-                mostrarResultadoDesafio = false;
-                desafioEnProceso = false;
                 _permitirAccionesJuego = false;
                 esMiTurno = false;
                 _cartasAcercadas = false;

@@ -209,25 +209,117 @@ namespace Duska.Screens
             Button signupBtn = new Button("Sign Up", ButtonSkin.Default);
             signupBtn.OnClick = (Entity btn) =>
             {
-                SignUpPanel(true);
-                panel.Visible = false;
+                string usuario = text.Value?.Trim() ?? "";
+                string contrasena = hiddenText.Value?.Trim() ?? "";
+
+                // **VALIDAR QUE LOS CAMPOS NO ESTÉN VACÍOS**
+                if (string.IsNullOrEmpty(usuario))
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Por favor ingresa un nombre de usuario", "Campo requerido");
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(contrasena))
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Por favor ingresa una contraseña", "Campo requerido");
+                    return;
+                }
+
+                // **VALIDACIONES ADICIONALES**
+                if (usuario.Length < 3)
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("El nombre de usuario debe tener al menos 3 caracteres", "Usuario muy corto");
+                    return;
+                }
+
+                if (contrasena.Length < 4)
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("La contraseña debe tener al menos 4 caracteres", "Contraseña muy corta");
+                    return;
+                }
+
+                // **VALIDAR CARACTERES ESPECIALES QUE PUEDEN CAUSAR PROBLEMAS**
+                if (usuario.Contains("/") || usuario.Contains("\\") || usuario.Contains(" "))
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("El nombre de usuario no puede contener espacios, / o \\", "Caracteres no válidos");
+                    return;
+                }
+
+                if (contrasena.Contains("/") || contrasena.Contains("\\"))
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("La contraseña no puede contener / o \\", "Caracteres no válidos");
+                    return;
+                }
+
+                // **SI PASA TODAS LAS VALIDACIONES, PROCEDER CON EL REGISTRO**
+                Debug.WriteLine($"Intentando registrar usuario: '{usuario}' con contraseña de {contrasena.Length} caracteres");
+
+                int result = signup(usuario, contrasena);
+
+                // Manejar el resultado
+                if (result == 0)
+                {
+                    panel.Visible = false;
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Registro exitoso. Ahora puedes iniciar sesión.", "Éxito");
+                    LoginPanel(true);
+                }
+                else if (result == 1)
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("El usuario ya existe. Elige otro nombre.", "Usuario existente");
+                }
+                else if (result == 2)
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Error de conexión con el servidor", "Error de conexión");
+                }
+                else
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Error inesperado. Inténtalo de nuevo.", "Error");
+                }
             };
             panel.AddChild(signupBtn);
 
             Button loginBtn = new Button("Login", ButtonSkin.Default);
             loginBtn.OnClick = (Entity btn) =>
             {
-                string usuario1 = text.Value;
-                string contrasena = hiddenText.Value;
+                string usuario1 = text.Value?.Trim() ?? "";
+                string contrasena = hiddenText.Value?.Trim() ?? "";
 
-                // Llamar al método login
+                // **VALIDAR QUE LOS CAMPOS NO ESTÉN VACÍOS**
+                if (string.IsNullOrEmpty(usuario1))
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Por favor ingresa tu nombre de usuario", "Campo requerido");
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(contrasena))
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Por favor ingresa tu contraseña", "Campo requerido");
+                    return;
+                }
+
+                // **VALIDAR LONGITUD MÍNIMA**
+                if (usuario1.Length < 3)
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("El nombre de usuario debe tener al menos 3 caracteres", "Usuario muy corto");
+                    return;
+                }
+
+                if (contrasena.Length < 4)
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("La contraseña debe tener al menos 4 caracteres", "Contraseña muy corta");
+                    return;
+                }
+
+                // **SI PASA LAS VALIDACIONES, PROCEDER CON EL LOGIN**
+                Debug.WriteLine($"Intentando login para usuario: '{usuario1}'");
+
                 int result = login(usuario1, contrasena);
 
                 // Manejar el resultado
                 if (result == 0)
                 {
-                    usuario = text.Value;
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Login successful", "Success");
+                    usuario = usuario1;
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Inicio de sesión exitoso", "Éxito");
 
                     // Eliminar todos los elementos de la interfaz de usuario
                     UserInterface.Active.Clear();
@@ -237,15 +329,15 @@ namespace Duska.Screens
                 }
                 else if (result == 1)
                 {
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Login failed", "Invalid credentials");
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Credenciales incorrectas", "Error de login");
                 }
                 else if (result == 2)
                 {
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("User does not exist", "Error");
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("El usuario no existe", "Usuario no encontrado");
                 }
                 else
                 {
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Connection error", "Error");
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox("Error de conexión con el servidor", "Error de conexión");
                 }
             };
             panel.AddChild(loginBtn);
