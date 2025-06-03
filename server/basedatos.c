@@ -430,59 +430,69 @@ void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista,
 {
     MYSQL_RES *res;
     MYSQL_ROW row;
+    char consulta[512];
+    int contador = 0;
 
-    char consulta[256];
     lista[0] = '\0';
 
-    snprintf(consulta, sizeof(consulta), "SELECT id_jugador FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
+    // **CONSULTA MEJORADA SIMILAR A listarPartidasCompletas**
+    snprintf(consulta, sizeof(consulta),
+             "SELECT p.id_partida, DATE_FORMAT(p.fecha_inicio, '%%H:%%i'), "
+             "DATE_FORMAT(p.fecha_fin, '%%Y-%%m-%%d') as fecha "
+             "FROM Partidas p "
+             "INNER JOIN Jugadores j ON p.ganador_id = j.id_jugador "
+             "WHERE j.nombre_usuario = '%s' AND p.estado = 'FINALIZADA' "
+             "ORDER BY p.fecha_fin DESC LIMIT 20",
+             nombre_usuario);
+
     int err = mysql_query(conn, consulta);
     if (err != 0)
     {
-        printf("Error al consultar: %s\n", mysql_error(conn));
-        lista[0] = '\0'; // Establecer string vacío
+        printf("Error al consultar partidas ganadas: %s\n", mysql_error(conn));
+        strcpy(lista, "ERROR/Error al consultar partidas ganadas");
         return;
     }
 
     res = mysql_store_result(conn);
     if (res)
     {
-        row = mysql_fetch_row(res);
-        if (row)
-        {
-            snprintf(consulta, sizeof(consulta), "SELECT * FROM Partidas WHERE ganador_id = '%s'", row[0]);
-            err = mysql_query(conn, consulta);
-            if (err != 0)
-            {
-                printf("Error al consultar: %s\n", mysql_error(conn));
-                mysql_free_result(res);
-                lista[0] = '\0'; // Establecer string vacío
-                return;
-            }
+        // **EMPEZAR CON PREFIJO PARA IDENTIFICAR EL TIPO**
+        strcat(lista, "PARTIDASG/");
 
-            MYSQL_RES *res2 = mysql_store_result(conn);
-            if (res2)
+        while ((row = mysql_fetch_row(res)))
+        {
+            char entrada[100];
+
+            // **FORMATO: Partida X - Fecha - Hora**
+            snprintf(entrada, sizeof(entrada), "Partida %s - %s - %s/",
+                     row[0] ? row[0] : "?",          // id_partida
+                     row[2] ? row[2] : "????-??-??", // fecha (YYYY-MM-DD)
+                     row[1] ? row[1] : "??:??");     // hora (HH:MM)
+
+            // Verificar que no se exceda el buffer
+            if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))
             {
-                while ((row = mysql_fetch_row(res2)))
-                {
-                    strcat(lista, row[0]);
-                    strcat(lista, " ");
-                    strcat(lista, row[1]);
-                    strcat(lista, " ");
-                    strcat(lista, row[2]);
-                    strcat(lista, " ");
-                    strcat(lista, row[3]);
-                    strcat(lista, " ");
-                    strcat(lista, row[4]);
-                    strcat(lista, "\n");
-                }
-                mysql_free_result(res2);
+                strcat(lista, entrada);
+                contador++;
+            }
+            else
+            {
+                break;
             }
         }
+
+        // Si no hay partidas ganadas
+        if (contador == 0)
+        {
+            strcat(lista, "No has ganado ninguna partida aun/");
+        }
+
         mysql_free_result(res);
+        printf("[BD] Lista de partidas ganadas para %s: %d entradas\n", nombre_usuario, contador);
     }
     else
     {
-        printf("Error al obtener el resultado: %s\n", mysql_error(conn));
+        strcpy(lista, "PARTIDASG/ERROR - No se pudieron obtener las partidas ganadas");
     }
 }
 // ñ

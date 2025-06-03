@@ -623,8 +623,9 @@ namespace Duska.Screens
             UserInterface.Active.AddEntity(panel);
 
             // add title and text
-            panel.AddChild(new Header("Lista de Partidas Ganadas"));
+            panel.AddChild(new Header("Partidas Ganadas"));
             panel.AddChild(new HorizontalLine());
+            panel.AddChild(new Paragraph("Tus victorias:"));
 
             SelectList list = new SelectList(new Vector2(0, 280)) { Identifier = "partidasGanadasList" };
             panel.AddChild(list);
@@ -642,14 +643,27 @@ namespace Duska.Screens
             if (partidasGanadasList != null)
             {
                 partidasGanadasList.ClearItems();
-                string[] friendsArray = partidasGanadas.Split('/');
-                foreach (string friend in friendsArray)
-                {
-                    partidasGanadasList.AddItem(friend);
-                }
-            }
 
-            panel.Visible = visible;
+                // **DIVIDIR POR '/' COMO LAS DEMÁS LISTAS**
+                string[] partidasArray = partidasGanadas.Split('/');
+
+                foreach (string partida in partidasArray)
+                {
+                    if (!string.IsNullOrWhiteSpace(partida) && !partida.StartsWith("ERROR"))
+                    {
+                        Debug.WriteLine($"Agregando partida ganada a la lista: {partida}");
+                        partidasGanadasList.AddItem(partida);
+                    }
+                }
+
+                // Si no hay partidas, mostrar mensaje
+                if (partidasGanadasList.Count == 0)
+                {
+                    partidasGanadasList.AddItem("No has ganado ninguna partida aun");
+                }
+
+                panel.Visible = visible;
+            }
         }
 
         private int ListaUsuarios()
@@ -1337,6 +1351,16 @@ namespace Duska.Screens
             {
                 Debug.WriteLine("[PARTIDAS] Lista de partidas recibida");
                 ListaPartidasPanel(true, message);
+                return;
+            }
+            else if (message.StartsWith("PARTIDASG/"))
+            {
+                // Mensaje de lista de partidas ganadas
+                string partidasGanadas = message.Substring(10); // Quitar "PARTIDASG/"
+                Debug.WriteLine("[PARTIDAS GANADAS] Lista de partidas ganadas recibida");
+
+                // Actualizar la lista de partidas ganadas
+                ListaPartidasGanadasPanel(true, partidasGanadas);
                 return;
             }
             else if (message.StartsWith("ERROR/"))

@@ -899,7 +899,9 @@ void *cliente(void *socket_ptr)
         }
         else if (codigo == 4)
         {
+            printf("[PARTIDAS GANADAS] Solicitud de partidas ganadas de usuario: %s\n", usuario);
             listarPartidasGanadas(conn, usuario, respuesta, sizeof(respuesta));
+            printf("[PARTIDAS GANADAS] Respuesta enviada (primeros 100 chars): %.100s\n", respuesta);
         }
         else if (codigo == 5)
         {
