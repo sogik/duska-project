@@ -1516,7 +1516,7 @@ namespace Duska.Screens
 
                 botonesPanel.AddChild(cartasBtn);
 
-                Debug.WriteLine("[CHAT] Panel de chat inicializado correctamente");
+                Debug.WriteLine("[CHAT] Panel de chat inicializado correctamentes");
             }
             catch (Exception ex)
             {
