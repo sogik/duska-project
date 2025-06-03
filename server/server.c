@@ -1786,7 +1786,7 @@ void *cliente(void *socket_ptr)
                     send(sock_conn, respuesta, strlen(respuesta), 0);
 
                     // **LIMPIAR ESTE CLIENTE DE LA LISTA ANTES DEL BROADCAST**
-                    limpiar_cliente_desconectado(sock, conn);
+                    limpiar_cliente_desconectado(sock_conn, conn);
 
                     // **ACTUALIZAR LISTA SOLO SI HAY OTROS CLIENTES**
                     pthread_mutex_lock(&client_list_mutex);
