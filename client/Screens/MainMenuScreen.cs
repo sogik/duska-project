@@ -15,7 +15,6 @@ using System.Text;
 using System.Linq;
 using System.Threading;
 using System.Collections.Generic;
-using Duska.Core; // Assuming this is where MultiGameManager is defined
 
 
 namespace Duska.Screens
@@ -36,11 +35,7 @@ namespace Duska.Screens
 
         public string usuario;
         public string destinatario;
-
         private bool esLider = false;
-        private int grupoId = 0;
-
-        private bool botonIniciarPartidaVisible = false;
 
         private bool conectado = false; // Indica si el cliente está conectado al servidor
 
@@ -57,14 +52,6 @@ namespace Duska.Screens
         public override void LoadContent()
         {
             base.LoadContent();
-
-            // **INICIALIZAR SimpleMultiWindowManager Y PASAR EL SOCKET**
-            SimpleMultiWindowManager.Instance.Initialize(usuario, ScreenManager, Game);
-
-            if (server != null)
-            {
-                SimpleMultiWindowManager.Instance.SetSocketPrincipal(server);
-            }
 
             // IMPORTANTE: Limpiar y reinicializar la interfaz de usuario SIEMPRE
             if (UserInterface.Active != null)
@@ -88,6 +75,7 @@ namespace Duska.Screens
             }
 
             SolicitarEstadoLider();
+
             Menu(true);
         }
 
@@ -167,231 +155,6 @@ namespace Duska.Screens
                 friends = this.friends();
             };
             topPanel.AddChild(listfriendsBtn);
-
-            Button partidasBtn = new Button("Mis Partidas", ButtonSkin.Default, Anchor.TopCenter, new Vector2(300, topPanelHeight));
-            partidasBtn.OnClick = (Entity btn) =>
-            {
-                MostrarPanelPartidas();
-            };
-            topPanel.AddChild(partidasBtn);
-        }
-
-        private void MostrarPanelPartidas()
-        {
-            try
-            {
-                Panel panel = new Panel(new Vector2(450, 400));
-                panel.Visible = true;
-                UserInterface.Active.AddEntity(panel);
-
-                panel.AddChild(new Header("Mis Partidas Activas"));
-                panel.AddChild(new HorizontalLine());
-
-                var partidasActivas = MultiPartidaManager.Instance.GetPartidasActivas();
-
-                if (partidasActivas.Count > 0)
-                {
-                    panel.AddChild(new Paragraph($"Tienes {partidasActivas.Count} partida(s) activa(s):"));
-                    panel.AddChild(new HorizontalLine());
-
-                    foreach (int partidaId in partidasActivas)
-                    {
-                        Panel partidaPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
-
-                        Paragraph partidaInfo = new Paragraph($"🎮 Partida #{partidaId}");
-                        partidaInfo.FillColor = Color.LightGreen;
-                        partidaPanel.AddChild(partidaInfo);
-
-                        Button cambiarBtn = new Button("Cambiar a Esta Partida");
-                        cambiarBtn.Size = new Vector2(180, 30);
-                        cambiarBtn.Anchor = Anchor.TopRight;
-                        cambiarBtn.OnClick = (Entity btn) =>
-                        {
-                            try
-                            {
-                                Debug.WriteLine($"[PARTIDAS] Cambiando a partida {partidaId}");
-                                MultiPartidaManager.Instance.AbrirPartida(partidaId);
-
-                                panel.Visible = false;
-                                UserInterface.Active.RemoveEntity(panel);
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[ERROR] Error cambiando a partida: {ex.Message}");
-                            }
-                        };
-                        partidaPanel.AddChild(cambiarBtn);
-
-                        panel.AddChild(partidaPanel);
-                    }
-                }
-                else
-                {
-                    panel.AddChild(new Paragraph("No tienes partidas activas"));
-                    panel.AddChild(new Paragraph("Acepta una invitación o crea un grupo para empezar"));
-                }
-
-                panel.AddChild(new HorizontalLine());
-
-                // **BOTÓN DE PRUEBA PARA TESTING**
-                Button testBtn = new Button("TEST: Abrir Partida 1");
-                testBtn.OnClick = (Entity btn) =>
-                {
-                    try
-                    {
-                        Debug.WriteLine("[TEST] Abriendo partida de prueba");
-                        MultiPartidaManager.Instance.AbrirPartida(1);
-
-                        panel.Visible = false;
-                        UserInterface.Active.RemoveEntity(panel);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error en partida de prueba: {ex.Message}");
-                    }
-                };
-                panel.AddChild(testBtn);
-
-                Button cerrarBtn = new Button("Cerrar");
-                cerrarBtn.OnClick = (Entity btn) =>
-                {
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-                };
-                panel.AddChild(cerrarBtn);
-
-                Debug.WriteLine($"[PARTIDAS] Panel mostrado con {partidasActivas.Count} partidas");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error mostrando panel de partidas: {ex.Message}");
-            }
-        }
-        private void RegresarAlMenuPrincipal()
-        {
-            try
-            {
-                Debug.WriteLine("[NAVEGACIÓN] Regresando al menú principal");
-                stopMessageListener = true;
-
-                if (UserInterface.Active != null)
-                {
-                    UserInterface.Active.Clear();
-                }
-
-                // **USAR EL NUEVO SISTEMA**
-                MultiPartidaManager.Instance.RegresarAlMenu();
-
-                Debug.WriteLine("[NAVEGACIÓN] Cambio de pantalla iniciado");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al regresar al menú: {ex.Message}");
-            }
-        }
-        private void MostrarPanelConfirmacionAbandono()
-        {
-            Panel panel = new Panel(new Vector2(450, -1), PanelSkin.Default, Anchor.Center);
-            panel.Visible = true;
-            UserInterface.Active.AddEntity(panel);
-
-            panel.AddChild(new Header("Abandonar Partida"));
-            panel.AddChild(new HorizontalLine());
-            panel.AddChild(new Paragraph("¿Estás seguro que quieres abandonar la partida?"));
-            panel.AddChild(new HorizontalLine());
-
-            Button acceptBtn = new Button("Sí");
-            acceptBtn.OnClick = (Entity btn) =>
-            {
-                try
-                {
-                    stopMessageListener = true;
-
-                    if (server != null && server.Connected)
-                    {
-                        string mensaje = "27/" + usuario;
-                        byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                        server.Send(msg);
-                        Debug.WriteLine("[ABANDONO] Solicitud enviada para abandonar partida");
-                    }
-
-                    if (UserInterface.Active != null)
-                    {
-                        UserInterface.Active.Clear();
-                        Debug.WriteLine("[UI] Interfaz de usuario limpiada antes de cambiar pantalla");
-                    }
-
-                    // **USAR EL NUEVO SISTEMA PARA REGRESAR**
-                    MultiPartidaManager.Instance.RegresarAlMenu();
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[ERROR] Error al abandonar partida: {ex.Message}");
-                    MultiPartidaManager.Instance.RegresarAlMenu();
-                }
-            };
-            panel.AddChild(acceptBtn);
-
-            Button declineBtn = new Button("No");
-            declineBtn.OnClick = (Entity btn) =>
-            {
-                panel.Visible = false;
-                UserInterface.Active.RemoveEntity(panel);
-            };
-            panel.AddChild(declineBtn);
-        }
-
-        private void MostrarPanelNuevaPartida(int partidaId)
-        {
-            try
-            {
-                Debug.WriteLine($"[PANEL] Creando panel para partida {partidaId}");
-
-                Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
-                panel.Visible = true;
-                UserInterface.Active.AddEntity(panel);
-
-                panel.AddChild(new Header("¡Nueva Partida Iniciada!"));
-                panel.AddChild(new HorizontalLine());
-
-                panel.AddChild(new Paragraph($"Se ha iniciado la partida #{partidaId}"));
-                panel.AddChild(new Paragraph("¿Quieres unirte a esta partida?"));
-                panel.AddChild(new HorizontalLine());
-
-                Button abrirBtn = new Button("Unirse a la Partida");
-                abrirBtn.OnClick = (Entity btn) =>
-                {
-                    try
-                    {
-                        Debug.WriteLine($"[PANEL] Uniéndose a partida {partidaId}");
-
-                        // **USAR EL NUEVO SISTEMA**
-                        MultiPartidaManager.Instance.AbrirPartida(partidaId);
-
-                        panel.Visible = false;
-                        UserInterface.Active.RemoveEntity(panel);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error al unirse a partida: {ex.Message}");
-                    }
-                };
-                panel.AddChild(abrirBtn);
-
-                Button cerrarBtn = new Button("Más Tarde");
-                cerrarBtn.OnClick = (Entity btn) =>
-                {
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-                };
-                panel.AddChild(cerrarBtn);
-
-                Debug.WriteLine($"[PANEL] Panel creado correctamente para partida {partidaId}");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error creando panel: {ex.Message}");
-            }
         }
 
         private void SolicitarEstadoLider()
@@ -1242,431 +1005,165 @@ namespace Duska.Screens
 
         private void ProcessServerMessage(string message)
         {
-            try
+            Debug.WriteLine($"[RED] Mensaje recibido: {message}");
+
+            // Mensajes del tipo CARDS/ son manejados por GameCardScreen, ignorarlos aquí
+            if (message.StartsWith("CARDS/")) return;
+
+            if (message.StartsWith("TURN/")) return;
+
+            // Manejar diferentes tipos de mensajes del servidor
+            if (message.StartsWith("GRUPO_CREADO/"))
             {
-                Debug.WriteLine($"[RED] Mensaje recibido: {message}");
+                // Formato: "GRUPO_CREADO/id"
+                string grupoId = message.Substring(13);
+                Debug.WriteLine($"[GRUPO] Grupo creado con ID: {grupoId}");
 
-                // Mensajes del tipo CARDS/ son manejados por GameCardScreen, ignorarlos aquí
-                if (message.StartsWith("CARDS/")) return;
+                // Solicitar información sobre el líder del grupo
+                SolicitarInformacionLider(grupoId);
+                return;
+            }
+            else if (message.StartsWith("GRUPO/"))
+            {
+                // Formato: "GRUPO/id/usuario1/usuario2/..."
+                string[] partes = message.Split('/');
+                if (partes.Length >= 3)
+                {
+                    string grupoId = partes[1];
 
-                if (message.StartsWith("TURN/")) return;
+                    // El primer usuario listado es el líder según el servidor
+                    string primerUsuario = partes[2];
+                    esLider = primerUsuario.Equals(usuario, StringComparison.OrdinalIgnoreCase);
 
+                    Debug.WriteLine($"[GRUPO] Grupo {grupoId}, usuarios: {string.Join(", ", partes.Skip(2))}");
+                    Debug.WriteLine($"[GRUPO] Líder: {primerUsuario}, ¿Soy líder? {esLider}");
+
+                    // Actualizar la interfaz según el estado de líder
+                    ActualizarEstadoLider();
+                    return;
+                }
+            }
+            else if (message.StartsWith("LEADER/"))
+            {
+                // Formato: "LEADER/nombreUsuario"
+                string nombreLider = message.Substring(7);
+                esLider = nombreLider.Trim().Equals(usuario.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                Debug.WriteLine($"[GRUPO] Información de líder: {nombreLider}, ¿Soy líder? {esLider}");
+
+                // Actualizar la interfaz según el estado de líder
+                ActualizarEstadoLider();
+                return;
+            }
+            else if (message.StartsWith("GRUPO_SALIDA/"))
+            {
+                // Formato: "GRUPO_SALIDA/nombreUsuario"
+                string nombreUsuario = message.Substring(13);
+                Debug.WriteLine($"[GRUPO] El usuario {nombreUsuario} ha salido del grupo");
+
+                // Si alguien sale del grupo, verificar si ahora somos líder
+                SolicitarInformacionSala();
+                return;
+            }
+            else if (message.StartsWith("START_GAME_OK") || message.StartsWith("GAME_STARTED") ||
+                    message.Contains("PARTIDA_INICIADA") || message.StartsWith("GAMESTART/"))
+            {
+                Debug.WriteLine("[JUEGO] Notificación de inicio de partida recibida");
+
+                // Cambiar a la pantalla de juego
+                try
+                {
+                    // Detener escucha de mensajes
+                    stopMessageListener = true;
+
+                    // Crear y cargar GameCardScreen reutilizando el socket vivo
+                    var gameScreen = new GameCardScreen(Game, usuario);
+                    gameScreen.SetExistingSocket(server);
+                    ScreenManager.LoadScreen(gameScreen, new FadeTransition(GraphicsDevice, Color.Black));
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ERROR] Error al cambiar a pantalla de juego: {ex.Message}");
+                }
+                return;
+            }
+            else if (message.StartsWith("LIST/"))
+            {
+                // Mensaje de lista de amigos
+                string friends = message.Substring(5);
+                Debug.WriteLine("[AMIGOS] Lista de amigos recibida");
+
+                // Actualizar la lista de amigos
+                FriendsListPanel(true, friends);
+                return;
+            }
+            else if (message.StartsWith("LISTU/"))
+            {
+                // Mensaje de lista de usuarios
+                string usuarios = message.Substring(6);
+                Debug.WriteLine("[USUARIOS] Lista de usuarios recibida");
+
+                // Actualizar la lista de usuarios
+                ListaUsuariosPanel(true, usuarios);
+                return;
+            }
+            else if (message.StartsWith("LISTP/"))
+            {
+                // Mensaje de lista de partidas
+                string partidas = message.Substring(6);
+                Debug.WriteLine("[PARTIDAS] Lista de partidas recibida");
+
+                // Actualizar la lista de partidas
+                ListaPartidasPanel(true, partidas);
+                return;
+            }
+            else if (message.StartsWith("LISTPG/"))
+            {
+                // Mensaje de lista de partidas ganadas
+                string partidasGanadas = message.Substring(7);
+                Debug.WriteLine("[PARTIDAS] Lista de partidas ganadas recibida");
+
+                // Actualizar la lista de partidas ganadas
+                ListaPartidasGanadasPanel(true, partidasGanadas);
+                return;
+            }
+            else if (message.StartsWith("INV/"))
+            {
+                // Invitación recibida
+                string invitacion = message.Substring(4);
+                Debug.WriteLine("[INVITACIÓN] Invitación recibida");
+
+                InvitacionPanel(1, true, invitacion);
+                return;
+            }
+            else if (message.StartsWith("INVR/"))
+            {
+                // Respuesta a invitación
+                string respuestaInv = message.Substring(5);
+                Debug.WriteLine("[INVITACIÓN] Respuesta a invitación recibida");
+
+                InvitacionPanel(2, true, respuestaInv);
+                return;
+            }
+            else if (message.StartsWith("ERROR/"))
+            {
+                string errorMsg = message.Substring(6);
                 if (message.Contains("ERROR/No es tu turno para pasar"))
                 {
-                    return; // Ignorar este error específico
-                }
-
-                if (message.StartsWith("NUEVA_PARTIDA_INICIADA/"))
-                {
-                    string partidaIdStr = message.Substring(23);
-                    if (int.TryParse(partidaIdStr, out int partidaId))
-                    {
-                        Debug.WriteLine($"[MULTI] Nueva partida iniciada: {partidaId}");
-                        MostrarPanelNuevaPartida(partidaId);
-                    }
                     return;
                 }
-                /*else if (message.StartsWith("ABRIR_VENTANA_JUEGO/"))
-                {
-                    string partidaIdStr = message.Substring(20);
-                    if (int.TryParse(partidaIdStr, out int partidaId))
-                    {
-                        Debug.WriteLine($"[MULTI] Confirmación para abrir partida: {partidaId}");
-                        MultiPartidaManager.Instance.AbrirNuevaVentanaPartida(partidaId, server);
-                    }
-                    return;
-                }*/
-                // Manejar diferentes tipos de mensajes del servidor
-                else if (message.StartsWith("GRUPO_CREADO/"))
-                {
-                    // Formato: "GRUPO_CREADO/id"
-                    string grupoId = message.Substring(13);
-                    Debug.WriteLine($"[GRUPO] Grupo creado con ID: {grupoId}");
 
-                    // Solicitar información sobre el líder del grupo
-                    SolicitarInformacionLider(grupoId);
-                    return;
-                }
-                else if (message.StartsWith("GRUPO/") && message.Contains("LEADER"))
-                {
-                    Debug.WriteLine("[LÍDER] Detectado como líder de grupo");
+                Debug.WriteLine($"[ERROR] {errorMsg}");
 
-                    // Extraer información del grupo
-                    string[] partes = message.Split('/');
-                    if (partes.Length >= 2 && int.TryParse(partes[1], out int grupoId))
-                    {
-                        // **MOSTRAR OPCIONES DE LÍDER**
-                        MostrarOpcionesLider(grupoId);
-                    }
-                    return;
-                }
-                else if (message.StartsWith("GRUPO/") && !message.Contains("LEADER"))
-                {
-                    string[] partes = message.Split('/');
-                    if (partes.Length >= 4)
-                    {
-                        Debug.WriteLine("[GRUPO] Información de grupo actualizada");
-
-                        // Contar jugadores
-                        int jugadores = partes.Length - 3; // Restar ID, líder y comando
-                        if (jugadores >= 2 && esLider)
-                        {
-                            MostrarBotonIniciarPartida();
-                        }
-                    }
-                    return;
-                }
-                else if (message.StartsWith("GRUPO/"))
-                {
-                    // Formato: "GRUPO/id/usuario1/usuario2/..."
-                    string[] partes = message.Split('/');
-                    if (partes.Length >= 3)
-                    {
-                        string grupoId = partes[1];
-
-                        // El primer usuario listado es el líder según el servidor
-                        string primerUsuario = partes[2];
-                        esLider = primerUsuario.Equals(usuario, StringComparison.OrdinalIgnoreCase);
-
-                        Debug.WriteLine($"[GRUPO] Grupo {grupoId}, usuarios: {string.Join(", ", partes.Skip(2))}");
-                        Debug.WriteLine($"[GRUPO] Líder: {primerUsuario}, ¿Soy líder? {esLider}");
-
-                        // Actualizar la interfaz según el estado de líder
-                        ActualizarEstadoLider();
-                        return;
-                    }
-                }
-                if (message.StartsWith("LEADER/"))
-                {
-                    string lider = message.Substring(7);
-                    Debug.WriteLine($"[GRUPO] Información de líder: {lider}");
-
-                    // **VERIFICAR SI SOY EL LÍDER**
-                    esLider = (lider.Trim() == usuario.Trim());
-                    Debug.WriteLine($", ¿Soy líder? {esLider}");
-
-                    if (esLider)
-                    {
-                        Debug.WriteLine("[LÍDER] ¡Soy el líder del grupo!");
-                        // **MOSTRAR NOTIFICACIÓN DE LÍDER**
-                        MostrarNotificacionLider();
-                    }
-                    return;
-                }
-                else if (message.StartsWith("GRUPO_SALIDA/"))
-                {
-                    // Formato: "GRUPO_SALIDA/nombreUsuario"
-                    string nombreUsuario = message.Substring(13);
-                    Debug.WriteLine($"[GRUPO] El usuario {nombreUsuario} ha salido del grupo");
-
-                    // Si alguien sale del grupo, verificar si ahora somos líder
-                    SolicitarInformacionSala();
-                    return;
-                }
-                else if (message.StartsWith("GAMESTART/OK"))
-                {
-                    Debug.WriteLine("[JUEGO] Notificación de inicio de partida recibida");
-                    MostrarPanelLiderPartida();
-                    return;
-                }
-                else if (message.StartsWith("LIST/"))
-                {
-                    // Mensaje de lista de amigos
-                    string friends = message.Substring(5);
-                    Debug.WriteLine("[AMIGOS] Lista de amigos recibida");
-
-                    // Actualizar la lista de amigos
-                    FriendsListPanel(true, friends);
-                    return;
-                }
-                else if (message.StartsWith("LISTU/"))
-                {
-                    // Mensaje de lista de usuarios
-                    string usuarios = message.Substring(6);
-                    Debug.WriteLine("[USUARIOS] Lista de usuarios recibida");
-
-                    // Actualizar la lista de usuarios
-                    ListaUsuariosPanel(true, usuarios);
-                    return;
-                }
-                else if (message.StartsWith("LISTP/"))
-                {
-                    // Mensaje de lista de partidas
-                    string partidas = message.Substring(6);
-                    Debug.WriteLine("[PARTIDAS] Lista de partidas recibida");
-
-                    // Actualizar la lista de partidas
-                    ListaPartidasPanel(true, partidas);
-                    return;
-                }
-                else if (message.StartsWith("LISTPG/"))
-                {
-                    // Mensaje de lista de partidas ganadas
-                    string partidasGanadas = message.Substring(7);
-                    Debug.WriteLine("[PARTIDAS] Lista de partidas ganadas recibida");
-
-                    // Actualizar la lista de partidas ganadas
-                    ListaPartidasGanadasPanel(true, partidasGanadas);
-                    return;
-                }
-                else if (message.StartsWith("INV/"))
-                {
-                    // Invitación recibida
-                    string invitacion = message.Substring(4);
-                    Debug.WriteLine("[INVITACIÓN] Invitación recibida");
-
-                    InvitacionPanel(1, true, invitacion);
-                    return;
-                }
-                else if (message.StartsWith("INVR/"))
-                {
-                    // Respuesta a invitación
-                    string respuestaInv = message.Substring(5);
-                    Debug.WriteLine("[INVITACIÓN] Respuesta a invitación recibida");
-
-                    InvitacionPanel(2, true, respuestaInv);
-                    return;
-                }
-                else if (message.StartsWith("ERROR/"))
-                {
-                    string errorMsg = message.Substring(6);
-                    if (message.Contains("ERROR/No es tu turno para pasar"))
-                    {
-                        return;
-                    }
-
-                    Debug.WriteLine($"[ERROR] {errorMsg}");
-
-                    // Mostrar mensaje de error al usuario
-                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
-                        errorMsg,
-                        "Error"
-                    );
-                }
-                else
-                {
-                    Debug.WriteLine($"[RED] Mensaje no reconocido: {message}");
-                }
+                // Mostrar mensaje de error al usuario
+                GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                    errorMsg,
+                    "Error"
+                );
             }
-            catch (Exception ex)
+            else
             {
-                Debug.WriteLine($"[ERROR] Error procesando mensaje del servidor: {ex.Message}");
-            }
-        }
-
-        private void MostrarNotificacionLider()
-        {
-            try
-            {
-                Debug.WriteLine("[LÍDER] Mostrando notificación de líder");
-
-                Panel panel = new Panel(new Vector2(350, 200), PanelSkin.Default, Anchor.TopCenter);
-                panel.Offset = new Vector2(0, 50);
-                panel.Visible = true;
-                UserInterface.Active.AddEntity(panel);
-
-                panel.AddChild(new Header("¡Eres el Líder!"));
-                panel.AddChild(new HorizontalLine());
-
-                panel.AddChild(new Paragraph("Ahora puedes iniciar la partida"));
-                panel.AddChild(new Paragraph("cuando todos estén listos."));
-
-                Button okBtn = new Button("Entendido");
-                okBtn.OnClick = (Entity btn) =>
-                {
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-                };
-                panel.AddChild(okBtn);
-
-                // **AUTO-CERRAR DESPUÉS DE 3 SEGUNDOS**
-                System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ =>
-                {
-                    try
-                    {
-                        if (panel.Visible)
-                        {
-                            panel.Visible = false;
-                            UserInterface.Active.RemoveEntity(panel);
-                        }
-                    }
-                    catch { }
-                });
-
-                Debug.WriteLine("[LÍDER] Notificación de líder mostrada");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error mostrando notificación de líder: {ex.Message}");
-            }
-        }
-
-        private void MostrarPanelLiderPartida()
-        {
-            try
-            {
-                Debug.WriteLine("[LÍDER] Mostrando panel de partida para líder");
-
-                Panel panel = new Panel(new Vector2(400, 300), PanelSkin.Default, Anchor.Center);
-                panel.Visible = true;
-                UserInterface.Active.AddEntity(panel);
-
-                panel.AddChild(new Header("¡Partida Iniciada!"));
-                panel.AddChild(new HorizontalLine());
-
-                panel.AddChild(new Paragraph("Como líder, la partida ha comenzado."));
-                panel.AddChild(new Paragraph("¿Quieres abrir la ventana de juego?"));
-                panel.AddChild(new HorizontalLine());
-
-                Button abrirBtn = new Button("Abrir Partida");
-                abrirBtn.OnClick = (Entity btn) =>
-                {
-                    try
-                    {
-                        Debug.WriteLine("[LÍDER] Abriendo partida desde panel de líder");
-
-                        // **USAR ID 1 POR DEFECTO PARA EL LÍDER**
-                        MultiPartidaManager.Instance.AbrirPartida(1);
-
-                        panel.Visible = false;
-                        UserInterface.Active.RemoveEntity(panel);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error abriendo partida de líder: {ex.Message}");
-                    }
-                };
-                panel.AddChild(abrirBtn);
-
-                Button cerrarBtn = new Button("Más Tarde");
-                cerrarBtn.OnClick = (Entity btn) =>
-                {
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-                };
-                panel.AddChild(cerrarBtn);
-
-                Debug.WriteLine("[LÍDER] Panel de líder creado correctamente");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error creando panel de líder: {ex.Message}");
-            }
-        }
-
-        private void MostrarOpcionesLider(int grupoId)
-        {
-            try
-            {
-                Debug.WriteLine($"[LÍDER] Mostrando opciones para líder del grupo {grupoId}");
-
-                Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
-                panel.Visible = true;
-                UserInterface.Active.AddEntity(panel);
-
-                panel.AddChild(new Header("Opciones de Líder"));
-                panel.AddChild(new HorizontalLine());
-
-                panel.AddChild(new Paragraph($"Eres el líder del grupo #{grupoId}"));
-                panel.AddChild(new Paragraph("¿Qué quieres hacer?"));
-                panel.AddChild(new HorizontalLine());
-
-                Button iniciarBtn = new Button("Iniciar Partida");
-                iniciarBtn.OnClick = (Entity btn) =>
-                {
-                    try
-                    {
-                        Debug.WriteLine("[LÍDER] Iniciando partida desde opciones de líder");
-
-                        // **ENVIAR COMANDO PARA INICIAR PARTIDA**
-                        string mensaje = $"11/{usuario}"; // Comando para iniciar partida
-                        byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                        server.Send(msg);
-
-                        Debug.WriteLine("[LÍDER] Comando de inicio enviado");
-
-                        panel.Visible = false;
-                        UserInterface.Active.RemoveEntity(panel);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error iniciando partida: {ex.Message}");
-                    }
-                };
-                panel.AddChild(iniciarBtn);
-
-                Button cerrarBtn = new Button("Cancelar");
-                cerrarBtn.OnClick = (Entity btn) =>
-                {
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-                };
-                panel.AddChild(cerrarBtn);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error mostrando opciones de líder: {ex.Message}");
-            }
-        }
-
-        private int obtenerIdPartidaActual()
-        {
-            try
-            {
-                // **INTENTAR OBTENER DE LOS DATOS DEL GRUPO**
-                if (grupoId > 0)
-                {
-                    return grupoId; // Usar el ID del grupo como ID de partida
-                }
-
-                return 1; // **VALOR POR DEFECTO**
-            }
-            catch
-            {
-                return 1;
-            }
-        }
-        private void MostrarBotonIniciarPartida()
-        {
-            try
-            {
-                // **VERIFICAR SI YA EXISTE UN BOTÓN DE INICIAR**
-                if (botonIniciarPartidaVisible) return;
-
-                Debug.WriteLine("[LÍDER] Mostrando botón para iniciar partida");
-
-                Button iniciarPartidaBtn = new Button("Iniciar Partida", ButtonSkin.Default, Anchor.BottomCenter, new Vector2(200, 50));
-                iniciarPartidaBtn.Offset = new Vector2(0, -100);
-                iniciarPartidaBtn.OnClick = (Entity btn) =>
-                {
-                    try
-                    {
-                        Debug.WriteLine("[LÍDER] Iniciando partida");
-
-                        string mensaje = $"11/{usuario}";
-                        byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                        server.Send(msg);
-
-                        // **REMOVER EL BOTÓN DESPUÉS DE USAR**
-                        UserInterface.Active.RemoveEntity(iniciarPartidaBtn);
-                        botonIniciarPartidaVisible = false;
-
-                        Debug.WriteLine("[LÍDER] Comando de inicio enviado");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error iniciando partida: {ex.Message}");
-                    }
-                };
-
-                UserInterface.Active.AddEntity(iniciarPartidaBtn);
-                botonIniciarPartidaVisible = true;
-
-                Debug.WriteLine("[LÍDER] Botón de iniciar partida añadido");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error mostrando botón iniciar: {ex.Message}");
+                Debug.WriteLine($"[RED] Mensaje no reconocido: {message}");
             }
         }
 
@@ -1755,18 +1252,12 @@ namespace Duska.Screens
                         }
                         catch (SocketException ex)
                         {
-                            // **REDUCIR SPAM DE EXCEPCIONES**
+                            // Solo intentar reconectar si no estamos intentando detener el hilo
                             if (!stopMessageListener && conectado)
                             {
-                                Debug.WriteLine($"Error en el hilo de mensajes (SocketException): {ex.SocketErrorCode}");
+                                Debug.WriteLine("Error en el hilo de mensajes (SocketException): " + ex.Message);
                                 conectado = false;
-
-                                // **ESPERAR ANTES DE INTENTAR RECONECTAR**
-                                Thread.Sleep(2000);
-                                if (!stopMessageListener)
-                                {
-                                    ReconnectToServer();
-                                }
+                                ReconnectToServer();
                             }
                             else
                             {
@@ -1782,8 +1273,7 @@ namespace Duska.Screens
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine($"Error general en el hilo de mensajes: {ex.Message}");
-                            Thread.Sleep(1000); // Evitar spam de errores
+                            Debug.WriteLine("Error general en el hilo de mensajes: " + ex.Message);
                         }
                     }
                 }
@@ -1853,12 +1343,7 @@ namespace Duska.Screens
         {
             this.server = existingSocket;
             this.conectado = true;
-
-            // **PASAR SOCKET AL MANAGER**
-            SimpleMultiWindowManager.Instance.SetSocketPrincipal(existingSocket);
-
-            // **NO CREAR NUEVO LISTENER - USAR EL EXISTENTE**
-            Debug.WriteLine("[MAIN MENU] Socket existente establecido, manteniendo conexión");
+            StartMessageListener(); // Iniciar el hilo de escucha inmediatamente
         }
     }
 }
