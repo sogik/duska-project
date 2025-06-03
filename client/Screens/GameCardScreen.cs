@@ -36,7 +36,6 @@ namespace Duska.Screens
         private Socket server;
         private Thread messageListenerThread;
 
-        private const float DURACION_DESAFIO = 3.0f;
         private bool isReconnecting = false;
         private volatile bool stopMessageListener = false;
         private bool conectado = false;
@@ -80,7 +79,7 @@ namespace Duska.Screens
         // Variables para el sistema de desafío
         private bool mostrandoDesafio = false;
         private float tiempoDesafio = 0f;
-        private const float DURACION_DESAFIO = 5.0f; // 5 segundos de duración
+        private const float DURACION_DESAFIO = 3.0f; // 5 segundos de duración
         private List<Texture2D> cartasDesafio = new List<Texture2D>();
         private List<bool> cartasDesafioValidas = new List<bool>(); // true = verde, false = roj
 

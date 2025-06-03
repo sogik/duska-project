@@ -588,26 +588,36 @@ namespace Duska.Screens
             panel.Visible = visible;
         }
 
+        // Reemplazar ListaPartidasPanel:
+
         private void ListaPartidasPanel(bool visible, string partidas)
         {
-            // create panel and add to list of panels and manager
-            Panel panel = new Panel(new Vector2(500, -1)); // Panel más ancho para mostrar jugadores
+            // **PANEL MÁS GRANDE Y CENTRADO**
+            Panel panel = new Panel(new Vector2(700, 500), PanelSkin.Default, Anchor.Center);
             panel.Visible = visible;
             UserInterface.Active.AddEntity(panel);
 
-            // add title and text
-            panel.AddChild(new Header("Lista de Partidas"));
+            // **TÍTULO MÁS VISIBLE**
+            Header titulo = new Header("Lista de Partidas");
+            titulo.Scale = 1.2f;
+            panel.AddChild(titulo);
             panel.AddChild(new HorizontalLine());
-            panel.AddChild(new Paragraph("Partidas registradas (con jugadores):"));
 
-            SelectList list = new SelectList(new Vector2(0, 350)) { Identifier = "PartidasList" }; // Lista más alta
+            Paragraph descripcion = new Paragraph("Partidas registradas (con jugadores):");
+            descripcion.Scale = 1.0f;
+            panel.AddChild(descripcion);
+
+            // **LISTA MÁS GRANDE**
+            SelectList list = new SelectList(new Vector2(0, 350)) { Identifier = "PartidasList" };
             panel.AddChild(list);
 
-            // Agregar un botón para regresar al menú principal
-            Button backBtn = new Button("Back", ButtonSkin.Default);
+            // **BOTÓN MÁS GRANDE**
+            Button backBtn = new Button("Regresar", ButtonSkin.Default);
+            backBtn.Size = new Vector2(150, 50);
             backBtn.OnClick = (Entity btn) =>
             {
                 panel.Visible = false;
+                UserInterface.Active.RemoveEntity(panel);
                 Extras(true);
             };
             panel.AddChild(backBtn);
@@ -637,32 +647,40 @@ namespace Duska.Screens
                 {
                     partidasList.AddItem("No hay partidas registradas");
                 }
-
-                panel.Visible = visible;
             }
         }
 
         private void ListaPartidasGanadasPanel(bool visible, string partidasGanadas)
         {
-            // create panel and add to list of panels and manager
-            Panel panel = new Panel(new Vector2(450, -1));
+            // **PANEL MÁS GRANDE Y CENTRADO**
+            Panel panel = new Panel(new Vector2(650, 450), PanelSkin.Default, Anchor.Center);
             panel.Visible = visible;
             UserInterface.Active.AddEntity(panel);
 
-            // add title and text
-            panel.AddChild(new Header("Partidas Ganadas"));
+            // **TÍTULO MÁS VISIBLE**
+            Header titulo = new Header("Mis Partidas Ganadas");
+            titulo.Scale = 1.2f;
+            titulo.FillColor = Color.Gold;
+            panel.AddChild(titulo);
             panel.AddChild(new HorizontalLine());
-            panel.AddChild(new Paragraph("Tus victorias:"));
 
-            SelectList list = new SelectList(new Vector2(0, 280)) { Identifier = "partidasGanadasList" };
+            Paragraph descripcion = new Paragraph("Historial de tus victorias:");
+            descripcion.Scale = 1.0f;
+            descripcion.FillColor = Color.LightGreen;
+            panel.AddChild(descripcion);
+
+            // **LISTA MÁS GRANDE**
+            SelectList list = new SelectList(new Vector2(0, 320)) { Identifier = "partidasGanadasList" };
             panel.AddChild(list);
 
-            // Agregar un botón para regresar al menú principal
-            Button backBtn = new Button("Back", ButtonSkin.Default);
+            // **BOTÓN MÁS GRANDE**
+            Button backBtn = new Button("Regresar", ButtonSkin.Default);
+            backBtn.Size = new Vector2(150, 50);
             backBtn.OnClick = (Entity btn) =>
             {
                 panel.Visible = false;
-                Extras(true); // Regresar al menú principal
+                UserInterface.Active.RemoveEntity(panel);
+                Extras(true);
             };
             panel.AddChild(backBtn);
 
@@ -676,7 +694,9 @@ namespace Duska.Screens
 
                 foreach (string partida in partidasArray)
                 {
-                    if (!string.IsNullOrWhiteSpace(partida) && !partida.StartsWith("ERROR"))
+                    if (!string.IsNullOrWhiteSpace(partida) &&
+                        !partida.StartsWith("ERROR") &&
+                        !partida.StartsWith("PARTIDASG"))
                     {
                         Debug.WriteLine($"Agregando partida ganada a la lista: {partida}");
                         partidasGanadasList.AddItem(partida);
@@ -686,10 +706,8 @@ namespace Duska.Screens
                 // Si no hay partidas, mostrar mensaje
                 if (partidasGanadasList.Count == 0)
                 {
-                    partidasGanadasList.AddItem("No has ganado ninguna partida aun");
+                    partidasGanadasList.AddItem("No has ganado ninguna partida aún");
                 }
-
-                panel.Visible = visible;
             }
         }
 
@@ -1064,19 +1082,31 @@ namespace Duska.Screens
 
         private void MostrarPanelCargandoPartidas(string nombreAmigo)
         {
-            // Crear panel de carga
-            Panel panel = new Panel(new Vector2(450, 200), PanelSkin.Default, Anchor.Center);
+            // **PANEL DE CARGA MÁS GRANDE**
+            Panel panel = new Panel(new Vector2(500, 250), PanelSkin.Default, Anchor.Center);
             panel.Visible = true;
             panel.Identifier = "PanelCargandoPartidas";
             UserInterface.Active.AddEntity(panel);
 
-            panel.AddChild(new Header("Buscando Partidas"));
+            Header titulo = new Header("Buscando Partidas");
+            titulo.Scale = 1.3f;
+            titulo.FillColor = Color.Yellow;
+            panel.AddChild(titulo);
             panel.AddChild(new HorizontalLine());
-            panel.AddChild(new Paragraph($"Buscando partidas jugadas con {nombreAmigo}..."));
-            panel.AddChild(new Paragraph("Por favor espera."));
+
+            Paragraph mensaje1 = new Paragraph($"Buscando partidas jugadas con {nombreAmigo}...");
+            mensaje1.Scale = 1.1f;
+            panel.AddChild(mensaje1);
+
+            Paragraph mensaje2 = new Paragraph("Por favor espera un momento.");
+            mensaje2.Scale = 1.0f;
+            mensaje2.FillColor = Color.LightGray;
+            panel.AddChild(mensaje2);
 
             Debug.WriteLine($"Panel de carga mostrado para buscar partidas con {nombreAmigo}");
         }
+
+        // Reemplazar MostrarPartidasConAmigoPanel:
 
         private void MostrarPartidasConAmigoPanel(bool visible, string partidasAmigo, string nombreAmigo)
         {
@@ -1087,30 +1117,44 @@ namespace Duska.Screens
                 UserInterface.Active.RemoveEntity(panelCarga);
             }
 
-            // Crear panel principal
-            Panel panel = new Panel(new Vector2(550, -1));
+            // **PANEL MÁS GRANDE Y CENTRADO**
+            Panel panel = new Panel(new Vector2(750, 500), PanelSkin.Default, Anchor.Center);
             panel.Visible = visible;
             UserInterface.Active.AddEntity(panel);
 
-            // Título con el nombre del amigo
-            panel.AddChild(new Header($"Partidas con {nombreAmigo}"));
+            // **TÍTULO MÁS VISIBLE CON EL NOMBRE DEL AMIGO**
+            Header titulo = new Header($"Partidas con {nombreAmigo}");
+            titulo.Scale = 1.3f;
+            titulo.FillColor = Color.LightBlue;
+            panel.AddChild(titulo);
             panel.AddChild(new HorizontalLine());
-            panel.AddChild(new Paragraph($"Historial de partidas jugadas con {nombreAmigo}:"));
 
-            // Lista de partidas
-            SelectList list = new SelectList(new Vector2(0, 350)) { Identifier = "PartidasAmigoList" };
+            Paragraph descripcion = new Paragraph($"Historial completo de partidas jugadas con {nombreAmigo}:");
+            descripcion.Scale = 1.0f;
+            descripcion.FillColor = Color.White;
+            panel.AddChild(descripcion);
+
+            // **LISTA MÁS GRANDE PARA VER MEJOR LOS RESULTADOS**
+            SelectList list = new SelectList(new Vector2(0, 370)) { Identifier = "PartidasAmigoList" };
             panel.AddChild(list);
 
-            // Botón para regresar
-            Button backBtn = new Button("Regresar", ButtonSkin.Default);
+            // **PANEL PARA BOTONES**
+            Panel botonesPanel = new Panel(new Vector2(0, 60), PanelSkin.None);
+
+            // **BOTÓN REGRESAR MÁS GRANDE**
+            Button backBtn = new Button("Regresar a Amigos", ButtonSkin.Default);
+            backBtn.Size = new Vector2(200, 50);
+            backBtn.Anchor = Anchor.Center;
             backBtn.OnClick = (Entity btn) =>
             {
                 panel.Visible = false;
                 UserInterface.Active.RemoveEntity(panel);
-                FriendsListPanel(true, ""); // Volver a la lista de amigos
-                friends(); // Recargar lista de amigos
+                FriendsListPanel(true, "");
+                friends();
             };
-            panel.AddChild(backBtn);
+            botonesPanel.AddChild(backBtn);
+
+            panel.AddChild(botonesPanel);
 
             // Procesar y mostrar las partidas
             SelectList partidasList = panel.Find<SelectList>("PartidasAmigoList");
@@ -1130,19 +1174,19 @@ namespace Duska.Screens
                     {
                         Debug.WriteLine($"Agregando partida con amigo: {partida}");
 
-                        // Colorear según el resultado
+                        // **FORMATEAR MEJOR SEGÚN EL RESULTADO SIN EMOJIS**
                         string texto = partida;
                         if (partida.Contains("GANASTE"))
                         {
-                            texto = "✓ " + partida.Replace("GANASTE", "VICTORIA");
+                            texto = "[VICTORIA] " + partida.Replace("GANASTE", "GANASTE");
                         }
                         else if (partida.Contains("PERDISTE"))
                         {
-                            texto = "✗ " + partida.Replace("PERDISTE", "DERROTA");
+                            texto = "[DERROTA] " + partida.Replace("PERDISTE", "PERDISTE");
                         }
                         else if (partida.Contains("EMPATE"))
                         {
-                            texto = "= " + partida.Replace("EMPATE", "EMPATE");
+                            texto = "[EMPATE] " + partida.Replace("EMPATE", "EMPATE");
                         }
 
                         partidasList.AddItem(texto);
