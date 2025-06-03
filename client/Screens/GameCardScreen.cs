@@ -17,6 +17,7 @@ using System.Diagnostics;
 using System.Net;
 using MonoGame.Extended.Particles.Profiles;
 using System.Linq;
+using Duska.Core;
 
 namespace Duska.Screens
 {
@@ -82,6 +83,8 @@ namespace Duska.Screens
         private const float DURACION_DESAFIO = 5.0f; // 5 segundos de duración
         private List<Texture2D> cartasDesafio = new List<Texture2D>();
         private List<bool> cartasDesafioValidas = new List<bool>(); // true = verde, false = roj
+
+        private int _partidaId = -1;
 
         public GameCardScreen(Game game, string usuario) : base(game)
         {
@@ -159,6 +162,12 @@ namespace Duska.Screens
                 GraphicsDevice.Viewport.Height / 2 - 112);
 
             Debug.WriteLine($"[INIT] Posición normal cartas: {_posicionCartasNormal}, Posición acercada: {_posicionCartasAcercadas}");
+        }
+
+        public void SetPartidaId(int partidaId)
+        {
+            _partidaId = partidaId;
+            Debug.WriteLine($"[GAME] Partida ID establecido: {partidaId}");
         }
 
         private void PedirTurno()
@@ -411,6 +420,38 @@ namespace Duska.Screens
                 return "0"; // Desconocido
         }
 
+        public override void Dispose()
+        {
+            try
+            {
+                if (_partidaId > 0)
+                {
+                    MultiGameManager.Instance.CerrarVentanaJuego(_partidaId);
+                }
+
+                stopMessageListener = true;
+
+                if (server != null)
+                {
+                    server.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al dispose: {ex.Message}");
+            }
+
+            base.Dispose();
+        }
+
+        private void ProcessPartidaSpecificMessage(string message)
+        {
+            // Procesar mensajes específicos de esta partida
+            Debug.WriteLine($"[PARTIDA {_partidaId}] Mensaje específico: {message}");
+
+            // Implementar lógica específica aquí
+        }
+
         private void ProcessServerMessage(string message)
         {
             if (string.IsNullOrEmpty(message))
@@ -421,7 +462,13 @@ namespace Duska.Screens
                 message = message.Trim();
                 Debug.WriteLine($"[SERVER] Procesando mensaje: {message}");
 
-                if (message.StartsWith("CARDS/"))
+                if (_partidaId > 0 && message.Contains($"PARTIDA_{_partidaId}"))
+                {
+                    // Procesar mensaje específico de esta partida
+                    ProcessPartidaSpecificMessage(message);
+                    return;
+                }
+                else if (message.StartsWith("CARDS/"))
                 {
                     Debug.WriteLine($"[SERVER] *** CARTAS RECIBIDAS ***");
 

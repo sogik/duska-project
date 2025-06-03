@@ -8,27 +8,23 @@ typedef struct GameInfo
 {
     int partida_id;
     int grupo_id;
+    int ventana_id; // Nuevo campo para identificar la ventana
     int estado;
     int turno_actual;
     int num_jugadores;
     char **jugadores;
-    struct GameInfo *next;
-
+    int jugadores_eliminados[4];
+    int num_jugadores_activos;
     int ronda_actual;
     int total_rondas;
-    char cartas_ronda[MAX_RONDAS][10];
-
+    char cartas_ronda[4][10];
     char ultimo_jugador[50];
     int num_cartas_ultima_jugada;
-    char cartas_ultima_jugada[10][10];
+    char cartas_ultima_jugada[5][10];
     int resultados_verificacion[10];
-
-    int jugadores_eliminados[4]; // 1 si está eliminado
-    int num_jugadores_activos;   // Contador de jugadores que siguen en la partida
-
-    // Para manejar el proceso de eliminación en dos pasos
-    int eliminacion_pendiente;              // 1 si hay una eliminación pendiente
-    char jugador_pendiente_eliminacion[50]; // Nombre del jugador que será eliminado
+    int eliminacion_pendiente;
+    char jugador_pendiente_eliminacion[50];
+    struct GameInfo *next;
 } GameInfo;
 
 // Lista global de partidas

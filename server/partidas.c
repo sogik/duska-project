@@ -52,6 +52,57 @@ GameInfo *obtener_partida_por_id(int partida_id)
     return NULL;
 }
 
+int obtener_partidas_usuario(const char *usuario, int partidas_ids[], int max_partidas)
+{
+    int count = 0;
+    GameInfo *partida = partidas_lista;
+
+    while (partida != NULL && count < max_partidas)
+    {
+        if (partida->estado == 1) // Solo partidas activas
+        {
+            for (int i = 0; i < partida->num_jugadores; i++)
+            {
+                if (strcmp(partida->jugadores[i], usuario) == 0)
+                {
+                    partidas_ids[count] = partida->partida_id;
+                    count++;
+                    break;
+                }
+            }
+        }
+        partida = partida->next;
+    }
+
+    return count;
+}
+
+int crear_partida_con_ventana(int grupo_id, int ventana_id)
+{
+    static int next_partida_id = 1;
+
+    if (grupo_id <= 0)
+        return -1;
+
+    GameInfo *nueva_partida = (GameInfo *)malloc(sizeof(GameInfo));
+    if (!nueva_partida)
+        return -2;
+
+    nueva_partida->partida_id = next_partida_id++;
+    nueva_partida->grupo_id = grupo_id;
+    nueva_partida->ventana_id = ventana_id;
+    nueva_partida->estado = 0;
+    nueva_partida->turno_actual = -1;
+    nueva_partida->num_jugadores = 0;
+    nueva_partida->jugadores = NULL;
+    nueva_partida->next = partidas_lista;
+    partidas_lista = nueva_partida;
+
+    printf("Partida %d creada para grupo %d (ventana %d)\n",
+           nueva_partida->partida_id, grupo_id, ventana_id);
+    return nueva_partida->partida_id;
+}
+
 // Función para iniciar una partida
 int iniciar_partida(int partida_id)
 {

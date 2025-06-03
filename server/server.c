@@ -19,7 +19,9 @@ typedef struct ClientNode
 {
     int socket;
     char usuario[50];
-    int grupo_id; // ID del grupo al que pertenece el cliente, 0 significa sin grupo
+    int grupo_id;
+    int partidas_activas[10]; // Array de IDs de partidas activas
+    int num_partidas_activas;
     struct ClientNode *next;
 } ClientNode;
 
@@ -74,6 +76,63 @@ void remove_client(int sock)
     }
 
     pthread_mutex_unlock(&client_list_mutex);
+}
+
+int agregar_partida_a_usuario(const char *usuario, int partida_id)
+{
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, usuario) == 0)
+        {
+            if (current->num_partidas_activas < 10)
+            {
+                current->partidas_activas[current->num_partidas_activas] = partida_id;
+                current->num_partidas_activas++;
+                pthread_mutex_unlock(&client_list_mutex);
+                return 1; // Éxito
+            }
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return 0; // Fallo
+}
+
+int remover_partida_de_usuario(const char *usuario, int partida_id)
+{
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, usuario) == 0)
+        {
+            for (int i = 0; i < current->num_partidas_activas; i++)
+            {
+                if (current->partidas_activas[i] == partida_id)
+                {
+                    // Mover elementos hacia la izquierda
+                    for (int j = i; j < current->num_partidas_activas - 1; j++)
+                    {
+                        current->partidas_activas[j] = current->partidas_activas[j + 1];
+                    }
+                    current->num_partidas_activas--;
+                    pthread_mutex_unlock(&client_list_mutex);
+                    return 1; // Éxito
+                }
+            }
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return 0; // Fallo
 }
 
 void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int resultados[])
@@ -1145,29 +1204,40 @@ void *cliente(void *socket_ptr)
         // Para código 20 (iniciar partida)
         else if (codigo == 20)
         {
-            // Verificar que el usuario es líder de un grupo
             int grupo_id = obtener_grupo_id(usuario);
             int es_lider = 0;
 
             if (grupo_id > 0)
             {
-                // Verificar si es el líder
                 es_lider = es_lider_grupo(usuario, grupo_id);
             }
 
             if (es_lider)
             {
-                // Crear la partida
+                // Crear nueva partida independiente
                 int partida_id = crear_partida(grupo_id);
 
                 if (partida_id > 0)
                 {
-                    // Iniciar la partida (asignar turnos aleatorios)
+                    // Añadir partida a todos los usuarios del grupo
+                    char jugadores[10][50];
+                    int num_jugadores = listar_jugadores_grupo(grupo_id, jugadores);
+
+                    for (int i = 0; i < num_jugadores; i++)
+                    {
+                        agregar_partida_a_usuario(jugadores[i], partida_id);
+                    }
+
                     int result = iniciar_partida(partida_id);
 
                     if (result == 0)
                     {
-                        // La notificación de inicio se envía dentro de iniciar_partida
+                        // Notificar a todos los miembros del grupo que se inicia nueva partida
+                        char mensaje_inicio[256];
+                        snprintf(mensaje_inicio, sizeof(mensaje_inicio),
+                                 "NUEVA_PARTIDA_INICIADA/%d", partida_id);
+                        broadcast_to_group(grupo_id, mensaje_inicio);
+
                         strncpy(respuesta, "START_GAME_OK/Partida iniciada correctamente", sizeof(respuesta) - 1);
                     }
                     else
@@ -1666,6 +1736,41 @@ void *cliente(void *socket_ptr)
             else
             {
                 strcpy(respuesta, "ERROR/No estás en una partida");
+            }
+        }
+
+        else if (codigo == 30)
+        {
+            // Formato: 30/usuario/partida_id
+            int partida_id = atoi(contrasena);
+
+            GameInfo *partida = obtener_partida_por_id(partida_id);
+            if (partida != NULL)
+            {
+                // Verificar que el usuario está en esta partida
+                int usuario_en_partida = 0;
+                for (int i = 0; i < partida->num_jugadores; i++)
+                {
+                    if (strcmp(partida->jugadores[i], usuario) == 0)
+                    {
+                        usuario_en_partida = 1;
+                        break;
+                    }
+                }
+
+                if (usuario_en_partida)
+                {
+                    snprintf(respuesta, sizeof(respuesta),
+                             "ABRIR_VENTANA_JUEGO/%d", partida_id);
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/No estás en esta partida");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Partida no encontrada");
             }
         }
         else
