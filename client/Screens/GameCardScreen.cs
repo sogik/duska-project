@@ -424,6 +424,8 @@ namespace Duska.Screens
         {
             try
             {
+                Debug.WriteLine($"[DISPOSE] Cerrando GameCardScreen con partida ID: {_partidaId}");
+
                 if (_partidaId > 0)
                 {
                     MultiGameManager.Instance.CerrarVentanaJuego(_partidaId);
@@ -433,7 +435,14 @@ namespace Duska.Screens
 
                 if (server != null)
                 {
-                    server.Close();
+                    try
+                    {
+                        server.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[DISPOSE] Error cerrando socket: {ex.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -2676,10 +2685,24 @@ namespace Duska.Screens
             return texture;
         }
 
-        public void SetExistingSocket(Socket existingSocket)
+        public void SetExistingSocket(Socket socket)
         {
-            this.server = existingSocket;
-            this.conectado = true;
+            try
+            {
+                if (server != null && server != socket)
+                {
+                    server.Close();
+                }
+
+                server = socket;
+                conectado = server?.Connected ?? false;
+
+                Debug.WriteLine($"[GAME] Socket establecido. Conectado: {conectado}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al establecer socket: {ex.Message}");
+            }
         }
 
         // Método para enviar acciones al servidor

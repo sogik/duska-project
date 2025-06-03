@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using Microsoft.Xna.Framework;
-using Duska.Screens;
-using MonoGame.Extended.Screens;
 using System.Diagnostics;
+using MonoGame.Extended.Screens;
+using MonoGame.Extended.Screens.Transitions;
+using Duska.Screens;
 
 namespace Duska.Core
 {
@@ -25,7 +26,8 @@ namespace Duska.Core
         private Dictionary<int, Socket> _socketsPartida;
         private Game _game;
         private string _usuario;
-        private MainMenuScreen _lobbyPrincipal;
+        private ScreenManager _screenManager;
+        private GraphicsDevice _graphicsDevice;
 
         private MultiGameManager()
         {
@@ -33,11 +35,13 @@ namespace Duska.Core
             _socketsPartida = new Dictionary<int, Socket>();
         }
 
-        public void Initialize(Game game, string usuario, MainMenuScreen lobby)
+        public void Initialize(Game game, string usuario, ScreenManager screenManager, GraphicsDevice graphicsDevice)
         {
             _game = game;
             _usuario = usuario;
-            _lobbyPrincipal = lobby;
+            _screenManager = screenManager;
+            _graphicsDevice = graphicsDevice;
+            Debug.WriteLine("[MULTI] MultiGameManager inicializado correctamente");
         }
 
         public void AbrirNuevaVentanaJuego(int partidaId, Socket socketPrincipal)
@@ -46,70 +50,37 @@ namespace Duska.Core
             {
                 Debug.WriteLine($"[MULTI] Abriendo nueva ventana de juego para partida {partidaId}");
 
-                // Crear nueva conexión para esta partida específica
-                Socket nuevoSocket = CrearNuevaConexion(socketPrincipal);
-
-                if (nuevoSocket != null)
+                if (_ventanasJuego.ContainsKey(partidaId))
                 {
-                    // Crear nueva pantalla de juego
-                    var gameScreen = new GameCardScreen(_game, _usuario);
-                    gameScreen.SetExistingSocket(nuevoSocket);
-                    gameScreen.SetPartidaId(partidaId); // Nuevo método para identificar la partida
+                    Debug.WriteLine($"[MULTI] La partida {partidaId} ya está abierta");
+                    return;
+                }
 
-                    // Guardar referencia
-                    _ventanasJuego[partidaId] = gameScreen;
-                    _socketsPartida[partidaId] = nuevoSocket;
+                // **CREAR NUEVA PANTALLA DE JUEGO**
+                var gameScreen = new GameCardScreen(_game, _usuario);
+                gameScreen.SetPartidaId(partidaId);
 
-                    // Notificar al servidor que queremos abrir esta ventana específica
-                    NotificarServidorVentanaAbierta(nuevoSocket, partidaId);
+                // **USAR EL SOCKET EXISTENTE PARA ESTA NUEVA PANTALLA**
+                gameScreen.SetExistingSocket(socketPrincipal);
 
-                    Debug.WriteLine($"[MULTI] Ventana de juego {partidaId} creada exitosamente");
+                // **GUARDAR REFERENCIA**
+                _ventanasJuego[partidaId] = gameScreen;
+                _socketsPartida[partidaId] = socketPrincipal;
+
+                // **CAMBIAR A LA PANTALLA DE JUEGO**
+                if (_screenManager != null)
+                {
+                    _screenManager.LoadScreen(gameScreen, new FadeTransition(_graphicsDevice, Color.Black, 0.5f));
+                    Debug.WriteLine($"[MULTI] Cambiando a pantalla de juego para partida {partidaId}");
+                }
+                else
+                {
+                    Debug.WriteLine("[ERROR] ScreenManager es null - no se puede cambiar de pantalla");
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error al abrir ventana de juego: {ex.Message}");
-            }
-        }
-
-        private Socket CrearNuevaConexion(Socket socketBase)
-        {
-            try
-            {
-                // Obtener información de la conexión existente
-                var endpoint = socketBase.RemoteEndPoint;
-
-                // Crear nueva conexión
-                Socket nuevoSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                nuevoSocket.Connect(endpoint);
-
-                // Autenticar con el servidor
-                string mensaje = $"1/{_usuario}/reconectar_partida";
-                byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                nuevoSocket.Send(msg);
-
-                return nuevoSocket;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al crear nueva conexión: {ex.Message}");
-                return null;
-            }
-        }
-
-        private void NotificarServidorVentanaAbierta(Socket socket, int partidaId)
-        {
-            try
-            {
-                string mensaje = $"30/{_usuario}/{partidaId}";
-                byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                socket.Send(msg);
-
-                Debug.WriteLine($"[MULTI] Notificación de ventana enviada para partida {partidaId}");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al notificar ventana: {ex.Message}");
             }
         }
 
@@ -119,13 +90,13 @@ namespace Duska.Core
             {
                 if (_ventanasJuego.ContainsKey(partidaId))
                 {
-                    _ventanasJuego[partidaId].Dispose();
+                    _ventanasJuego[partidaId]?.Dispose();
                     _ventanasJuego.Remove(partidaId);
                 }
 
                 if (_socketsPartida.ContainsKey(partidaId))
                 {
-                    _socketsPartida[partidaId].Close();
+                    // No cerrar el socket aquí ya que puede estar siendo usado por otras pantallas
                     _socketsPartida.Remove(partidaId);
                 }
 
@@ -145,6 +116,15 @@ namespace Duska.Core
         public bool TienePartidaActiva(int partidaId)
         {
             return _ventanasJuego.ContainsKey(partidaId);
+        }
+
+        public GameCardScreen GetGameScreen(int partidaId)
+        {
+            if (_ventanasJuego.ContainsKey(partidaId))
+            {
+                return _ventanasJuego[partidaId];
+            }
+            return null;
         }
     }
 }

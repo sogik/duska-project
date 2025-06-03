@@ -55,7 +55,7 @@ namespace Duska.Screens
             base.LoadContent();
 
             // **INICIALIZAR MultiGameManager**
-            MultiGameManager.Instance.Initialize(Game, usuario, this);
+            MultiGameManager.Instance.Initialize(Game, usuario, ScreenManager, GraphicsDevice);
 
             // IMPORTANTE: Limpiar y reinicializar la interfaz de usuario SIEMPRE
             if (UserInterface.Active != null)
@@ -1057,44 +1057,59 @@ namespace Duska.Screens
 
         private void MostrarPanelNuevaPartida(int partidaId)
         {
-            Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
-            panel.Visible = true;
-            UserInterface.Active.AddEntity(panel);
-
-            panel.AddChild(new Header("¡Nueva Partida Iniciada!"));
-            panel.AddChild(new HorizontalLine());
-
-            panel.AddChild(new Paragraph($"Se ha iniciado la partida #{partidaId}"));
-            panel.AddChild(new Paragraph("¿Quieres abrir la ventana de juego?"));
-            panel.AddChild(new HorizontalLine());
-
-            Button abrirBtn = new Button("Abrir Ventana de Juego");
-            abrirBtn.OnClick = (Entity btn) =>
+            try
             {
-                try
-                {
-                    // Solicitar al servidor abrir esta partida específica
-                    string mensaje = $"30/{usuario}/{partidaId}";
-                    byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                    server.Send(msg);
+                Debug.WriteLine($"[PANEL] Creando panel para partida {partidaId}");
 
+                Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
+                panel.Visible = true;
+                UserInterface.Active.AddEntity(panel);
+
+                panel.AddChild(new Header("¡Nueva Partida Iniciada!"));
+                panel.AddChild(new HorizontalLine());
+
+                panel.AddChild(new Paragraph($"Se ha iniciado la partida #{partidaId}"));
+                panel.AddChild(new Paragraph("¿Quieres abrir la ventana de juego?"));
+                panel.AddChild(new HorizontalLine());
+
+                Button abrirBtn = new Button("Abrir Ventana de Juego");
+                abrirBtn.OnClick = (Entity btn) =>
+                {
+                    try
+                    {
+                        Debug.WriteLine($"[PANEL] Solicitando abrir partida {partidaId}");
+
+                        // Solicitar al servidor abrir esta partida específica
+                        string mensaje = $"30/{usuario}/{partidaId}";
+                        byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
+                        server.Send(msg);
+
+                        panel.Visible = false;
+                        UserInterface.Active.RemoveEntity(panel);
+
+                        Debug.WriteLine($"[PANEL] Solicitud enviada para partida {partidaId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[ERROR] Error al solicitar ventana: {ex.Message}");
+                    }
+                };
+                panel.AddChild(abrirBtn);
+
+                Button cerrarBtn = new Button("Más Tarde");
+                cerrarBtn.OnClick = (Entity btn) =>
+                {
                     panel.Visible = false;
                     UserInterface.Active.RemoveEntity(panel);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[ERROR] Error al solicitar ventana: {ex.Message}");
-                }
-            };
-            panel.AddChild(abrirBtn);
+                };
+                panel.AddChild(cerrarBtn);
 
-            Button cerrarBtn = new Button("Más Tarde");
-            cerrarBtn.OnClick = (Entity btn) =>
+                Debug.WriteLine($"[PANEL] Panel creado correctamente para partida {partidaId}");
+            }
+            catch (Exception ex)
             {
-                panel.Visible = false;
-                UserInterface.Active.RemoveEntity(panel);
-            };
-            panel.AddChild(cerrarBtn);
+                Debug.WriteLine($"[ERROR] Error creando panel: {ex.Message}");
+            }
         }
 
         private void ProcessServerMessage(string message)
@@ -1125,7 +1140,7 @@ namespace Duska.Screens
                 {
                     Debug.WriteLine($"[MULTI] Confirmación para abrir ventana de partida: {partidaId}");
 
-                    // Abrir nueva ventana de juego
+                    // **ABRIR NUEVA VENTANA DE JUEGO INMEDIATAMENTE**
                     MultiGameManager.Instance.AbrirNuevaVentanaJuego(partidaId, server);
                 }
                 return;
@@ -1189,11 +1204,20 @@ namespace Duska.Screens
                 // Cambiar a la pantalla de juego
                 Debug.WriteLine("[JUEGO] Notificación de inicio de partida recibida");
 
-                // Solo mostrar mensaje en el lobby, no cambiar de pantalla
-                GeonBit.UI.Utils.MessageBox.ShowMsgBox(
-                    "¡Partida iniciada! Usa el panel de partidas para abrirla.",
-                    "Partida Iniciada"
-                );
+                try
+                {
+                    if (GeonBit.UI.UserInterface.Active != null)
+                    {
+                        GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                            "¡Partida iniciada! Espera la confirmación para abrirla.",
+                            "Partida Iniciada"
+                        );
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[ERROR] Error mostrando MessageBox: {ex.Message}");
+                }
                 return;
             }
             else if (message.StartsWith("LIST/"))
