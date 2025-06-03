@@ -31,6 +31,8 @@ namespace Duska.Screens
         private MonoGame.Extended.Input.KeyboardStateExtended _estadoTecladoAnterior;
         private List<Texture2D> _cartasDisponibles = new List<Texture2D>();
         private BuiltinThemes _currTheme;
+        private bool cartasPedidasEstaRonda = false;
+        private int rondaActual = 0;
         private Socket server;
         private Thread messageListenerThread;
         private bool isReconnecting = false;
@@ -740,6 +742,10 @@ namespace Duska.Screens
                         // Obtener número de ronda y carta
                         string numeroRonda = partes[1];
 
+                        // **RESETEAR EL FLAG DE CARTAS PEDIDAS**
+                        cartasPedidasEstaRonda = false;
+                        rondaActual = int.TryParse(numeroRonda, out int ronda) ? ronda : rondaActual + 1;
+
                         obtener_carta_ronda();
 
                         // Notificar al usuario
@@ -750,6 +756,7 @@ namespace Duska.Screens
                         {
                             // Solicitar cartas nuevas para la nueva ronda
                             GetCards(usuario);
+                            cartasPedidasEstaRonda = true; // **MARCAR COMO USADAS PORQUE SE PIDIERON AUTOMÁTICAMENTE**
                             PedirTurno();
 
                             Debug.WriteLine($"[RONDA] Nueva ronda {numeroRonda}, carta: {carta_ronda_actual}. Solicitando nuevas cartas.");
@@ -1496,6 +1503,8 @@ namespace Duska.Screens
             }
         }
 
+        // Reemplazar el método CrearInterfazChatCompleta:
+
         private void CrearInterfazChatCompleta(bool visible)
         {
             try
@@ -1540,14 +1549,8 @@ namespace Duska.Screens
 
                 panel.AddChild(new HorizontalLine());
 
-
-                int altoPanelMensajes2 = GraphicsDevice.Viewport.Height - 350;
-                Panel mensajesPanel2 = new Panel(new Vector2(0, altoPanelMensajes2), PanelSkin.None, Anchor.TopCenter);
-                mensajesPanel2.Padding = new Vector2(10, 10);
-                panel.AddChild(mensajesPanel2);
-
-                // **PANEL DE MENSAJES**
-                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 350;
+                // **PANEL DE MENSAJES - AJUSTAR ALTURA PARA DEJAR ESPACIO A LOS BOTONES**
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 450; // Más espacio para botones
 
                 Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.ListBackground);
                 mensajesPanel.Padding = new Vector2(8, 8);
@@ -1599,9 +1602,7 @@ namespace Duska.Screens
 
                 panel.AddChild(mensajesPanel);
 
-                // Panel de mensajes
-
-                // Campo de texto y botones
+                // **CAMPO DE TEXTO**
                 panel.AddChild(new HorizontalLine());
 
                 TextInput text = new TextInput(false);
@@ -1609,16 +1610,34 @@ namespace Duska.Screens
                 text.Size = new Vector2(0, 40);
                 panel.AddChild(text);
 
+                // **BOTONES EN LA PARTE INFERIOR**
+                // Botón enviar mensaje
                 Button enviarBtn = new Button("Enviar");
                 enviarBtn.Size = new Vector2(150, 35);
                 enviarBtn.Anchor = Anchor.TopLeft;
                 enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
                 panel.AddChild(enviarBtn);
 
+                // **BOTÓN PEDIR CARTAS - SIEMPRE DISPONIBLE PERO CON LIMITACIONES**
                 Button cartasBtn = new Button("Pedir Cartas");
                 cartasBtn.Size = new Vector2(150, 35);
                 cartasBtn.Anchor = Anchor.TopRight;
-                cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartas();
+
+                // **VERIFICAR SI YA SE PIDIERON CARTAS EN ESTA RONDA**
+                bool cartasYaPedidas = VerificarCartasYaPedidas();
+
+                if (cartasYaPedidas)
+                {
+                    cartasBtn.FillColor = Color.Gray;
+                    cartasBtn.Enabled = false;
+                }
+                else
+                {
+                    cartasBtn.FillColor = Color.LightBlue;
+                    cartasBtn.Enabled = true;
+                }
+
+                cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartasConLimite();
                 panel.AddChild(cartasBtn);
 
                 Debug.WriteLine("[CHAT] Interfaz completa creada correctamente");
@@ -1627,6 +1646,51 @@ namespace Duska.Screens
             {
                 Debug.WriteLine($"[ERROR] Error creando interfaz completa: {ex.Message}");
             }
+        }
+
+        private void SolicitarNuevasCartasConLimite()
+        {
+            try
+            {
+                // **VERIFICAR SI YA SE PIDIERON CARTAS EN ESTA RONDA**
+                if (cartasPedidasEstaRonda)
+                {
+                    historialChat.Add("Sistema: Ya has pedido cartas en esta ronda");
+                    ActualizarSoloPanelMensajes();
+                    return;
+                }
+
+                if (conectado || ConnectToServerIfNeeded())
+                {
+                    GetCards(usuario);
+                    cartasPedidasEstaRonda = true; // **MARCAR COMO PEDIDAS**
+
+                    historialChat.Add("Sistema: Solicitando nuevas cartas...");
+                    ActualizarSoloPanelMensajes();
+
+                    // **RECREAR UI PARA DESHABILITAR EL BOTÓN**
+                    CrearInterfazChatCompleta(true);
+
+                    Debug.WriteLine("[CARTAS] Cartas solicitadas - marcado como usado en esta ronda");
+                }
+                else
+                {
+                    historialChat.Add("Sistema: ERROR - No hay conexión al servidor");
+                    ActualizarSoloPanelMensajes();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error solicitando cartas: {ex.Message}");
+                historialChat.Add($"Sistema: ERROR - {ex.Message}");
+                ActualizarSoloPanelMensajes();
+            }
+        }
+
+        private bool VerificarCartasYaPedidas()
+        {
+            // Retorna true si ya se pidieron cartas en esta ronda
+            return cartasPedidasEstaRonda;
         }
 
         private void SolicitarNuevasCartas()
@@ -2251,14 +2315,15 @@ namespace Duska.Screens
                 // Solo procesar teclas de juego si el ratón no está sobre la UI
                 if (!ratónSobreUI)
                 {
-                    if (keyboardExtended.WasKeyReleased(Keys.Escape)) // ← USAR keyboardExtended
+                    // **TECLA ESC - SIEMPRE DISPONIBLE**
+                    if (keyboardExtended.WasKeyReleased(Keys.Escape))
                     {
                         Debug.WriteLine("[INPUT] Tecla ESC presionada - Mostrando menú de pausa");
                         EscMenu(usuario, true);
                     }
 
-                    // Tecla Q para acercar/alejar SIEMPRE disponible
-                    if (keyboardExtended.WasKeyReleased(Keys.Q)) // ← USAR keyboardExtended
+                    // **TECLA Q - SIEMPRE DISPONIBLE**
+                    if (keyboardExtended.WasKeyReleased(Keys.Q))
                     {
                         _cartasAcercadas = !_cartasAcercadas;
 
@@ -2272,10 +2337,10 @@ namespace Duska.Screens
                         Debug.WriteLine($"[INPUT] Cartas acercadas: {_cartasAcercadas}");
                     }
 
-                    // Navegación con flechas SIEMPRE disponible cuando las cartas están acercadas
+                    // **NAVEGACIÓN CON FLECHAS - SIEMPRE DISPONIBLE CUANDO ESTÁN ACERCADAS**
                     if (_cartasAcercadas)
                     {
-                        if (keyboardExtended.WasKeyReleased(Keys.Left)) // ← USAR keyboardExtended
+                        if (keyboardExtended.WasKeyReleased(Keys.Left))
                         {
                             if (_cartasDisponibles.Count > 0)
                             {
@@ -2286,17 +2351,36 @@ namespace Duska.Screens
                                 Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex}");
                             }
                         }
-                        else if (keyboardExtended.WasKeyReleased(Keys.Right)) // ← USAR keyboardExtended
+                        else if (keyboardExtended.WasKeyReleased(Keys.Right))
                         {
                             if (_cartasDisponibles.Count > 0)
                             {
                                 _cartaSeleccionadaIndex = (_cartaSeleccionadaIndex + 1) % _cartasDisponibles.Count;
-
                                 Debug.WriteLine($"[NAVEGACIÓN] Carta seleccionada: {_cartaSeleccionadaIndex}");
                             }
                         }
 
-                        if (keyboardExtended.WasKeyReleased(Keys.F8)) // ← USAR keyboardExtended
+                        // **TECLA ESPACIO - SIEMPRE DISPONIBLE PARA SELECCIONAR CARTAS**
+                        if (keyboardExtended.WasKeyReleased(Keys.Space))
+                        {
+                            // Solo aplicar filtro si hay una carta seleccionada
+                            if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
+                            {
+                                // Asegurarse de que la lista de filtros tiene suficientes elementos
+                                while (_cartasConFiltro.Count < _cartasDisponibles.Count)
+                                    _cartasConFiltro.Add(false);
+
+                                // Alternar el filtro solo para la carta seleccionada
+                                _cartasConFiltro[_cartaSeleccionadaIndex] = !_cartasConFiltro[_cartaSeleccionadaIndex];
+
+                                Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
+                                    $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
+                                    $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
+                            }
+                        }
+
+                        // **TECLA F8 - DEBUG - SIEMPRE DISPONIBLE**
+                        if (keyboardExtended.WasKeyReleased(Keys.F8))
                         {
                             _permitirAccionesJuego = true;
                             esMiTurno = true;
@@ -2304,52 +2388,28 @@ namespace Duska.Screens
                             ChatPanel(true, "Sistema/FORZADO: Controles habilitados manualmente");
                         }
 
-                        // GRUPO 2: TECLAS DE ACCIÓN (solo disponibles en tu turno)
-                        if (_permitirAccionesJuego == true)
+                        // **ACCIONES QUE REQUIEREN TURNO**
+                        if (_permitirAccionesJuego && esMiTurno)
                         {
-                            // Espacio para seleccionar/aplicar filtro a la carta
-                            if (keyboardExtended.WasKeyReleased(Keys.Space)) // ← USAR keyboardExtended
-                            {
-                                // Solo aplicar filtro si hay una carta seleccionada
-                                if (_cartaSeleccionadaIndex >= 0 && _cartaSeleccionadaIndex < _cartasDisponibles.Count)
-                                {
-                                    // Asegurarse de que la lista de filtros tiene suficientes elementos
-                                    while (_cartasConFiltro.Count < _cartasDisponibles.Count)
-                                        _cartasConFiltro.Add(false);
-
-                                    // Alternar el filtro solo para la carta seleccionada
-                                    _cartasConFiltro[_cartaSeleccionadaIndex] = !_cartasConFiltro[_cartaSeleccionadaIndex];
-
-                                    Debug.WriteLine(_cartasConFiltro[_cartaSeleccionadaIndex] ?
-                                        $"[FILTRO] Aplicado en carta {_cartaSeleccionadaIndex}" :
-                                        $"[FILTRO] Removido en carta {_cartaSeleccionadaIndex}");
-                                }
-                            }
-
                             // Tecla E para enviar cartas seleccionadas
-                            if (keyboardExtended.WasKeyReleased(Keys.E)) // ← USAR keyboardExtended
+                            if (keyboardExtended.WasKeyReleased(Keys.E))
                             {
                                 EnviarCartasSeleccionadas();
                             }
 
-                            if (keyboardExtended.WasKeyReleased(Keys.F)) // ← USAR keyboardExtended
+                            // Tecla F para desafiar
+                            if (keyboardExtended.WasKeyReleased(Keys.F))
                             {
-                                // Forzar la eliminación de cartas seleccionadas
                                 DesafiarJugador();
                             }
                         }
-                        else if (keyboardExtended.WasKeyReleased(Keys.Space) ||
-                                 keyboardExtended.WasKeyReleased(Keys.E) ||
-                                 keyboardExtended.WasKeyReleased(Keys.F)) // ← USAR keyboardExtended
+                        else if (keyboardExtended.WasKeyReleased(Keys.E) || keyboardExtended.WasKeyReleased(Keys.F))
                         {
-                            // Si no se permiten acciones de juego, mostrar mensaje
-                            Debug.WriteLine("[INPUT] Intento de acción de juego fuera de turno");
-                            ChatPanel(true, "Sistema/No puedes realizar acciones fuera de tu turno");
+                            // **MENSAJE ESPECÍFICO PARA ACCIONES QUE REQUIEREN TURNO**
+                            Debug.WriteLine("[INPUT] Intento de acción que requiere turno");
+                            ChatPanel(true, "Sistema/No puedes enviar cartas o desafiar fuera de tu turno");
                         }
                     }
-
-                    // IMPORTANTE: Actualizar el estado anterior del teclado al final
-                    _estadoTecladoAnterior = keyboardExtended; // ← USAR keyboardExtended
                 }
             }
             catch (Exception ex)
