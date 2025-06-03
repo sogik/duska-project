@@ -419,6 +419,8 @@ namespace Duska.Screens
         {
             try
             {
+                Debug.WriteLine("[CHAT] *** INICIANDO ACTUALIZACIÓN DE PANEL MENSAJES ***");
+
                 // **BUSCAR EL PANEL DE MENSAJES EXISTENTE**
                 Panel panelPrincipal = null;
                 Panel panelMensajes = null;
@@ -431,6 +433,7 @@ namespace Duska.Screens
                         if (entity is Panel panel && panel.Anchor == Anchor.TopRight)
                         {
                             panelPrincipal = panel;
+                            Debug.WriteLine("[CHAT] Panel principal encontrado");
                             break;
                         }
                     }
@@ -443,6 +446,7 @@ namespace Duska.Screens
                             if (child is Panel p && p.Skin == PanelSkin.ListBackground)
                             {
                                 panelMensajes = p;
+                                Debug.WriteLine("[CHAT] Panel de mensajes encontrado");
                                 break;
                             }
                         }
@@ -452,11 +456,13 @@ namespace Duska.Screens
                 // **SI NO EXISTE EL PANEL O NO LO ENCONTRAMOS, RECREAR TODO**
                 if (panelPrincipal == null || panelMensajes == null)
                 {
+                    Debug.WriteLine("[CHAT] Panel no encontrado, recreando interfaz completa");
                     CrearInterfazChatCompleta(true);
                     return;
                 }
 
                 // **ACTUALIZAR SOLO EL CONTENIDO DEL PANEL DE MENSAJES**
+                Debug.WriteLine("[CHAT] Actualizando contenido del panel existente");
                 panelMensajes.ClearChildren();
 
                 // Recalcular mensajes por pantalla
@@ -464,6 +470,8 @@ namespace Duska.Screens
                 int mensajesPorPantalla = Math.Max(10, (altoPanelMensajes - 20) / 25);
                 int totalMensajes = historialChat?.Count ?? 0;
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
+
+                Debug.WriteLine($"[CHAT] Total mensajes: {totalMensajes}, Mostrando desde: {indiceInicio}");
 
                 // Añadir mensajes actualizados
                 if (historialChat != null && totalMensajes > 0)
@@ -494,18 +502,34 @@ namespace Duska.Screens
                                 }
 
                                 panelMensajes.AddChild(mensajeParagraph);
+                                Debug.WriteLine($"[CHAT] Mensaje añadido: {msg.Substring(0, Math.Min(30, msg.Length))}...");
                             }
                         }
                     }
                 }
+                else
+                {
+                    Paragraph noMensajes = new Paragraph("No hay mensajes aún...");
+                    noMensajes.FillColor = Color.Gray;
+                    noMensajes.Scale = 0.8f;
+                    panelMensajes.AddChild(noMensajes);
+                    Debug.WriteLine("[CHAT] Mensaje placeholder añadido");
+                }
 
-                Debug.WriteLine("[CHAT] Panel de mensajes actualizado sin recrear toda la UI");
+                Debug.WriteLine("[CHAT] *** PANEL DE MENSAJES ACTUALIZADO EXITOSAMENTE ***");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error actualizando panel mensajes: {ex.Message}");
                 // Fallback: recrear toda la interfaz
-                CrearInterfazChatCompleta(true);
+                try
+                {
+                    CrearInterfazChatCompleta(true);
+                }
+                catch (Exception ex2)
+                {
+                    Debug.WriteLine($"[ERROR] Error crítico en fallback: {ex2.Message}");
+                }
             }
         }
 
@@ -544,6 +568,8 @@ namespace Duska.Screens
                     }
                     return;
                 }
+                // En ProcessServerMessage, cambiar la sección de CHAT/:
+
                 else if (message.StartsWith("CHAT/"))
                 {
                     string chatMessage = message.Substring(5).Trim();
@@ -558,19 +584,22 @@ namespace Duska.Screens
                         // **AÑADIR INMEDIATAMENTE AL HISTORIAL**
                         historialChat.Add($"{usuarioChat}: {mensajeTexto}");
 
-                        // **FORZAR ACTUALIZACIÓN INMEDIATA DE LA UI**
+                        // **ACTUALIZAR INMEDIATAMENTE INDEPENDIENTEMENTE DEL HILO**
                         if (System.Threading.Thread.CurrentThread.IsBackground)
                         {
-                            // Si estamos en hilo background, marcar para actualizar en el hilo principal
+                            // **ENCOLAR ACTUALIZACIÓN DE CHAT PARA EL HILO PRINCIPAL**
                             lock (mensajesLock)
                             {
+                                mensajesPendientes.Add("ACTUALIZAR_CHAT");
                                 hayNuevosMensajes = true;
                             }
+                            Debug.WriteLine("[CHAT] Actualización de chat encolada para hilo principal");
                         }
                         else
                         {
                             // Si estamos en hilo principal, actualizar inmediatamente
                             ActualizarSoloPanelMensajes();
+                            Debug.WriteLine("[CHAT] Chat actualizado inmediatamente en hilo principal");
                         }
 
                         Debug.WriteLine($"[CHAT] Mensaje añadido: {usuarioChat}: {mensajeTexto}");
@@ -1835,6 +1864,10 @@ namespace Duska.Screens
                                     {
                                         Debug.WriteLine($"[LISTENER] *** MENSAJE CRÍTICO DETECTADO: {message} ***");
                                     }
+                                    else if (message.Contains("CHAT/"))
+                                    {
+                                        Debug.WriteLine($"[LISTENER] *** MENSAJE DE CHAT DETECTADO: {message} ***");
+                                    }
 
                                     ProcessServerMessage(message);
                                 }
@@ -2158,6 +2191,12 @@ namespace Duska.Screens
                             Debug.WriteLine("[UPDATE] Procesando cartas en hilo principal");
                             ProcesarCartasDelServidor(mensaje);
                             _mostrarTodas = true;
+                        }
+                        // **AGREGAR ESTA NUEVA CONDICIÓN:**
+                        else if (mensaje == "ACTUALIZAR_CHAT")
+                        {
+                            Debug.WriteLine("[UPDATE] *** ACTUALIZANDO CHAT ***");
+                            ActualizarSoloPanelMensajes();
                         }
                         else
                         {
