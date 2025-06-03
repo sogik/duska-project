@@ -256,18 +256,29 @@ namespace Duska.Screens
                     {
                         Debug.WriteLine($"[PANEL] Solicitando nueva ventana para partida {partidaId}");
 
-                        string mensaje = $"30/{usuario}/{partidaId}";
-                        byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                        server.Send(msg);
+                        // **ABRIR DIRECTAMENTE LA VENTANA**
+                        GameWindowManager.Instance.AbrirNuevaVentanaPartida(partidaId, server);
 
                         panel.Visible = false;
                         UserInterface.Active.RemoveEntity(panel);
 
-                        Debug.WriteLine($"[PANEL] Solicitud enviada para partida {partidaId}");
+                        Debug.WriteLine($"[PANEL] Ventana solicitada para partida {partidaId}");
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[ERROR] Error al solicitar ventana: {ex.Message}");
+                        Debug.WriteLine($"[ERROR] Error al abrir ventana: {ex.Message}");
+
+                        // **PLAN DE RESPALDO: NOTIFICAR AL SERVIDOR**
+                        try
+                        {
+                            string mensaje = $"30/{usuario}/{partidaId}";
+                            byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
+                            server.Send(msg);
+                        }
+                        catch (Exception ex2)
+                        {
+                            Debug.WriteLine($"[ERROR] Error en plan de respaldo: {ex2.Message}");
+                        }
                     }
                 };
                 panel.AddChild(abrirBtn);
@@ -1134,63 +1145,6 @@ namespace Duska.Screens
             }
         }
 
-        private void MostrarPanelNuevaPartida(int partidaId)
-        {
-            try
-            {
-                Debug.WriteLine($"[PANEL] Creando panel para partida {partidaId}");
-
-                Panel panel = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
-                panel.Visible = true;
-                UserInterface.Active.AddEntity(panel);
-
-                panel.AddChild(new Header("¡Nueva Partida Iniciada!"));
-                panel.AddChild(new HorizontalLine());
-
-                panel.AddChild(new Paragraph($"Se ha iniciado la partida #{partidaId}"));
-                panel.AddChild(new Paragraph("¿Quieres abrir la ventana de juego?"));
-                panel.AddChild(new HorizontalLine());
-
-                Button abrirBtn = new Button("Abrir Ventana de Juego");
-                abrirBtn.OnClick = (Entity btn) =>
-                {
-                    try
-                    {
-                        Debug.WriteLine($"[PANEL] Solicitando abrir partida {partidaId}");
-
-                        // Solicitar al servidor abrir esta partida específica
-                        string mensaje = $"30/{usuario}/{partidaId}";
-                        byte[] msg = System.Text.Encoding.ASCII.GetBytes(mensaje);
-                        server.Send(msg);
-
-                        panel.Visible = false;
-                        UserInterface.Active.RemoveEntity(panel);
-
-                        Debug.WriteLine($"[PANEL] Solicitud enviada para partida {partidaId}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ERROR] Error al solicitar ventana: {ex.Message}");
-                    }
-                };
-                panel.AddChild(abrirBtn);
-
-                Button cerrarBtn = new Button("Más Tarde");
-                cerrarBtn.OnClick = (Entity btn) =>
-                {
-                    panel.Visible = false;
-                    UserInterface.Active.RemoveEntity(panel);
-                };
-                panel.AddChild(cerrarBtn);
-
-                Debug.WriteLine($"[PANEL] Panel creado correctamente para partida {partidaId}");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error creando panel: {ex.Message}");
-            }
-        }
-
         private void ProcessServerMessage(string message)
         {
             Debug.WriteLine($"[RED] Mensaje recibido: {message}");
@@ -1462,12 +1416,18 @@ namespace Duska.Screens
                         }
                         catch (SocketException ex)
                         {
-                            // Solo intentar reconectar si no estamos intentando detener el hilo
+                            // **REDUCIR SPAM DE EXCEPCIONES**
                             if (!stopMessageListener && conectado)
                             {
-                                Debug.WriteLine("Error en el hilo de mensajes (SocketException): " + ex.Message);
+                                Debug.WriteLine($"Error en el hilo de mensajes (SocketException): {ex.SocketErrorCode}");
                                 conectado = false;
-                                ReconnectToServer();
+
+                                // **ESPERAR ANTES DE INTENTAR RECONECTAR**
+                                Thread.Sleep(2000);
+                                if (!stopMessageListener)
+                                {
+                                    ReconnectToServer();
+                                }
                             }
                             else
                             {
@@ -1483,7 +1443,8 @@ namespace Duska.Screens
                         }
                         catch (Exception ex)
                         {
-                            Debug.WriteLine("Error general en el hilo de mensajes: " + ex.Message);
+                            Debug.WriteLine($"Error general en el hilo de mensajes: {ex.Message}");
+                            Thread.Sleep(1000); // Evitar spam de errores
                         }
                     }
                 }
