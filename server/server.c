@@ -1668,6 +1668,93 @@ void *cliente(void *socket_ptr)
                 strcpy(respuesta, "ERROR/No estás en una partida");
             }
         }
+        else if (codigo == 29) // Eliminar cuenta de usuario
+        {
+            // Formato: 29/nombre_usuario/confirmacion
+            char confirmacion[50] = {0};
+
+            if (p != NULL)
+            {
+                strncpy(confirmacion, p, sizeof(confirmacion) - 1);
+            }
+
+            // Verificar que la confirmación sea correcta (seguridad extra)
+            if (strcmp(confirmacion, "CONFIRMAR_ELIMINACION") == 0)
+            {
+                printf("[BAJA] Solicitud de eliminación de cuenta para usuario: %s\n", usuario);
+
+                // Verificar que el usuario existe antes de eliminarlo
+                if (usuarioExiste(conn, usuario))
+                {
+                    // Actualizar estado a desconectado antes de eliminar
+                    actualizarEstado(conn, usuario, 0);
+
+                    // Eliminar el usuario de la base de datos
+                    int resultado = eliminarUsuario(conn, usuario);
+
+                    if (resultado == 0)
+                    {
+                        printf("[BAJA] Usuario %s eliminado exitosamente\n", usuario);
+
+                        // Notificar éxito al cliente
+                        strcpy(respuesta, "BAJA_OK/Cuenta eliminada exitosamente");
+
+                        // Obtener el grupo del usuario (si está en uno)
+                        int grupo_id = obtener_grupo_id(usuario);
+
+                        // Si estaba en un grupo, notificar a los demás miembros
+                        if (grupo_id > 0)
+                        {
+                            char mensaje_salida[256];
+                            snprintf(mensaje_salida, sizeof(mensaje_salida), "USUARIO_ELIMINADO/%s", usuario);
+                            broadcast_to_group(grupo_id, mensaje_salida);
+
+                            // Remover del grupo
+                            pthread_mutex_lock(&client_list_mutex);
+                            ClientNode *current = client_list;
+                            while (current != NULL)
+                            {
+                                if (strcmp(current->usuario, usuario) == 0)
+                                {
+                                    current->grupo_id = 0;
+                                    break;
+                                }
+                                current = current->next;
+                            }
+                            pthread_mutex_unlock(&client_list_mutex);
+
+                            // Notificar cambio de líder si corresponde
+                            notificar_lider_grupo(grupo_id);
+                        }
+
+                        // Actualizar lista de conectados para todos
+                        char buffer[1024] = {0};
+                        listarConectados(conn, buffer, sizeof(buffer));
+                        broadcast_to_all(buffer);
+
+                        // Marcar para cerrar la conexión después de enviar la respuesta
+                        stopMessageListener = true;
+                    }
+                    else if (resultado == -2)
+                    {
+                        strcpy(respuesta, "ERROR/Usuario no encontrado en la base de datos");
+                    }
+                    else
+                    {
+                        strcpy(respuesta, "ERROR/Error interno al eliminar la cuenta");
+                    }
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/El usuario no existe en la base de datos");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Confirmación de eliminación incorrecta");
+                printf("[BAJA] Intento de eliminación sin confirmación correcta: %s\n", confirmacion);
+            }
+        }
         else
         {
             strcpy(respuesta, "ERROR/Comando desconocido");

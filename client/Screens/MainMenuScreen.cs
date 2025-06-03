@@ -222,6 +222,14 @@ namespace Duska.Screens
             changeThemeBtn.ToolTipText = "Rotate through the built-in themes.";
             panel.AddChild(changeThemeBtn);
 
+            Button bajaBtn = new Button("Dar de Baja Cuenta", ButtonSkin.Default);
+            bajaBtn.OnClick = (Entity btn) =>
+            {
+                panel.Visible = false;
+                MostrarConfirmacionBaja();
+            };
+            panel.AddChild(bajaBtn);
+
             // Ejemplo: Agregar un botón para regresar al menú principal
             Button backBtn = new Button("Back", ButtonSkin.Default);
             backBtn.OnClick = (Entity btn) =>
@@ -330,6 +338,236 @@ namespace Duska.Screens
                 EscMenu(usuario, true); // Regresar al menú principal
             };
             panel.AddChild(backBtn);
+        }
+
+        private void MostrarConfirmacionBaja()
+        {
+            // Crear panel de confirmación
+            Panel panel = new Panel(new Vector2(500, 350), PanelSkin.Default, Anchor.Center);
+            panel.Visible = true;
+            UserInterface.Active.AddEntity(panel);
+
+            // Título de advertencia
+            Header header = new Header("⚠️ ELIMINAR CUENTA ⚠️");
+            header.FillColor = Color.Red;
+            panel.AddChild(header);
+            panel.AddChild(new HorizontalLine());
+
+            // Mensaje de advertencia detallado
+            panel.AddChild(new Paragraph("¿Estás seguro que quieres eliminar tu cuenta?"));
+            panel.AddChild(new Paragraph(""));
+            panel.AddChild(new Paragraph("ESTA ACCIÓN NO SE PUEDE DESHACER"));
+            panel.AddChild(new Paragraph(""));
+            panel.AddChild(new Paragraph("Se perderá:"));
+            panel.AddChild(new Paragraph("• Tu nombre de usuario"));
+            panel.AddChild(new Paragraph("• Todas tus partidas ganadas"));
+            panel.AddChild(new Paragraph("• Todo tu progreso"));
+            panel.AddChild(new HorizontalLine());
+
+            // Campo de texto para confirmar el nombre de usuario
+            panel.AddChild(new Paragraph($"Para confirmar, escribe tu nombre de usuario: {usuario}"));
+
+            TextInput confirmacionInput = new TextInput(false);
+            confirmacionInput.PlaceholderText = "Escribe tu nombre de usuario aquí";
+            confirmacionInput.Size = new Vector2(0, 40);
+            panel.AddChild(confirmacionInput);
+
+            panel.AddChild(new HorizontalLine());
+
+            // Panel para botones
+            Panel botonesPanel = new Panel(new Vector2(0, 80), PanelSkin.None);
+
+            // Botón de confirmación (inicialmente deshabilitado)
+            Button confirmarBtn = new Button("ELIMINAR MI CUENTA", ButtonSkin.Default);
+            confirmarBtn.FillColor = Color.Red;
+            confirmarBtn.Size = new Vector2(0, 40);
+            confirmarBtn.Enabled = false;
+
+            // Verificar en tiempo real si el nombre coincide
+            confirmacionInput.OnValueChange = (Entity entity) =>
+            {
+                if (confirmacionInput.Value != null && confirmacionInput.Value.Trim().Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                {
+                    confirmarBtn.Enabled = true;
+                    confirmarBtn.FillColor = Color.Red;
+                }
+                else
+                {
+                    confirmarBtn.Enabled = false;
+                    confirmarBtn.FillColor = Color.Gray;
+                }
+            };
+
+            confirmarBtn.OnClick = (Entity btn) =>
+            {
+                if (confirmacionInput.Value != null && confirmacionInput.Value.Trim().Equals(usuario, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Cerrar panel de confirmación
+                    panel.Visible = false;
+                    UserInterface.Active.RemoveEntity(panel);
+
+                    // Ejecutar la eliminación
+                    EjecutarEliminacionCuenta();
+                }
+                else
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                        "El nombre de usuario no coincide.",
+                        "Error de confirmación"
+                    );
+                }
+            };
+            botonesPanel.AddChild(confirmarBtn);
+
+            // Botón para cancelar
+            Button cancelarBtn = new Button("Cancelar", ButtonSkin.Default);
+            cancelarBtn.Size = new Vector2(0, 40);
+            cancelarBtn.Offset = new Vector2(0, 45);
+            cancelarBtn.OnClick = (Entity btn) =>
+            {
+                panel.Visible = false;
+                UserInterface.Active.RemoveEntity(panel);
+                EscMenu(usuario, true); // Volver al menú de pausa
+            };
+            botonesPanel.AddChild(cancelarBtn);
+
+            panel.AddChild(botonesPanel);
+
+            Debug.WriteLine("[BAJA] Panel de confirmación de baja mostrado");
+        }
+
+        private void EjecutarEliminacionCuenta()
+        {
+            try
+            {
+                Debug.WriteLine("[BAJA] Iniciando proceso de eliminación de cuenta");
+
+                if (!conectado)
+                {
+                    ConnectToServer();
+                }
+
+                if (server != null && server.Connected)
+                {
+                    // Enviar solicitud de eliminación al servidor
+                    // Formato: 29/usuario/CONFIRMAR_ELIMINACION
+                    string mensaje = $"29/{usuario}/CONFIRMAR_ELIMINACION";
+                    byte[] msg = Encoding.ASCII.GetBytes(mensaje);
+                    server.Send(msg);
+
+                    Debug.WriteLine($"[BAJA] Solicitud de eliminación enviada: {mensaje}");
+
+                    // Mostrar panel de carga mientras se procesa
+                    MostrarPanelProcesandoBaja();
+                }
+                else
+                {
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                        "No se pudo conectar al servidor. Inténtalo más tarde.",
+                        "Error de conexión"
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error al ejecutar eliminación: {ex.Message}");
+                GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                    "Error al procesar la eliminación. Inténtalo más tarde.",
+                    "Error"
+                );
+            }
+        }
+
+        private void MostrarPanelProcesandoBaja()
+        {
+            // Crear panel de carga
+            Panel panel = new Panel(new Vector2(400, 200), PanelSkin.Default, Anchor.Center);
+            panel.Visible = true;
+            panel.Identifier = "PanelProcesandoBaja"; // Para poder encontrarlo después
+            UserInterface.Active.AddEntity(panel);
+
+            panel.AddChild(new Header("Procesando..."));
+            panel.AddChild(new HorizontalLine());
+            panel.AddChild(new Paragraph("Eliminando tu cuenta del servidor..."));
+            panel.AddChild(new Paragraph("Por favor espera."));
+
+            // Añadir una barra de progreso para dar feedback visual
+            ProgressBar progressBar = new ProgressBar(0, 100);
+            progressBar.Value = 50; // Valor intermedio
+            panel.AddChild(progressBar);
+
+            Debug.WriteLine("[BAJA] Panel de procesamiento mostrado");
+        }
+
+        private void ProcesarRespuestaBaja(string respuesta)
+        {
+            try
+            {
+                Debug.WriteLine($"[BAJA] Respuesta recibida: {respuesta}");
+
+                // Cerrar panel de procesamiento si existe
+                Panel panelProcesando = UserInterface.Active.Root.Find<Panel>("PanelProcesandoBaja");
+                if (panelProcesando != null)
+                {
+                    UserInterface.Active.RemoveEntity(panelProcesando);
+                }
+
+                if (respuesta.StartsWith("BAJA_OK/"))
+                {
+                    // Eliminación exitosa
+                    Debug.WriteLine("[BAJA] Cuenta eliminada exitosamente");
+
+                    // Mostrar mensaje de éxito y cerrar aplicación
+                    Panel panelExito = new Panel(new Vector2(400, 250), PanelSkin.Default, Anchor.Center);
+                    panelExito.Visible = true;
+                    UserInterface.Active.AddEntity(panelExito);
+
+                    Header titulo = new Header("Cuenta Eliminada");
+                    titulo.FillColor = Color.Green;
+                    panelExito.AddChild(titulo);
+                    panelExito.AddChild(new HorizontalLine());
+
+                    panelExito.AddChild(new Paragraph("Tu cuenta ha sido eliminada exitosamente."));
+                    panelExito.AddChild(new Paragraph(""));
+                    panelExito.AddChild(new Paragraph("Gracias por haber usado Duska."));
+                    panelExito.AddChild(new Paragraph("La aplicación se cerrará ahora."));
+
+                    Button cerrarBtn = new Button("Cerrar Aplicación");
+                    cerrarBtn.OnClick = (Entity btn) =>
+                    {
+                        // Desconectar y cerrar aplicación
+                        DisconnectFromServer();
+                        Game.Exit();
+                    };
+                    panelExito.AddChild(cerrarBtn);
+
+                    // Auto-cerrar después de 5 segundos
+                    System.Threading.Timer timer = new System.Threading.Timer((state) =>
+                    {
+                        DisconnectFromServer();
+                        Game.Exit();
+                    }, null, 5000, System.Threading.Timeout.Infinite);
+                }
+                else if (respuesta.StartsWith("ERROR/"))
+                {
+                    // Error en la eliminación
+                    string mensajeError = respuesta.Substring(6);
+                    Debug.WriteLine($"[BAJA] Error: {mensajeError}");
+
+                    GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                        $"Error al eliminar la cuenta: {mensajeError}",
+                        "Error"
+                    );
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error procesando respuesta de baja: {ex.Message}");
+                GeonBit.UI.Utils.MessageBox.ShowMsgBox(
+                    "Error al procesar la respuesta del servidor.",
+                    "Error"
+                );
+            }
         }
 
         private void ListaUsuariosPanel(bool visible, string usuarios)
@@ -1021,6 +1259,12 @@ namespace Duska.Screens
 
                 // Solicitar información sobre el líder del grupo
                 SolicitarInformacionLider(grupoId);
+                return;
+            }
+            else if (message.StartsWith("BAJA_OK/") || (message.StartsWith("ERROR/") && message.Contains("eliminación")))
+            {
+                // Respuesta sobre eliminación de cuenta
+                ProcesarRespuestaBaja(message);
                 return;
             }
             else if (message.StartsWith("GRUPO/"))

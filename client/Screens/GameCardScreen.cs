@@ -24,14 +24,13 @@ namespace Duska.Screens
     {
         private Texture2D[] _cartas = new Texture2D[5];
         private Texture2D _cartaSeleccionada;
+        private Texture2D _background;
         private bool _mostrarTodas = true;
         private Random _random = new Random();
         private SpriteBatch _spriteBatch;
         private MonoGame.Extended.Input.KeyboardStateExtended _estadoTecladoAnterior;
         private List<Texture2D> _cartasDisponibles = new List<Texture2D>();
         private BuiltinThemes _currTheme;
-        private bool cartasPedidasEstaRonda = false;
-        private string rondaActual = "";
         private Socket server;
         private Thread messageListenerThread;
         private bool isReconnecting = false;
@@ -101,6 +100,8 @@ namespace Duska.Screens
                 InitializeThemeAndUI(BuiltinThemes.hd);
 
                 _spriteBatch = new SpriteBatch(GraphicsDevice);
+
+                _background = Content.Load<Texture2D>("bg2");
 
                 // Cargar texturas de cartas
                 string[] cartasNombres = new string[] { "ace", "jack", "king", "queen", "cardback" };
@@ -411,6 +412,102 @@ namespace Duska.Screens
                 return "0"; // Desconocido
         }
 
+        // Añadir este nuevo método a GameCardScreen:
+
+        private void ActualizarSoloPanelMensajes()
+        {
+            try
+            {
+                // **BUSCAR EL PANEL DE MENSAJES EXISTENTE**
+                Panel panelPrincipal = null;
+                Panel panelMensajes = null;
+
+                if (UserInterface.Active != null && UserInterface.Active.Root.Children.Count > 0)
+                {
+                    // Buscar el panel principal de chat
+                    foreach (var entity in UserInterface.Active.Root.Children)
+                    {
+                        if (entity is Panel panel && panel.Anchor == Anchor.TopRight)
+                        {
+                            panelPrincipal = panel;
+                            break;
+                        }
+                    }
+
+                    // Si encontramos el panel principal, buscar el panel de mensajes dentro
+                    if (panelPrincipal != null)
+                    {
+                        foreach (var child in panelPrincipal.Children)
+                        {
+                            if (child is Panel p && p.Skin == PanelSkin.ListBackground)
+                            {
+                                panelMensajes = p;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // **SI NO EXISTE EL PANEL O NO LO ENCONTRAMOS, RECREAR TODO**
+                if (panelPrincipal == null || panelMensajes == null)
+                {
+                    CrearInterfazChatCompleta(true);
+                    return;
+                }
+
+                // **ACTUALIZAR SOLO EL CONTENIDO DEL PANEL DE MENSAJES**
+                panelMensajes.ClearChildren();
+
+                // Recalcular mensajes por pantalla
+                int altoPanelMensajes = panelMensajes.Size.Y > 0 ? (int)panelMensajes.Size.Y : 300;
+                int mensajesPorPantalla = Math.Max(10, (altoPanelMensajes - 20) / 25);
+                int totalMensajes = historialChat?.Count ?? 0;
+                int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
+
+                // Añadir mensajes actualizados
+                if (historialChat != null && totalMensajes > 0)
+                {
+                    for (int i = indiceInicio; i < totalMensajes; i++)
+                    {
+                        if (i >= 0 && i < historialChat.Count)
+                        {
+                            string msg = historialChat[i];
+                            if (!string.IsNullOrEmpty(msg))
+                            {
+                                Paragraph mensajeParagraph = new Paragraph(msg);
+                                mensajeParagraph.Scale = 0.8f;
+                                mensajeParagraph.WrapWords = true;
+
+                                // **COLOREAR MENSAJES**
+                                if (msg.StartsWith($"{usuario}:"))
+                                {
+                                    mensajeParagraph.FillColor = Color.LightCyan;
+                                }
+                                else if (msg.StartsWith("Sistema:"))
+                                {
+                                    mensajeParagraph.FillColor = Color.Yellow;
+                                }
+                                else
+                                {
+                                    mensajeParagraph.FillColor = Color.White;
+                                }
+
+                                panelMensajes.AddChild(mensajeParagraph);
+                            }
+                        }
+                    }
+                }
+
+                Debug.WriteLine("[CHAT] Panel de mensajes actualizado sin recrear toda la UI");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error actualizando panel mensajes: {ex.Message}");
+                // Fallback: recrear toda la interfaz
+                CrearInterfazChatCompleta(true);
+            }
+        }
+
         private void ProcessServerMessage(string message)
         {
             if (string.IsNullOrEmpty(message))
@@ -423,16 +520,13 @@ namespace Duska.Screens
 
                 if (message.StartsWith("CARDS/"))
                 {
-                    Debug.WriteLine($"[SERVER] *** CARTAS RECIBIDAS ***");
-
-                    // **CONFIRMAR QUE SE RECIBIERON LAS CARTAS**
-                    historialChat.Add("Sistema: ✅ Cartas recibidas correctamente");
-                    CrearInterfazChatCompleta(true);
-
+                    Debug.WriteLine($"[SERVER] *** MENSAJE DE CARTAS RECIBIDO *** : {message}");
                     PedirTurno();
 
+                    // Solo procesa o encola, pero no ambos
                     if (System.Threading.Thread.CurrentThread.IsBackground)
                     {
+                        // Si estamos en un hilo background, encola para procesamiento en hilo principal
                         lock (mensajesLock)
                         {
                             mensajesPendientes.Add(message);
@@ -442,7 +536,9 @@ namespace Duska.Screens
                     }
                     else
                     {
+                        // Si estamos en el hilo principal, procesa directamente
                         ProcesarCartasDelServidor(message);
+                        // Forzar actualización inmediata
                         _mostrarTodas = true;
                     }
                     return;
@@ -452,27 +548,31 @@ namespace Duska.Screens
                     string chatMessage = message.Substring(5).Trim();
                     Debug.WriteLine("Mensaje de chat recibido: " + chatMessage);
 
-                    // **PROCESAR INMEDIATAMENTE SIN IMPORTAR EL HILO**
                     string[] partes = chatMessage.Split('/');
                     if (partes.Length >= 2)
                     {
-                        string remitente = partes[0];
-                        string texto = partes[1];
+                        string usuarioChat = partes[0];
+                        string mensajeTexto = partes[1];
 
-                        // **AÑADIR TODOS LOS MENSAJES, INCLUSO LOS PROPIOS**
-                        // (Los propios se duplicarán pero se mostrarán inmediatamente)
+                        // **AÑADIR INMEDIATAMENTE AL HISTORIAL**
+                        historialChat.Add($"{usuarioChat}: {mensajeTexto}");
+
+                        // **FORZAR ACTUALIZACIÓN INMEDIATA DE LA UI**
                         if (System.Threading.Thread.CurrentThread.IsBackground)
                         {
+                            // Si estamos en hilo background, marcar para actualizar en el hilo principal
                             lock (mensajesLock)
                             {
-                                mensajesPendientes.Add(message);
                                 hayNuevosMensajes = true;
                             }
                         }
                         else
                         {
-                            ChatPanel(true, chatMessage);
+                            // Si estamos en hilo principal, actualizar inmediatamente
+                            ActualizarSoloPanelMensajes();
                         }
+
+                        Debug.WriteLine($"[CHAT] Mensaje añadido: {usuarioChat}: {mensajeTexto}");
                     }
                     return;
                 }
@@ -480,31 +580,16 @@ namespace Duska.Screens
                 {
                     string jugadorTurno = message.Substring(5).Trim();
 
-                    // **LIMPIAR CARACTERES EXTRAÑOS**
-                    jugadorTurno = jugadorTurno.Split('\n')[0].Split('\r')[0].Trim();
-
-                    // **EVITAR SPAM - SOLO PROCESAR SI CAMBIÓ**
-                    if (!string.Equals(jugadorTurno, jugadorConTurnoActual, StringComparison.OrdinalIgnoreCase))
+                    // **EVITAR SPAM DE TURNOS - SOLO PROCESAR SI CAMBIÓ**
+                    if (jugadorTurno != jugadorConTurnoActual)
                     {
-                        string jugadorAnterior = jugadorConTurnoActual;
-                        jugadorConTurnoActual = jugadorTurno;
                         esMiTurno = string.Equals(jugadorTurno, usuario, StringComparison.OrdinalIgnoreCase);
                         _permitirAccionesJuego = esMiTurno;
+                        jugadorConTurnoActual = jugadorTurno;
 
-                        // **MENSAJE DE CAMBIO DE TURNO**
-                        if (!string.IsNullOrEmpty(jugadorAnterior))
-                        {
-                            if (esMiTurno)
-                            {
-                                historialChat.Add("Sistema: 🎯 ¡Ahora es tu turno!");
-                            }
-                            else
-                            {
-                                historialChat.Add($"Sistema: ⏳ Turno de {jugadorConTurnoActual}");
-                            }
-                        }
-
+                        // **RECREAR UI PARA MOSTRAR CAMBIO DE TURNO**
                         CrearInterfazChatCompleta(true);
+
                         Debug.WriteLine($"[TURNOS] Cambio de turno: {jugadorConTurnoActual} | ¿Es mi turno? {esMiTurno}");
                     }
                     return;
@@ -608,43 +693,35 @@ namespace Duska.Screens
                 if (message.StartsWith("CARTA_RONDA"))
                 {
                     string carta = message.Substring(12).Trim();
-                    if (carta.StartsWith("/"))
-                        carta = carta.Substring(1);
+                    carta_ronda_actual = carta;
 
-                    // **DETECTAR NUEVA RONDA**
-                    if (carta_ronda_actual != carta)
-                    {
-                        carta_ronda_actual = carta;
-
-                        // **RESETEAR CONTROL DE CARTAS PARA NUEVA RONDA**
-                        cartasPedidasEstaRonda = false;
-                        rondaActual = carta;
-
-                        historialChat.Add($"Sistema: 🎴 Nueva ronda - Carta: {carta_ronda_actual.ToUpper()}");
-                        historialChat.Add("Sistema: 🔄 Ya puedes pedir cartas nuevamente");
-                        CrearInterfazChatCompleta(true);
-
-                        Debug.WriteLine($"[JUEGO] Nueva ronda detectada: {carta_ronda_actual}");
-                    }
+                    // **MOSTRAR MENSAJE AL USUARIO**
+                    ChatPanel(true, $"Sistema/Carta de la ronda: {carta_ronda_actual}");
+                    Debug.WriteLine($"[JUEGO] Carta de la ronda actual: {carta_ronda_actual}");
                     return;
                 }
                 else if (message.StartsWith("NUEVA_RONDA/"))
                 {
-                    // **TAMBIÉN RESETEAR EN MENSAJE EXPLÍCITO DE NUEVA RONDA**
-                    cartasPedidasEstaRonda = false;
-                    historialChat.Add("Sistema: 🔄 Nueva ronda iniciada - Ya puedes pedir cartas");
-                    CrearInterfazChatCompleta(true);
-
+                    // Formato: NUEVA_RONDA/numero_ronda
                     string[] partes = message.Split('/');
+
                     if (partes.Length >= 2)
                     {
+                        // Obtener número de ronda y carta
                         string numeroRonda = partes[1];
+
                         obtener_carta_ronda();
+
+                        // Notificar al usuario
                         ChatPanel(true, $"Sistema/¡Comienza la ronda {numeroRonda}! Carta designada: {carta_ronda_actual}");
 
+                        // Solicitar nuevas cartas para esta ronda
                         if (conectado || ConnectToServerIfNeeded())
                         {
+                            // Solicitar cartas nuevas para la nueva ronda
+                            GetCards(usuario);
                             PedirTurno();
+
                             Debug.WriteLine($"[RONDA] Nueva ronda {numeroRonda}, carta: {carta_ronda_actual}. Solicitando nuevas cartas.");
                         }
                     }
@@ -1377,15 +1454,32 @@ namespace Duska.Screens
                         // Mensaje de sistema o de otro formato
                         historialChat.Add(mensaje);
                     }
-                    Debug.WriteLine("[CHAT] Mensaje añadido al historial");
+
+                    ActualizarSoloPanelMensajes();
+
+                    Debug.WriteLine("[CHAT] Mensaje añadido al historial y panel actualizado");
+                    return;
                 }
 
-                // **RECREAR UI CADA VEZ PARA MOSTRAR CAMBIOS**
-                CrearInterfazChatCompleta(visible);
+                // **NO RECREAR LA UI SI YA EXISTE Y SOLO AÑADIMOS MENSAJE**
+                if (!string.IsNullOrEmpty(mensaje) && UserInterface.Active != null && UserInterface.Active.Root.Children.Count > 0)
+                {
+                    // Solo añadir el mensaje sin recrear toda la UI
+                    Debug.WriteLine("[CHAT] Mensaje añadido al historial sin recrear UI");
+                    return;
+                }
+
+                // Solo recrear UI si realmente es necesario
+                if (UserInterface.Active == null || UserInterface.Active.Root.Children.Count == 0)
+                {
+                    // Crear la UI completa solo la primera vez o si está vacía
+                    CrearInterfazChatCompleta(visible);
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error en ChatPanel: {ex.Message}");
+                CrearInterfazChatCompleta(visible);
             }
         }
 
@@ -1393,13 +1487,13 @@ namespace Duska.Screens
         {
             try
             {
-                // Limpiar interfaz existente
+                // Limpiar solo si es necesario
                 if (UserInterface.Active != null)
                 {
                     UserInterface.Active.Clear();
                 }
 
-                // **PANEL PRINCIPAL - TAMAÑO ORIGINAL**
+                // Crear el panel principal
                 Panel panel = new Panel(
                     new Vector2(350, GraphicsDevice.Viewport.Height),
                     PanelSkin.Simple,
@@ -1409,12 +1503,12 @@ namespace Duska.Screens
                 panel.Visible = visible;
                 UserInterface.Active.AddEntity(panel);
 
-                // **ENCABEZADO**
+                // Encabezado
                 Header header = new Header("Chat");
                 panel.AddChild(header);
                 panel.AddChild(new HorizontalLine());
 
-                // **INFORMACIÓN DEL JUEGO**
+                // **MOSTRAR INFORMACIÓN DEL JUEGO**
                 if (!string.IsNullOrEmpty(carta_ronda_actual))
                 {
                     Header cartaRonda = new Header($"Carta Ronda: {carta_ronda_actual}");
@@ -1433,14 +1527,20 @@ namespace Duska.Screens
 
                 panel.AddChild(new HorizontalLine());
 
-                // **PANEL DE MENSAJES - AJUSTADO PARA NO SOBREPONERSE**
-                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 450;
-                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.None, Anchor.TopCenter);
-                mensajesPanel.Padding = new Vector2(10, 10);
-                panel.AddChild(mensajesPanel);
 
-                // Mostrar últimos mensajes
-                int mensajesPorPantalla = 12;
+                int altoPanelMensajes2 = GraphicsDevice.Viewport.Height - 350;
+                Panel mensajesPanel2 = new Panel(new Vector2(0, altoPanelMensajes2), PanelSkin.None, Anchor.TopCenter);
+                mensajesPanel2.Padding = new Vector2(10, 10);
+                panel.AddChild(mensajesPanel2);
+
+                // **PANEL DE MENSAJES**
+                int altoPanelMensajes = GraphicsDevice.Viewport.Height - 350;
+
+                Panel mensajesPanel = new Panel(new Vector2(0, altoPanelMensajes), PanelSkin.ListBackground);
+                mensajesPanel.Padding = new Vector2(8, 8);
+
+                // **SCROLL AUTOMÁTICO - MOSTRAR ÚLTIMOS MENSAJES**
+                int mensajesPorPantalla = Math.Max(10, (altoPanelMensajes - 20) / 25);
                 int totalMensajes = historialChat?.Count ?? 0;
                 int indiceInicio = Math.Max(0, totalMensajes - mensajesPorPantalla);
 
@@ -1454,10 +1554,10 @@ namespace Duska.Screens
                             if (!string.IsNullOrEmpty(msg))
                             {
                                 Paragraph mensajeParagraph = new Paragraph(msg);
-                                mensajeParagraph.Scale = 0.85f;
+                                mensajeParagraph.Scale = 0.8f;
                                 mensajeParagraph.WrapWords = true;
 
-                                // **COLOREAR MENSAJES PROPIOS Y DEL SISTEMA**
+                                // **COLOREAR MENSAJES**
                                 if (msg.StartsWith($"{usuario}:"))
                                 {
                                     mensajeParagraph.FillColor = Color.LightCyan;
@@ -1466,57 +1566,49 @@ namespace Duska.Screens
                                 {
                                     mensajeParagraph.FillColor = Color.Yellow;
                                 }
+                                else
+                                {
+                                    mensajeParagraph.FillColor = Color.White;
+                                }
 
                                 mensajesPanel.AddChild(mensajeParagraph);
                             }
                         }
                     }
                 }
+                else
+                {
+                    Paragraph noMensajes = new Paragraph("No hay mensajes aún...");
+                    noMensajes.FillColor = Color.Gray;
+                    noMensajes.Scale = 0.8f;
+                    mensajesPanel.AddChild(noMensajes);
+                }
 
-                // **LÍNEA SEPARADORA ANTES DE LOS CONTROLES**
+                panel.AddChild(mensajesPanel);
+
+                // Panel de mensajes
+
+                // Campo de texto y botones
                 panel.AddChild(new HorizontalLine());
 
-                // **CAMPO DE TEXTO PARA ESCRIBIR**
                 TextInput text = new TextInput(false);
                 text.PlaceholderText = "Escribe un mensaje...";
                 text.Size = new Vector2(0, 40);
                 panel.AddChild(text);
 
-                // **LÍNEA SEPARADORA DESPUÉS DEL CAMPO DE TEXTO**
-                panel.AddChild(new HorizontalLine());
-
-                // **PANEL DE BOTONES DEBAJO DEL CAMPO DE TEXTO**
-                Panel botonesPanel = new Panel(new Vector2(0, 80), PanelSkin.None);
-                botonesPanel.Padding = new Vector2(5, 5);
-                panel.AddChild(botonesPanel);
-
-                // **BOTÓN ENVIAR - ARRIBA**
-                Button enviarBtn = new Button("Enviar Mensaje");
-                enviarBtn.Size = new Vector2(0, 35);
-                enviarBtn.Anchor = Anchor.TopCenter;
+                Button enviarBtn = new Button("Enviar");
+                enviarBtn.Size = new Vector2(150, 35);
+                enviarBtn.Anchor = Anchor.TopLeft;
                 enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
-                botonesPanel.AddChild(enviarBtn);
+                panel.AddChild(enviarBtn);
 
-                // **BOTÓN PEDIR CARTAS - CON CONTROL DE RONDA**
-                Button cartasBtn = new Button(cartasPedidasEstaRonda ? "Ya pediste cartas" : "Pedir Cartas");
-                cartasBtn.Size = new Vector2(0, 35);
-                cartasBtn.Anchor = Anchor.TopCenter;
-                cartasBtn.Offset = new Vector2(0, 40);
+                Button cartasBtn = new Button("Pedir Cartas");
+                cartasBtn.Size = new Vector2(150, 35);
+                cartasBtn.Anchor = Anchor.TopRight;
+                cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartas();
+                panel.AddChild(cartasBtn);
 
-                // **DESHABILITAR SI YA SE PIDIERON CARTAS**
-                if (cartasPedidasEstaRonda)
-                {
-                    cartasBtn.Enabled = false;
-                    cartasBtn.FillColor = Color.Gray;
-                }
-                else
-                {
-                    cartasBtn.OnClick = (Entity btn) => SolicitarNuevasCartas();
-                }
-
-                botonesPanel.AddChild(cartasBtn);
-
-                Debug.WriteLine("[CHAT] Panel de chat inicializado correctamentes");
+                Debug.WriteLine("[CHAT] Interfaz completa creada correctamente");
             }
             catch (Exception ex)
             {
@@ -1528,34 +1620,22 @@ namespace Duska.Screens
         {
             try
             {
-                // **VERIFICAR SI YA SE PIDIERON CARTAS EN ESTA RONDA**
-                if (cartasPedidasEstaRonda)
-                {
-                    historialChat.Add("Sistema: ❌ Ya pediste cartas en esta ronda");
-                    CrearInterfazChatCompleta(true);
-                    return;
-                }
-
                 if (conectado || ConnectToServerIfNeeded())
                 {
                     GetCards(usuario);
-
-                    // **MARCAR QUE YA SE PIDIERON CARTAS**
-                    cartasPedidasEstaRonda = true;
-
-                    historialChat.Add("Sistema: ✅ Solicitando nuevas cartas...");
-                    CrearInterfazChatCompleta(true); // Actualizar UI para deshabilitar botón
+                    historialChat.Add("Sistema: Solicitando nuevas cartas...");
+                    // NO recrear UI aquí, solo añadir mensaje
                 }
                 else
                 {
-                    historialChat.Add("Sistema: ❌ ERROR - No hay conexión al servidor");
+                    historialChat.Add("Sistema: ERROR - No hay conexión al servidor");
                     CrearInterfazChatCompleta(true);
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error solicitando cartas: {ex.Message}");
-                historialChat.Add($"Sistema: ❌ ERROR - {ex.Message}");
+                historialChat.Add($"Sistema: ERROR - {ex.Message}");
                 CrearInterfazChatCompleta(true);
             }
         }
@@ -1566,32 +1646,36 @@ namespace Duska.Screens
 
             try
             {
+                string mensaje = text.Value.Trim();
+
                 if (server != null && server.Connected)
                 {
-                    string mensajeFormato = "11/" + usuario + "/" + text.Value;
+                    string mensajeFormato = "11/" + usuario + "/" + mensaje;
                     byte[] msg = Encoding.ASCII.GetBytes(mensajeFormato);
                     server.Send(msg);
 
-                    // **AÑADIR INMEDIATAMENTE AL HISTORIAL LOCAL**
-                    historialChat.Add($"{usuario}: {text.Value}");
-                    text.Value = "";
+                    // **AÑADIR INMEDIATAMENTE MI PROPIO MENSAJE AL HISTORIAL**
+                    historialChat.Add($"{usuario}: {mensaje}");
 
-                    // **ACTUALIZAR CHAT INMEDIATAMENTE**
-                    CrearInterfazChatCompleta(true);
+                    // **ACTUALIZAR EL CHAT INMEDIATAMENTE**
+                    ActualizarSoloPanelMensajes();
+
+                    // **LIMPIAR CAMPO DE TEXTO**
+                    text.Value = "";
 
                     Debug.WriteLine("[CHAT] Mensaje enviado y añadido al historial");
                 }
                 else
                 {
-                    historialChat.Add("Sistema: ❌ Error de conexión");
-                    CrearInterfazChatCompleta(true);
+                    historialChat.Add("Sistema: Error de conexión");
+                    ActualizarSoloPanelMensajes();
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[ERROR] Error enviando mensaje: {ex.Message}");
-                historialChat.Add($"Sistema: ❌ Error - {ex.Message}");
-                CrearInterfazChatCompleta(true);
+                historialChat.Add($"Sistema: Error - {ex.Message}");
+                ActualizarSoloPanelMensajes();
             }
         }
 
@@ -2046,6 +2130,7 @@ namespace Duska.Screens
                 }
 
                 // Procesar mensajes pendientes primero
+                bool mensajesProcesados = false;
                 List<string> mensajesAhora = null;
                 lock (mensajesLock)
                 {
@@ -2055,7 +2140,21 @@ namespace Duska.Screens
                         mensajesAhora = new List<string>(mensajesPendientes);
                         mensajesPendientes.Clear();
                         hayNuevosMensajes = false;
+                        mensajesProcesados = true;
                     }
+
+                    // **TAMBIÉN PROCESAR SI SOLO HAY CAMBIOS EN EL CHAT**
+                    if (hayNuevosMensajes)
+                    {
+                        ActualizarSoloPanelMensajes();
+                        hayNuevosMensajes = false;
+                        mensajesProcesados = true;
+                    }
+                }
+
+                if (mensajesProcesados)
+                {
+                    ActualizarSoloPanelMensajes();
                 }
 
                 if (mensajesAhora != null)
@@ -2403,6 +2502,8 @@ namespace Duska.Screens
                 }
 
                 _spriteBatch.Begin();
+
+                _spriteBatch.Draw(_background, new Rectangle(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height), Color.White);
 
                 // Solo mostrar cartas si existen y las texturas son válidas
                 if (_mostrarTodas && _cartasDisponibles != null && _cartasDisponibles.Count > 0)
