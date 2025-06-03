@@ -837,33 +837,39 @@ void *cliente(void *socket_ptr)
                 printf("[DESCONEXION] Error de conexión con %s: %s\n", usuario, strerror(errno));
             }
 
-            // **PASAR conn COMO PARÁMETRO**
             limpiar_cliente_desconectado(sock_conn, conn);
 
-            // Actualizar estado en base de datos
             if (strlen(usuario) > 0)
             {
                 actualizarEstado(conn, usuario, 0);
 
-                // Enviar lista actualizada a los clientes restantes
                 char buffer[1024] = {0};
                 listarConectados(conn, buffer, sizeof(buffer));
                 broadcast_to_all(buffer);
             }
 
-            break; // Salir del bucle
+            break;
         }
+
         peticion[ret] = '\0';
         printf("Peticion: %s\n", peticion);
 
+        // **GUARDAR COPIA ORIGINAL ANTES DEL PARSING**
+        char peticion_original[512];
+        strncpy(peticion_original, peticion, sizeof(peticion_original) - 1);
+        peticion_original[sizeof(peticion_original) - 1] = '\0';
+
+        // **CONTINUAR CON EL PARSING NORMAL**
         char *p = strtok(peticion, "/");
         int codigo = atoi(p);
+
         p = strtok(NULL, "/");
         if (p != NULL)
         {
             strncpy(usuario, p, sizeof(usuario) - 1);
             usuario[sizeof(usuario) - 1] = '\0';
         }
+
         p = strtok(NULL, "/");
         char contrasena[72] = {0};
         if (p != NULL)
@@ -871,6 +877,7 @@ void *cliente(void *socket_ptr)
             strncpy(contrasena, p, sizeof(contrasena) - 1);
             contrasena[sizeof(contrasena) - 1] = '\0';
         }
+
         char mensaje[900] = {0};
         if (p != NULL)
         {
@@ -1305,57 +1312,58 @@ void *cliente(void *socket_ptr)
         {
             printf("[DEBUG-21] ====== PROCESANDO CÓDIGO 21 ======\n");
             printf("[DEBUG-21] Usuario: '%s'\n", usuario);
-            printf("[DEBUG-21] Petición RAW: '%s'\n", peticion);
+            printf("[DEBUG-21] Petición original: '%s'\n", peticion_original);
 
             char accion[10] = {0};
             int cantidad = 0;
             char cartas_jugadas[10][10] = {{0}};
             int resultados_verificacion[10] = {0};
 
-            // **RECONSTRUIR LA PETICIÓN DESDE LAS VARIABLES YA PARSEADAS**
-            // En este punto ya tenemos:
-            // - codigo = 21
-            // - usuario = extraído por strtok
-            // - contrasena = siguiente token (que será la acción)
-            // - mensaje = siguiente token (que será la cantidad)
-            // - Y el resto está en la petición original
+            // **USAR LA PETICIÓN ORIGINAL PARA PARSING COMPLETO**
+            char *partes[20] = {NULL};
+            int num_partes = 0;
 
-            if (contrasena && mensaje)
+            char peticion_temp[512];
+            strncpy(peticion_temp, peticion_original, sizeof(peticion_temp) - 1);
+            peticion_temp[sizeof(peticion_temp) - 1] = '\0';
+
+            char *token = strtok(peticion_temp, "/");
+            while (token != NULL && num_partes < 20)
             {
-                // Acción está en 'contrasena'
-                strncpy(accion, contrasena, sizeof(accion) - 1);
+                partes[num_partes] = malloc(strlen(token) + 1);
+                strcpy(partes[num_partes], token);
+                printf("[DEBUG-21] Parte %d: '%s'\n", num_partes, partes[num_partes]);
+                num_partes++;
+                token = strtok(NULL, "/");
+            }
 
-                // Cantidad está en 'mensaje'
-                cantidad = atoi(mensaje);
+            // **FORMATO ESPERADO: 21/usuario/accion/cantidad/carta1/carta2/carta3/...**
+            if (num_partes >= 4)
+            {
+                // Extraer acción (parte 2)
+                strncpy(accion, partes[2], sizeof(accion) - 1);
+                accion[sizeof(accion) - 1] = '\0';
+
+                // Extraer cantidad (parte 3)
+                cantidad = atoi(partes[3]);
 
                 printf("[DEBUG-21] Acción: '%s', Cantidad: %d\n", accion, cantidad);
 
-                // **BUSCAR LAS CARTAS EN LA PETICIÓN ORIGINAL**
-                char peticion_temp[512];
-                strncpy(peticion_temp, peticion, sizeof(peticion_temp) - 1);
-                peticion_temp[sizeof(peticion_temp) - 1] = '\0';
-
-                // Dividir por "/" para encontrar las cartas
-                char *token = strtok(peticion_temp, "/");
-                int parte_actual = 0;
+                // **EXTRAER LAS CARTAS (partes 4 en adelante)**
                 int cartas_extraidas = 0;
-
-                while (token != NULL && cartas_extraidas < cantidad && cartas_extraidas < 10)
+                for (int i = 4; i < num_partes && cartas_extraidas < cantidad && cartas_extraidas < 10; i++)
                 {
-                    if (parte_actual >= 4) // Las cartas empiezan en la parte 4
+                    if (partes[i] && strlen(partes[i]) > 0)
                     {
-                        strncpy(cartas_jugadas[cartas_extraidas], token, sizeof(cartas_jugadas[cartas_extraidas]) - 1);
+                        strncpy(cartas_jugadas[cartas_extraidas], partes[i], sizeof(cartas_jugadas[cartas_extraidas]) - 1);
                         cartas_jugadas[cartas_extraidas][sizeof(cartas_jugadas[cartas_extraidas]) - 1] = '\0';
 
                         printf("[DEBUG-21] Carta %d extraída: '%s'\n", cartas_extraidas + 1, cartas_jugadas[cartas_extraidas]);
                         cartas_extraidas++;
                     }
-
-                    token = strtok(NULL, "/");
-                    parte_actual++;
                 }
 
-                // Verificar que tengamos todas las cartas
+                // Verificar que tengamos todas las cartas esperadas
                 if (cartas_extraidas != cantidad)
                 {
                     printf("[DEBUG-21] ADVERTENCIA: Se esperaban %d cartas pero se extrajeron %d\n", cantidad, cartas_extraidas);
@@ -1422,8 +1430,17 @@ void *cliente(void *socket_ptr)
             }
             else
             {
-                printf("[DEBUG-21] ERROR: Variables parseadas incompletas\n");
+                printf("[DEBUG-21] ERROR: Se esperaban al menos 4 partes, se obtuvieron %d\n", num_partes);
                 strcpy(respuesta, "ERROR/Formato de petición incorrecto");
+            }
+
+            // **LIBERAR MEMORIA DE LAS PARTES**
+            for (int i = 0; i < num_partes; i++)
+            {
+                if (partes[i])
+                {
+                    free(partes[i]);
+                }
             }
 
             printf("[DEBUG-21] ====== FIN CÓDIGO 21 ======\n");
