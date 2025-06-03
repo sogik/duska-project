@@ -463,9 +463,9 @@ void listarPartidasGanadas(MYSQL *conn, const char *nombre_usuario, char *lista,
 
             // **FORMATO: Partida X - Fecha - Hora**
             snprintf(entrada, sizeof(entrada), "Partida %s - %s - %s/",
-                     row[0] ? row[0] : "?",          // id_partida
-                     row[2] ? row[2] : "????-??-??", // fecha (YYYY-MM-DD)
-                     row[1] ? row[1] : "??:??");     // hora (HH:MM)
+                     row[0] ? row[0] : "?",         // id_partida
+                     row[2] ? row[2] : "Sin-fecha", // fecha (cambiar ????-??-?? por Sin-fecha)
+                     row[1] ? row[1] : "Sin-hora"); // hora (cambiar ??:?? por Sin-hora)
 
             // Verificar que no se exceda el buffer
             if (strlen(lista) + strlen(entrada) < (size_t)(tamano_lista - 50))

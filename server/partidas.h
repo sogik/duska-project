@@ -14,7 +14,6 @@ typedef struct GameInfo
     int num_jugadores;
     char **jugadores;
     struct GameInfo *next;
-
     int ronda_actual;
     int total_rondas;
     char cartas_ronda[MAX_RONDAS][10];

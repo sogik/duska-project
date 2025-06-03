@@ -27,7 +27,7 @@ int crear_partida(int grupo_id)
     nueva_partida->partida_id = next_partida_id++;
     nueva_partida->grupo_id = grupo_id;
     nueva_partida->estado = 0; // ESTADO_CREADA
-    nueva_partida->turno_current = -1;
+    nueva_partida->turno_actual = -1;
     nueva_partida->num_jugadores = 0;
     nueva_partida->jugadores = NULL;
     nueva_partida->next = partidas_lista;
