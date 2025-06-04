@@ -1,0 +1,2073 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <errno.h>
+#include "basedatos.h"
+#include "auth.h"
+#include "generarcartas.h"
+#include "partidas.h"
+#include <signal.h>
+
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
+// Estructura para mantener los clientes conectados
+typedef struct ClientNode
+{
+    int socket;
+    char usuario[50];
+    int grupo_id; // ID del grupo al que pertenece el cliente, 0 significa sin grupo
+    struct ClientNode *next;
+} ClientNode;
+
+ClientNode *client_list = NULL;
+pthread_mutex_t client_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Contador global para asignar IDs de grupo únicos
+int next_grupo_id = 1;
+pthread_mutex_t grupo_id_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Función para obtener un nuevo ID de grupo
+int get_new_grupo_id()
+{
+    pthread_mutex_lock(&grupo_id_mutex);
+    int id = next_grupo_id++;
+    pthread_mutex_unlock(&grupo_id_mutex);
+    return id;
+}
+
+// Función para añadir un cliente a la lista
+void add_client(int sock, const char *usuario)
+{
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *new_node = (ClientNode *)malloc(sizeof(ClientNode));
+    new_node->socket = sock;
+    strncpy(new_node->usuario, usuario, sizeof(new_node->usuario) - 1);
+    new_node->usuario[sizeof(new_node->usuario) - 1] = '\0';
+    new_node->grupo_id = 0; // Inicialmente sin grupo
+    new_node->next = client_list;
+    client_list = new_node;
+
+    pthread_mutex_unlock(&client_list_mutex);
+}
+
+// Función para eliminar un cliente de la lista
+void remove_client(int sock)
+{
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode **pp = &client_list;
+    while (*pp)
+    {
+        if ((*pp)->socket == sock)
+        {
+            ClientNode *to_free = *pp;
+            *pp = (*pp)->next;
+            free(to_free);
+            break;
+        }
+        pp = &(*pp)->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+}
+
+// Reemplazar la función verificar_cartas:
+
+void verificar_cartas(GameInfo *partida, char cartas[][10], int num_cartas, int resultados[])
+{
+    if (!partida || partida->ronda_actual >= partida->total_rondas)
+    {
+        // Si hay error, marcar todas como inválidas
+        for (int i = 0; i < num_cartas; i++)
+        {
+            resultados[i] = 0;
+        }
+        return;
+    }
+
+    // Obtener el tipo de carta designado para la ronda actual
+    const char *tipo_ronda = partida->cartas_ronda[partida->ronda_actual];
+
+    printf("[VERIFICACIÓN] === INICIO VERIFICACIÓN ===\n");
+    printf("[VERIFICACIÓN] Ronda %d: tipo designado '%s'\n",
+           partida->ronda_actual + 1, tipo_ronda);
+    printf("[VERIFICACIÓN] Verificando %d cartas (Jokers = comodín):\n", num_cartas);
+
+    // Verificar cada carta jugada de forma individual
+    for (int i = 0; i < num_cartas; i++)
+    {
+        printf("[VERIFICACIÓN] === CARTA %d ===\n", i + 1);
+        printf("[VERIFICACIÓN] Carta recibida: '%s' (longitud: %lu)\n",
+               cartas[i], strlen(cartas[i]));
+
+        // Determinar el tipo de carta basado en el valor
+        char tipo_carta[20] = {0};
+
+        // **LIMPIEZA Y CLASIFICACIÓN MEJORADA**
+        char carta_limpia[20] = {0};
+        strncpy(carta_limpia, cartas[i], sizeof(carta_limpia) - 1);
+
+        // Convertir a minúsculas para comparación consistente
+        for (int j = 0; carta_limpia[j]; j++)
+        {
+            carta_limpia[j] = tolower(carta_limpia[j]);
+        }
+
+        printf("[VERIFICACIÓN] Carta limpia: '%s'\n", carta_limpia);
+
+        // **VERIFICACIÓN ESPECIAL PARA JOKERS (SIEMPRE VÁLIDOS)**
+        if (strcmp(carta_limpia, "jack") == 0 || strstr(carta_limpia, "jack") != NULL)
+        {
+            resultados[i] = 1; // **JOKER SIEMPRE VÁLIDO**
+            printf("[VERIFICACIÓN] ✓ JOKER - SIEMPRE VÁLIDO (comodín)\n");
+            continue; // Saltar al siguiente ciclo
+        }
+
+        // Clasificar la carta según su valor (para no-jokers)
+        if (strcmp(carta_limpia, "ace") == 0 || strstr(carta_limpia, "ace") != NULL)
+        {
+            strcpy(tipo_carta, "ACES");
+        }
+        else if (strcmp(carta_limpia, "king") == 0 || strstr(carta_limpia, "king") != NULL)
+        {
+            strcpy(tipo_carta, "REYES");
+        }
+        else if (strcmp(carta_limpia, "queen") == 0 || strstr(carta_limpia, "queen") != NULL)
+        {
+            strcpy(tipo_carta, "REINAS");
+        }
+        else
+        {
+            strcpy(tipo_carta, "OTRO");
+        }
+
+        printf("[VERIFICACIÓN] Tipo clasificado: '%s'\n", tipo_carta);
+        printf("[VERIFICACIÓN] Tipo requerido: '%s'\n", tipo_ronda);
+
+        // Verificar si esta carta específica coincide con el tipo de la ronda
+        if (strcmp(tipo_carta, tipo_ronda) == 0)
+        {
+            resultados[i] = 1; // Carta válida
+            printf("[VERIFICACIÓN] ✓ CARTA VÁLIDA\n");
+        }
+        else
+        {
+            resultados[i] = 0; // Carta no válida
+            printf("[VERIFICACIÓN] ✗ CARTA NO VÁLIDA\n");
+        }
+    }
+
+    printf("[VERIFICACIÓN] === FIN VERIFICACIÓN ===\n");
+}
+
+// Función para crear un nuevo grupo con dos usuarios
+int crear_grupo(const char *usuario1, const char *usuario2)
+{
+    int grupo_id = get_new_grupo_id();
+    int usuarios_encontrados = 0;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, usuario1) == 0 || strcmp(current->usuario, usuario2) == 0)
+        {
+            current->grupo_id = grupo_id;
+            usuarios_encontrados++;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return (usuarios_encontrados == 2) ? grupo_id : 0;
+}
+
+// Función para añadir un usuario a un grupo existente
+int agregar_a_grupo(const char *usuario, int grupo_id)
+{
+    int exito = 0;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, usuario) == 0)
+        {
+            current->grupo_id = grupo_id;
+            exito = 1;
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return exito;
+}
+
+void disolver_grupo(int grupo_id)
+{
+    if (grupo_id <= 0)
+        return;
+
+    printf("[GRUPO] Disolviendo grupo %d\n", grupo_id);
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    char mensaje_disolucion[100];
+    snprintf(mensaje_disolucion, sizeof(mensaje_disolucion), "GRUPO_DISUELTO/%d", grupo_id);
+
+    ClientNode *current = client_list;
+    int usuarios_notificados = 0;
+
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            // Verificar que el socket sea válido antes de enviar
+            if (current->socket > 0)
+            {
+                ssize_t resultado = send(current->socket, mensaje_disolucion,
+                                         strlen(mensaje_disolucion), MSG_NOSIGNAL);
+
+                if (resultado >= 0)
+                {
+                    printf("[GRUPO] Notificación de disolución enviada a %s\n",
+                           current->usuario ? current->usuario : "desconocido");
+                    usuarios_notificados++;
+                }
+                else
+                {
+                    printf("[GRUPO] No se pudo notificar a %s (socket cerrado)\n",
+                           current->usuario ? current->usuario : "desconocido");
+                }
+            }
+            else
+            {
+                printf("[GRUPO] Socket inválido para usuario %s, saltando notificación\n",
+                       current->usuario ? current->usuario : "desconocido");
+            }
+
+            // Remover del grupo independientemente del resultado del envío
+            current->grupo_id = 0;
+            printf("[GRUPO] Usuario %s removido del grupo %d\n",
+                   current->usuario ? current->usuario : "desconocido", grupo_id);
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    printf("[GRUPO] Grupo %d disuelto. %d usuarios notificados.\n", grupo_id, usuarios_notificados);
+}
+
+// Función para obtener el ID de grupo de un usuario
+int obtener_grupo_id(const char *usuario)
+{
+    if (!usuario)
+        return 0;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, usuario) == 0)
+        {
+            int grupo_id = current->grupo_id;
+            pthread_mutex_unlock(&client_list_mutex);
+            return grupo_id;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return 0;
+}
+
+// Función para enviar datos a todos los clientes de un grupo específico
+int broadcast_to_group(int grupo_id, const char *mensaje)
+{
+    if (grupo_id <= 0 || mensaje == NULL)
+        return -1;
+
+    int enviados = 0;
+    int errores = 0;
+
+    printf("[BROADCAST] Intentando enviar a grupo %d: '%s'\n", grupo_id, mensaje);
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    ClientNode *previous = NULL;
+
+    while (current != NULL)
+    {
+        ClientNode *next = current->next; // Guardar siguiente antes de posible eliminación
+
+        if (current->grupo_id == grupo_id)
+        {
+            // Verificar si el socket está realmente activo
+            int socket_activo = 1;
+
+            // Primero verificar si el socket es válido
+            if (current->socket <= 0)
+            {
+                printf("[BROADCAST] Socket inválido (%d) para usuario %s. Removiendo.\n",
+                       current->socket, current->usuario ? current->usuario : "desconocido");
+                socket_activo = 0;
+            }
+            else
+            {
+                // Intentar enviar el mensaje con MSG_NOSIGNAL
+                ssize_t resultado = send(current->socket, mensaje, strlen(mensaje), MSG_NOSIGNAL);
+
+                if (resultado < 0)
+                {
+                    int error_codigo = errno;
+                    printf("[BROADCAST] Error al enviar a %s (socket %d): %s (código: %d)\n",
+                           current->usuario ? current->usuario : "desconocido",
+                           current->socket, strerror(error_codigo), error_codigo);
+
+                    // Errores que indican socket cerrado
+                    if (error_codigo == EPIPE || error_codigo == ECONNRESET ||
+                        error_codigo == EBADF || error_codigo == ENOTCONN)
+                    {
+                        socket_activo = 0;
+                    }
+                    else
+                    {
+                        errores++;
+                    }
+                }
+                else
+                {
+                    enviados++;
+                    printf("[BROADCAST] Mensaje enviado exitosamente a %s\n",
+                           current->usuario ? current->usuario : "desconocido");
+                }
+            }
+
+            // Si el socket no está activo, remover el cliente
+            if (!socket_activo)
+            {
+                printf("[BROADCAST] Removiendo cliente inactivo: %s (socket %d)\n",
+                       current->usuario ? current->usuario : "desconocido", current->socket);
+
+                // Remover de la lista enlazada
+                if (previous == NULL)
+                {
+                    client_list = current->next;
+                }
+                else
+                {
+                    previous->next = current->next;
+                }
+
+                // Cerrar socket si aún está abierto
+                if (current->socket > 0)
+                {
+                    close(current->socket);
+                }
+
+                // Liberar memoria
+                if (current->usuario)
+                {
+                    free(current->usuario);
+                }
+                free(current);
+
+                // No actualizar previous porque eliminamos current
+            }
+            else
+            {
+                // Socket válido, actualizar previous
+                previous = current;
+            }
+        }
+        else
+        {
+            // No es del grupo, simplemente continuar
+            previous = current;
+        }
+
+        current = next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    if (errores > 0)
+    {
+        printf("[BROADCAST] Completado con %d errores. Mensaje '%s' enviado a %d destinatarios\n",
+               errores, mensaje, enviados);
+    }
+    else
+    {
+        printf("[BROADCAST] Mensaje '%s' enviado a %d destinatarios\n", mensaje, enviados);
+    }
+
+    return enviados;
+}
+
+// Función para enviar datos a todos los clientes
+void broadcast_to_all(const char *mensaje)
+{
+    if (mensaje == NULL)
+        return;
+
+    printf("[BROADCAST] Enviando a todos: %s\n", mensaje);
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    ClientNode *prev = NULL;
+
+    while (current != NULL)
+    {
+        ClientNode *next = current->next; // Guardar el siguiente antes de posible eliminación
+
+        // Verificar si el socket está válido
+        if (current->socket > 0)
+        {
+            ssize_t bytes_sent = send(current->socket, mensaje, strlen(mensaje), MSG_NOSIGNAL);
+
+            if (bytes_sent == -1)
+            {
+                printf("[BROADCAST] Error enviando a %s (socket %d): %s\n",
+                       current->usuario, current->socket, strerror(errno));
+                printf("[BROADCAST] Eliminando cliente desconectado: %s\n", current->usuario);
+
+                // Eliminar el nodo de la lista
+                if (prev == NULL)
+                {
+                    client_list = next;
+                }
+                else
+                {
+                    prev->next = next;
+                }
+
+                // Liberar memoria
+                close(current->socket);
+                free(current);
+                current = NULL;
+            }
+            else
+            {
+                printf("[BROADCAST] Enviado correctamente a %s (%d bytes)\n", current->usuario, (int)bytes_sent);
+                prev = current;
+            }
+        }
+        else
+        {
+            printf("[BROADCAST] Socket inválido para %s, eliminando\n", current->usuario);
+
+            // Eliminar el nodo de la lista
+            if (prev == NULL)
+            {
+                client_list = next;
+            }
+            else
+            {
+                prev->next = next;
+            }
+
+            free(current);
+            current = NULL;
+        }
+
+        current = next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    printf("[BROADCAST] Broadcast completado\n");
+}
+
+void limpiar_cliente_desconectado(int socket, MYSQL *conn)
+{
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    ClientNode *prev = NULL;
+
+    while (current != NULL)
+    {
+        if (current->socket == socket)
+        {
+            printf("[CLEANUP] Limpiando cliente: %s (socket %d)\n", current->usuario, socket);
+
+            // Actualizar estado en base de datos si conn es válido
+            if (conn != NULL && strlen(current->usuario) > 0)
+            {
+                actualizarEstado(conn, current->usuario, 0);
+            }
+
+            // Eliminar de la lista
+            if (prev == NULL)
+            {
+                client_list = current->next;
+            }
+            else
+            {
+                prev->next = current->next;
+            }
+
+            close(current->socket);
+            free(current);
+            break;
+        }
+
+        prev = current;
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+}
+
+// Función para obtener la lista de usuarios en un grupo
+void listar_usuarios_grupo(int grupo_id, char *buffer, int buffer_size)
+{
+    if (grupo_id <= 0)
+    {
+        snprintf(buffer, buffer_size, "ERROR/Grupo inválido");
+        return;
+    }
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    char temp_buffer[1024] = {0};
+    snprintf(temp_buffer, sizeof(temp_buffer), "GRUPO/%d", grupo_id);
+
+    int count = 0;
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            char usuario_info[100];
+            snprintf(usuario_info, sizeof(usuario_info), "/%s", current->usuario);
+            strcat(temp_buffer, usuario_info);
+            count++;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    if (count > 0)
+    {
+        strncpy(buffer, temp_buffer, buffer_size - 1);
+        buffer[buffer_size - 1] = '\0';
+    }
+    else
+    {
+        snprintf(buffer, buffer_size, "ERROR/No hay usuarios en este grupo");
+    }
+}
+
+// Función para obtener el nombre del primer usuario en un grupo (el líder)
+char *obtener_lider_grupo(int grupo_id)
+{
+    static char lider[50];
+    lider[0] = '\0';
+
+    if (grupo_id <= 0)
+        return NULL;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    // Buscar el primer cliente que pertenezca a este grupo
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            strncpy(lider, current->usuario, sizeof(lider) - 1);
+            lider[sizeof(lider) - 1] = '\0';
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return (lider[0] != '\0') ? lider : NULL;
+}
+
+// Función para obtener el socket de un usuario por su nombre
+int obtener_socket_usuario(const char *usuario)
+{
+    int socket = -1;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, usuario) == 0)
+        {
+            socket = current->socket;
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return socket;
+}
+
+// Función para obtener el número de usuarios en un grupo
+int num_usuarios_grupo(int grupo_id)
+{
+    if (grupo_id <= 0)
+        return 0;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    int count = 0;
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+            count++;
+
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return count;
+}
+
+// Función para obtener un usuario específico de un grupo por índice
+char *obtener_usuario_grupo(int grupo_id, int indice)
+{
+    static char nombre[50];
+    nombre[0] = '\0';
+
+    if (grupo_id <= 0 || indice < 0)
+        return NULL;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    int idx = 0;
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id)
+        {
+            if (idx == indice)
+            {
+                strncpy(nombre, current->usuario, sizeof(nombre) - 1);
+                nombre[sizeof(nombre) - 1] = '\0';
+                pthread_mutex_unlock(&client_list_mutex);
+                return nombre;
+            }
+            idx++;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return NULL;
+}
+
+// Función para notificar a todos los miembros de un grupo quién es el líder
+void notificar_lider_grupo(int grupo_id)
+{
+    char *lider = obtener_lider_grupo(grupo_id);
+
+    if (lider != NULL)
+    {
+        char mensaje[100];
+        snprintf(mensaje, sizeof(mensaje), "LEADER/%s", lider);
+
+        // Enviar a todos los miembros del grupo
+        broadcast_to_group(grupo_id, mensaje);
+
+        printf("Notificado líder '%s' a grupo %d\n", lider, grupo_id);
+    }
+}
+
+int send_to_user(const char *destinatario, const char *mensaje)
+{
+    int enviado = 0;
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (strcmp(current->usuario, destinatario) == 0)
+        {
+            // Asegurarnos que el mensaje tiene un formato estándar y termina con \n
+            char mensaje_formateado[1024] = {0};
+            snprintf(mensaje_formateado, sizeof(mensaje_formateado), "%s\n", mensaje);
+
+            if (write(current->socket, mensaje_formateado, strlen(mensaje_formateado)) >= 0)
+            {
+                enviado = 1;
+            }
+            break;
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return enviado;
+}
+
+// Función para verificar si un usuario es líder de un grupo
+// Esta es usada por partidas.c
+int es_lider_grupo(const char *usuario, int grupo_id)
+{
+    int es_lider = 0;
+    pthread_mutex_lock(&client_list_mutex);
+
+    // Buscar el primer cliente del grupo (el líder)
+    ClientNode *cliente = client_list;
+    while (cliente != NULL)
+    {
+        if (cliente->grupo_id == grupo_id)
+        {
+            // El primer cliente encontrado es el líder
+            es_lider = (strcmp(cliente->usuario, usuario) == 0);
+            break;
+        }
+        cliente = cliente->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return es_lider;
+}
+
+// Función para obtener la lista de jugadores de un grupo
+int listar_jugadores_grupo(int grupo_id, char jugadores[10][50])
+{
+    int num_jugadores = 0;
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *cliente = client_list;
+    while (cliente != NULL)
+    {
+        if (cliente->grupo_id == grupo_id && num_jugadores < 10)
+        {
+            strcpy(jugadores[num_jugadores], cliente->usuario);
+            num_jugadores++;
+        }
+        cliente = cliente->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+    return num_jugadores;
+}
+
+int broadcast_to_group_except(int grupo_id, char *mensaje, int socket_excluido)
+{
+    if (grupo_id <= 0 || mensaje == NULL)
+        return -1;
+
+    int enviados = 0;
+
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    while (current != NULL)
+    {
+        if (current->grupo_id == grupo_id && current->socket != socket_excluido)
+        {
+            ssize_t resultado = send(current->socket, mensaje, strlen(mensaje), MSG_NOSIGNAL);
+
+            if (resultado >= 0)
+            {
+                enviados++;
+            }
+            else
+            {
+                printf("[BROADCAST] Error al enviar a socket %d: %s\n",
+                       current->socket, strerror(errno));
+            }
+        }
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    return enviados;
+}
+
+void *cliente(void *socket_ptr)
+{
+    int sock_conn = *((int *)socket_ptr);
+    free(socket_ptr); // Liberamos la memoria ahora que tenemos el valor
+    char peticion[512];
+    char respuesta[1024];
+    int ret;
+    char usuario[50] = {0}; // Para mantener el nombre de usuario
+
+    MYSQL *conn = mysql_init(NULL);
+    if (!mysql_real_connect(conn, "localhost", "duska_user", "tu_contraseña", "duska_project", 0, NULL, 0))
+    {
+        printf("Error MySQL: %s\n", mysql_error(conn));
+        strcpy(respuesta, "Error en la base de datos");
+        write(sock_conn, respuesta, strlen(respuesta));
+        close(sock_conn);
+        return NULL;
+    }
+
+    while (1)
+    {
+        ret = read(sock_conn, peticion, sizeof(peticion) - 1);
+        if (ret <= 0)
+        {
+            if (ret == 0)
+            {
+                printf("[DESCONEXION] Cliente %s se desconectó normalmente\n", usuario);
+            }
+            else
+            {
+                printf("[DESCONEXION] Error de conexión con %s: %s\n", usuario, strerror(errno));
+            }
+
+            limpiar_cliente_desconectado(sock_conn, conn);
+
+            if (strlen(usuario) > 0)
+            {
+                actualizarEstado(conn, usuario, 0);
+
+                char buffer[1024] = {0};
+                listarConectados(conn, buffer, sizeof(buffer));
+                broadcast_to_all(buffer);
+            }
+
+            break;
+        }
+
+        peticion[ret] = '\0';
+        printf("Peticion: %s\n", peticion);
+
+        // **GUARDAR COPIA ORIGINAL ANTES DEL PARSING**
+        char peticion_original[512];
+        strncpy(peticion_original, peticion, sizeof(peticion_original) - 1);
+        peticion_original[sizeof(peticion_original) - 1] = '\0';
+
+        // **CONTINUAR CON EL PARSING NORMAL**
+        char *p = strtok(peticion, "/");
+        int codigo = atoi(p);
+
+        p = strtok(NULL, "/");
+        if (p != NULL)
+        {
+            strncpy(usuario, p, sizeof(usuario) - 1);
+            usuario[sizeof(usuario) - 1] = '\0';
+        }
+
+        p = strtok(NULL, "/");
+        char contrasena[72] = {0};
+        if (p != NULL)
+        {
+            strncpy(contrasena, p, sizeof(contrasena) - 1);
+            contrasena[sizeof(contrasena) - 1] = '\0';
+        }
+
+        char mensaje[900] = {0};
+        if (p != NULL)
+        {
+            p = strtok(NULL, "/");
+            if (p != NULL)
+            {
+                strncpy(mensaje, p, sizeof(mensaje) - 1);
+                mensaje[sizeof(mensaje) - 1] = '\0';
+            }
+        }
+        else
+        {
+            p = NULL;
+            mensaje[0] = '\0';
+        }
+
+        memset(respuesta, 0, sizeof(respuesta));
+
+        if (codigo == 0)
+        {
+            int reg_result = registrarUsuario(conn, usuario, contrasena);
+            snprintf(respuesta, sizeof(respuesta), "%d", reg_result);
+        }
+        else if (codigo == 1)
+        {
+            int login_result = iniciarSesion(conn, usuario, contrasena);
+            if (login_result == 0)
+            {
+                add_client(sock_conn, usuario); // Añadir a la lista de clientes
+            }
+            snprintf(respuesta, sizeof(respuesta), "%d", login_result);
+        }
+        else if (codigo == 2)
+        {
+            listarJugadores(conn, respuesta, sizeof(respuesta));
+        }
+        else if (codigo == 3)
+        {
+            listarPartidasCompletas(conn, respuesta, sizeof(respuesta));
+        }
+        else if (codigo == 4)
+        {
+            printf("[PARTIDAS GANADAS] Solicitud de partidas ganadas de usuario: %s\n", usuario);
+            listarPartidasGanadas(conn, usuario, respuesta, sizeof(respuesta));
+            printf("[PARTIDAS GANADAS] Respuesta enviada (primeros 100 chars): %.100s\n", respuesta);
+        }
+        else if (codigo == 5)
+        {
+            printf("[AMIGOS] Solicitud de lista de amigos de usuario: %s\n", usuario);
+            listarAmigos(conn, usuario, respuesta, sizeof(respuesta));
+            printf("[AMIGOS] Lista de amigos enviada (excluido el solicitante)\n");
+        }
+        else if (codigo == 6)
+        {
+            int estado = atoi(contrasena);
+            int update_result = actualizarEstado(conn, usuario, estado);
+
+            if (update_result == 0)
+            {
+                char buffer[1024] = {0};
+                listarConectados(conn, buffer, sizeof(buffer));
+                strcpy(respuesta, buffer);
+
+                // Enviar la lista actualizada a todos los clientes
+                broadcast_to_all(buffer);
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Error al actualizar estado");
+            }
+        }
+        else if (codigo == 7)
+        {
+            // Formato esperado: 7/remitente/destinatario/mensaje
+            char destinatario[50] = {0};
+            char mensaje_completo[900] = {0};
+
+            // El destinatario estará en la variable 'contrasena'
+            strncpy(destinatario, contrasena, sizeof(destinatario) - 1);
+
+            if (mensaje != NULL)
+            {
+                strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
+
+                // Formato del mensaje que se enviará: "MSG/remitente/mensaje"
+                char mensaje_final[1024] = {0};
+                snprintf(mensaje_final, sizeof(mensaje_final), "INV/%s", usuario);
+
+                int result = send_to_user(destinatario, mensaje_final);
+
+                if (result == 1)
+                {
+                    strcpy(respuesta, "INV2/Invitacion enviada correctamente");
+                    printf("Invitación enviada a %s\n", destinatario);
+                }
+                else
+                {
+                    strcpy(respuesta, "INV2/El usuario no está conectado o hubo un error");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        else if (codigo == 8)
+        {
+            // Formato esperado: 8/remitente/destinatario/respuesta
+            char destinatario[50] = {0};
+            char respuesta_inv[900] = {0};
+
+            // El destinatario estará en la variable 'contrasena'
+            strncpy(destinatario, contrasena, sizeof(destinatario) - 1);
+
+            if (mensaje != NULL)
+            {
+                strncpy(respuesta_inv, mensaje, sizeof(respuesta_inv) - 1);
+
+                // Formato del mensaje que se enviará: "INVR/remitente/respuesta"
+                char mensaje_final[1024] = {0};
+                snprintf(mensaje_final, sizeof(mensaje_final), "INVR/%s/%s", usuario, respuesta_inv);
+
+                int result = send_to_user(destinatario, mensaje_final);
+
+                // Si la respuesta es "ACEPTADA", manejar la unión al grupo
+                if (result == 1 && strcmp(respuesta_inv, "ACEPTADA") == 0)
+                {
+                    // Obtener el grupo del usuario que invitó (destinatario)
+                    int grupo_invitador = obtener_grupo_id(destinatario);
+
+                    // Verificar si el que acepta ya está en un grupo
+                    int grupo_aceptante = obtener_grupo_id(usuario);
+
+                    // Si el aceptante ya está en un grupo, hacerlo salir primero
+                    if (grupo_aceptante > 0)
+                    {
+                        printf("Usuario %s estaba en grupo %d, haciéndolo abandonar\n",
+                               usuario, grupo_aceptante);
+
+                        // Notificar a los demás miembros del grupo original
+                        char mensaje_salida[256];
+                        snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
+                        broadcast_to_group(grupo_aceptante, mensaje_salida);
+
+                        // Eliminar al usuario del grupo
+                        pthread_mutex_lock(&client_list_mutex);
+                        ClientNode *current = client_list;
+                        while (current != NULL)
+                        {
+                            if (strcmp(current->usuario, usuario) == 0)
+                            {
+                                current->grupo_id = 0;
+                                break;
+                            }
+                            current = current->next;
+                        }
+                        pthread_mutex_unlock(&client_list_mutex);
+
+                        // Notificar cambio de líder en el grupo anterior si corresponde
+                        notificar_lider_grupo(grupo_aceptante);
+                    }
+
+                    // Caso 1: El invitador ya está en un grupo - unir al aceptante a ese grupo
+                    if (grupo_invitador > 0)
+                    {
+                        printf("Añadiendo usuario %s al grupo existente %d\n", usuario, grupo_invitador);
+
+                        // Añadir al usuario al grupo existente
+                        pthread_mutex_lock(&client_list_mutex);
+                        ClientNode *current = client_list;
+                        while (current != NULL)
+                        {
+                            if (strcmp(current->usuario, usuario) == 0)
+                            {
+                                current->grupo_id = grupo_invitador;
+                                break;
+                            }
+                            current = current->next;
+                        }
+                        pthread_mutex_unlock(&client_list_mutex);
+
+                        // Notificar al usuario que se ha unido al grupo
+                        char grupo_msg[256];
+                        snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d", grupo_invitador);
+                        send_to_user(usuario, grupo_msg);
+
+                        // Notificar a todos los miembros que se unió un nuevo usuario
+                        char mensaje_union[256];
+                        snprintf(mensaje_union, sizeof(mensaje_union), "GRUPO_UNION/%s", usuario);
+                        broadcast_to_group(grupo_invitador, mensaje_union);
+
+                        // Enviar la lista actualizada de usuarios en el grupo
+                        char lista_grupo[1024];
+                        listar_usuarios_grupo(grupo_invitador, lista_grupo, sizeof(lista_grupo));
+                        broadcast_to_group(grupo_invitador, lista_grupo);
+                    }
+                    // Caso 2: El invitador no está en un grupo - crear uno nuevo
+                    else
+                    {
+                        int grupo_id = crear_grupo(usuario, destinatario);
+                        if (grupo_id > 0)
+                        {
+                            // Notificar a ambos usuarios sobre la creación del grupo
+                            char grupo_msg[256];
+                            snprintf(grupo_msg, sizeof(grupo_msg), "GRUPO_CREADO/%d", grupo_id);
+                            send_to_user(usuario, grupo_msg);
+                            send_to_user(destinatario, grupo_msg);
+
+                            // Enviar la lista de usuarios en el grupo
+                            char lista_grupo[1024];
+                            listar_usuarios_grupo(grupo_id, lista_grupo, sizeof(lista_grupo));
+                            broadcast_to_group(grupo_id, lista_grupo);
+
+                            // Notificar quién es el líder
+                            notificar_lider_grupo(grupo_id);
+
+                            printf("Grupo %d creado para %s y %s\n", grupo_id, usuario, destinatario);
+                        }
+                        else
+                        {
+                            printf("Error al crear grupo para %s y %s\n", usuario, destinatario);
+                        }
+                    }
+                }
+
+                if (result == 1)
+                {
+                    strcpy(respuesta, "INVR2/Respuesta enviada correctamente");
+                    printf("Respuesta de invitación enviada a %s\n", destinatario);
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/El usuario no está conectado o hubo un error");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        else if (codigo == 9)
+        {
+            char mensaje_completo[900] = {0};
+
+            if (mensaje != NULL)
+            {
+                strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
+
+                char *cartas = generar_cartas_aleatorias();
+
+                snprintf(respuesta, sizeof(respuesta), "%s", cartas);
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        else if (codigo == 10)
+        {
+            // Formato esperado: 10/remitente/destinatario/mensaje
+            char destinatario[50] = {0};
+            char mensaje_completo[900] = {0};
+
+            // El destinatario estará en la variable 'contrasena'
+            strncpy(destinatario, contrasena, sizeof(destinatario) - 1);
+
+            if (mensaje != NULL)
+            {
+                strncpy(mensaje_completo, mensaje, sizeof(mensaje_completo) - 1);
+
+                // Formato del mensaje que se enviará: "CHAT/remitente"
+                char mensaje_final[1024] = {0};
+                snprintf(mensaje_final, sizeof(mensaje_final), "CHAT/%s", usuario);
+
+                int result = send_to_user(destinatario, mensaje_final);
+
+                if (result == 1)
+                {
+                    strcpy(respuesta, "CHAT/Mensaje enviado correctamente");
+                    printf("Mensaje enviado a %s\n", destinatario);
+                }
+                else
+                {
+                    strcpy(respuesta, "CHAT/El usuario no está conectado o hubo un error");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de mensaje inválido");
+            }
+        }
+        // Nuevo código para broadcast a un grupo específico
+        else if (codigo == 11)
+        {
+            // Formato esperado: 11/remitente/mensaje
+            // Usamos el campo contrasena para indicar el mensaje
+            char mensaje_grupo[900] = {0};
+            strncpy(mensaje_grupo, contrasena, sizeof(mensaje_grupo) - 1);
+
+            // Obtener el grupo del usuario
+            int grupo_id = obtener_grupo_id(usuario);
+
+            if (grupo_id > 0)
+            {
+                // Formato del mensaje que se enviará: "GRUPO_MSG/remitente/mensaje"
+                char mensaje_final[1024] = {0};
+                snprintf(mensaje_final, sizeof(mensaje_final), "CHAT/%s/%s", usuario, mensaje_grupo);
+
+                // Broadcast al grupo
+                broadcast_to_group(grupo_id, mensaje_final);
+
+                strcpy(respuesta, "MSG/OK");
+                printf("Mensaje de grupo enviado por %s al grupo %d\n", usuario, grupo_id);
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en ningún grupo");
+            }
+        }
+        // Obtener la lista de usuarios en el grupo
+        else if (codigo == 12)
+        {
+            // Obtener el grupo del usuario
+            int grupo_id = obtener_grupo_id(usuario);
+
+            if (grupo_id > 0)
+            {
+                // Primero, enviar la lista de usuarios en el grupo
+                listar_usuarios_grupo(grupo_id, respuesta, sizeof(respuesta));
+
+                usleep(100000); // Esperar un momento para asegurar que el mensaje se envíe
+
+                // Luego, enviar explícitamente quién es el líder
+                char *lider = obtener_lider_grupo(grupo_id);
+                if (lider != NULL)
+                {
+                    char mensaje_lider[100];
+                    snprintf(mensaje_lider, sizeof(mensaje_lider), "LEADER/%s", lider);
+                    // Este mensaje se enviará inmediatamente después de la respuesta actual
+                    send_to_user(usuario, mensaje_lider);
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en ningún grupo");
+            }
+        }
+        // Salir del grupo
+        else if (codigo == 13)
+        {
+            // Obtener el grupo del usuario
+            int grupo_id = obtener_grupo_id(usuario);
+
+            if (grupo_id > 0)
+            {
+                // Notificar a los demás miembros del grupo
+                char mensaje_salida[256];
+                snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
+                broadcast_to_group(grupo_id, mensaje_salida);
+
+                // Eliminar al usuario del grupo
+                pthread_mutex_lock(&client_list_mutex);
+                ClientNode *current = client_list;
+                while (current != NULL)
+                {
+                    if (strcmp(current->usuario, usuario) == 0)
+                    {
+                        current->grupo_id = 0;
+                        break;
+                    }
+                    current = current->next;
+                }
+                pthread_mutex_unlock(&client_list_mutex);
+
+                // AÑADIR ESTA LÍNEA: Notificar cambio de líder si corresponde
+                notificar_lider_grupo(grupo_id);
+
+                strcpy(respuesta, "GRUPO_SALIDA/OK");
+                printf("Usuario %s salió del grupo %d\n", usuario, grupo_id);
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en ningún grupo");
+            }
+        }
+        // Para código 20 (iniciar partida)
+        else if (codigo == 20)
+        {
+            // Verificar que el usuario es líder de un grupo
+            int grupo_id = obtener_grupo_id(usuario);
+            int es_lider = 0;
+
+            if (grupo_id > 0)
+            {
+                // Verificar si es el líder
+                es_lider = es_lider_grupo(usuario, grupo_id);
+            }
+
+            if (es_lider)
+            {
+                // Crear la partida
+                int partida_id = crear_partida(grupo_id);
+
+                if (partida_id > 0)
+                {
+                    // Iniciar la partida (asignar turnos aleatorios)
+                    int result = iniciar_partida(partida_id);
+
+                    if (result == 0)
+                    {
+                        // La notificación de inicio se envía dentro de iniciar_partida
+                        strncpy(respuesta, "START_GAME_OK/Partida iniciada correctamente", sizeof(respuesta) - 1);
+                    }
+                    else
+                    {
+                        snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo iniciar la partida (código %d)", result);
+                    }
+                }
+                else
+                {
+                    snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo crear la partida (código %d)", partida_id);
+                }
+            }
+            else
+            {
+                strncpy(respuesta, "ERROR/Solo el líder del grupo puede iniciar la partida", sizeof(respuesta));
+            }
+        }
+        // Para código 21 (realizar acción en el juego)
+        // Reemplazar todo el bloque del código 21 con esto:
+        else if (codigo == 21)
+        {
+            printf("[DEBUG-21] ====== PROCESANDO CÓDIGO 21 ======\n");
+            printf("[DEBUG-21] Usuario: '%s'\n", usuario);
+            printf("[DEBUG-21] Petición original: '%s'\n", peticion_original);
+
+            char accion[10] = {0};
+            int cantidad = 0;
+            char cartas_jugadas[10][10] = {{0}};
+            int resultados_verificacion[10] = {0};
+
+            // **USAR LA PETICIÓN ORIGINAL PARA PARSING COMPLETO**
+            char *partes[20] = {NULL};
+            int num_partes = 0;
+
+            char peticion_temp[512];
+            strncpy(peticion_temp, peticion_original, sizeof(peticion_temp) - 1);
+            peticion_temp[sizeof(peticion_temp) - 1] = '\0';
+
+            char *token = strtok(peticion_temp, "/");
+            while (token != NULL && num_partes < 20)
+            {
+                partes[num_partes] = malloc(strlen(token) + 1);
+                strcpy(partes[num_partes], token);
+                printf("[DEBUG-21] Parte %d: '%s'\n", num_partes, partes[num_partes]);
+                num_partes++;
+                token = strtok(NULL, "/");
+            }
+
+            // **FORMATO ESPERADO: 21/usuario/accion/cantidad/carta1/carta2/carta3/...**
+            if (num_partes >= 4)
+            {
+                // Extraer acción (parte 2)
+                strncpy(accion, partes[2], sizeof(accion) - 1);
+                accion[sizeof(accion) - 1] = '\0';
+
+                // Extraer cantidad (parte 3)
+                cantidad = atoi(partes[3]);
+
+                printf("[DEBUG-21] Acción: '%s', Cantidad: %d\n", accion, cantidad);
+
+                // **EXTRAER LAS CARTAS (partes 4 en adelante)**
+                int cartas_extraidas = 0;
+                for (int i = 4; i < num_partes && cartas_extraidas < cantidad && cartas_extraidas < 10; i++)
+                {
+                    if (partes[i] && strlen(partes[i]) > 0)
+                    {
+                        strncpy(cartas_jugadas[cartas_extraidas], partes[i], sizeof(cartas_jugadas[cartas_extraidas]) - 1);
+                        cartas_jugadas[cartas_extraidas][sizeof(cartas_jugadas[cartas_extraidas]) - 1] = '\0';
+
+                        printf("[DEBUG-21] Carta %d extraída: '%s'\n", cartas_extraidas + 1, cartas_jugadas[cartas_extraidas]);
+                        cartas_extraidas++;
+                    }
+                }
+
+                // Verificar que tengamos todas las cartas esperadas
+                if (cartas_extraidas != cantidad)
+                {
+                    printf("[DEBUG-21] ADVERTENCIA: Se esperaban %d cartas pero se extrajeron %d\n", cantidad, cartas_extraidas);
+                    cantidad = cartas_extraidas;
+                }
+
+                // **MOSTRAR CARTAS FINALES PROCESADAS**
+                printf("[DEBUG-21] === CARTAS FINALES PROCESADAS ===\n");
+                for (int i = 0; i < cantidad; i++)
+                {
+                    printf("[DEBUG-21] Carta %d: '%s' (longitud: %lu)\n",
+                           i + 1, cartas_jugadas[i], strlen(cartas_jugadas[i]));
+                }
+
+                // **CONTINUAR CON LA LÓGICA EXISTENTE**
+                if (es_turno_de_jugador(usuario))
+                {
+                    GameInfo *partida = obtener_partida_por_jugador(usuario);
+                    if (partida != NULL)
+                    {
+                        // Verificar cada carta contra la carta de la ronda
+                        verificar_cartas(partida, cartas_jugadas, cantidad, resultados_verificacion);
+
+                        // Guardar información sobre esta jugada para posibles desafíos
+                        guardar_ultima_jugada(partida, usuario, cartas_jugadas, cantidad);
+
+                        // Copiar los resultados de verificación a la partida
+                        for (int i = 0; i < cantidad && i < 10; i++)
+                        {
+                            partida->resultados_verificacion[i] = resultados_verificacion[i];
+                        }
+
+                        // Formato del mensaje: ACTION/jugador/accion/cantidad
+                        char mensaje_accion[1024];
+                        snprintf(mensaje_accion, sizeof(mensaje_accion), "ACTION/%s/%s/%d",
+                                 usuario, accion, cantidad);
+
+                        // Notificar a todos los jugadores de la partida
+                        broadcast_to_group(partida->grupo_id, mensaje_accion);
+
+                        // Avanzar automáticamente al siguiente turno después de procesar la acción
+                        int result = avanzar_turno(partida->partida_id);
+
+                        if (result == 0)
+                        {
+                            strncpy(respuesta, "ACTION_OK/Acción procesada", sizeof(respuesta));
+                        }
+                        else
+                        {
+                            snprintf(respuesta, sizeof(respuesta),
+                                     "ERROR/Acción procesada pero no se pudo avanzar el turno (código %d)",
+                                     result);
+                        }
+                    }
+                    else
+                    {
+                        strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
+                    }
+                }
+                else
+                {
+                    strncpy(respuesta, "ERROR/No es tu turno para realizar acciones", sizeof(respuesta));
+                }
+            }
+            else
+            {
+                printf("[DEBUG-21] ERROR: Se esperaban al menos 4 partes, se obtuvieron %d\n", num_partes);
+                strcpy(respuesta, "ERROR/Formato de petición incorrecto");
+            }
+
+            // **LIBERAR MEMORIA DE LAS PARTES**
+            for (int i = 0; i < num_partes; i++)
+            {
+                if (partes[i])
+                {
+                    free(partes[i]);
+                }
+            }
+
+            printf("[DEBUG-21] ====== FIN CÓDIGO 21 ======\n");
+        }
+        // Para código 22 (pasar turno)
+        else if (codigo == 22)
+        {
+            // Verificar que es el turno del jugador
+            if (es_turno_de_jugador(usuario))
+            {
+                // Obtener la partida del jugador
+                GameInfo *partida = obtener_partida_por_jugador(usuario);
+
+                if (partida != NULL)
+                {
+                    // Avanzar al siguiente turno
+                    int result = avanzar_turno(partida->partida_id);
+
+                    if (result == 0)
+                    {
+                        strncpy(respuesta, "TURN_OK/Turno pasado correctamente", sizeof(respuesta));
+                    }
+                    else
+                    {
+                        snprintf(respuesta, sizeof(respuesta), "ERROR/No se pudo avanzar el turno (código %d)", result);
+                    }
+                }
+                else
+                {
+                    strncpy(respuesta, "ERROR/No estás en una partida activa", sizeof(respuesta));
+                }
+            }
+            else
+            {
+                strncpy(respuesta, "ERROR/No es tu turno para pasar", sizeof(respuesta));
+            }
+        }
+        // Para código 23 (pedir turno)
+        else if (codigo == 23)
+        {
+            // Formato esperado: 23/usuario
+            // Aquí podríamos implementar una lógica para obtener el estado de la partida
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                char mensaje_turno[100];
+                snprintf(mensaje_turno, sizeof(mensaje_turno), "TURN/%s\n",
+                         partida->jugadores[partida->turno_actual]);
+                printf("[TURNO] Enviando primer turno: '%s'\n", mensaje_turno);
+                broadcast_to_group(partida->grupo_id, mensaje_turno);
+                strcpy(respuesta, "PARTIDA/OK");
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Error al obtener el turno");
+            }
+        }
+        else if (codigo == 24) // Desafío
+        {
+            printf("[DESAFÍO] ===== PROCESANDO DESAFÍO =====\n");
+            printf("[DESAFÍO] Usuario que desafía: %s\n", usuario);
+
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida == NULL)
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida activa");
+                printf("[DESAFÍO] Error: Usuario no está en partida\n");
+                continue;
+            }
+
+            // Verificar si hay una jugada que desafiar
+            if (partida->num_cartas_ultima_jugada == 0 || strlen(partida->ultimo_jugador) == 0)
+            {
+                strcpy(respuesta, "ERROR/No hay jugada que desafiar");
+                printf("[DESAFÍO] Error: No hay jugada previa\n");
+                continue;
+            }
+
+            printf("[DESAFÍO] Última jugada: %d cartas de %s\n",
+                   partida->num_cartas_ultima_jugada, partida->ultimo_jugador);
+
+            // **VERIFICAR CADA CARTA DE LA ÚLTIMA JUGADA**
+            int cartas_invalidas = 0;
+            int mintiendo = 0;
+
+            for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+            {
+                if (partida->resultados_verificacion[i] == 0)
+                {
+                    cartas_invalidas++;
+                    mintiendo = 1;
+                }
+                printf("[DESAFÍO] Carta %d (%s): %s\n",
+                       i + 1, partida->cartas_ultima_jugada[i],
+                       partida->resultados_verificacion[i] ? "VÁLIDA" : "INVÁLIDA");
+            }
+
+            printf("[DESAFÍO] Cartas inválidas: %d, Mintiendo: %s\n",
+                   cartas_invalidas, mintiendo ? "SÍ" : "NO");
+
+            char mensaje_resultado[512] = {0};
+            char *jugador_eliminado = NULL;
+
+            if (mintiendo)
+            {
+                // **EL JUGADOR DESAFIADO MINTIÓ - ELIMINAR AL QUE MINTIÓ**
+                jugador_eliminado = partida->ultimo_jugador;
+
+                sprintf(mensaje_resultado, "DESAFIO/EXITO");
+                for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+                {
+                    char temp[50];
+                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
+                    strcat(mensaje_resultado, temp);
+                }
+
+                printf("[DESAFÍO] Desafío exitoso - Eliminando a %s (mintió)\n", jugador_eliminado);
+                strcpy(respuesta, "DESAFIO_OK/Desafío exitoso - Jugador eliminado");
+            }
+            else
+            {
+                // **EL JUGADOR DESAFIADO NO MINTIÓ - ELIMINAR AL QUE DESAFIÓ**
+                jugador_eliminado = usuario; // El que desafía incorrectamente
+
+                sprintf(mensaje_resultado, "DESAFIO/FALLIDO");
+                for (int i = 0; i < partida->num_cartas_ultima_jugada; i++)
+                {
+                    char temp[50];
+                    sprintf(temp, "/%s", partida->cartas_ultima_jugada[i]);
+                    strcat(mensaje_resultado, temp);
+                }
+
+                printf("[DESAFÍO] Desafío fallido - Eliminando a %s (desafió incorrectamente)\n", jugador_eliminado);
+                strcpy(respuesta, "DESAFIO_OK/Desafío fallido - Tú has sido eliminado");
+            }
+
+            // **ENVIAR RESULTADO DEL DESAFÍO PRIMERO**
+            printf("[DESAFÍO] Enviando resultado: %s\n", mensaje_resultado);
+            broadcast_to_group(partida->grupo_id, mensaje_resultado);
+
+            // **ESPERAR UN MOMENTO PARA QUE SE PROCESE**
+            usleep(500000); // 0.5 segundos
+
+            // **ELIMINAR AL JUGADOR INMEDIATAMENTE**
+            if (jugador_eliminado != NULL)
+            {
+                printf("[DESAFÍO] Eliminando jugador: %s\n", jugador_eliminado);
+
+                int resultado_eliminacion = eliminar_jugador_de_partida(partida, jugador_eliminado);
+
+                if (resultado_eliminacion == 1)
+                {
+                    printf("[DESAFÍO] Partida terminada después de eliminación\n");
+                    // La partida ya terminó, no hacer nada más
+                }
+                else if (resultado_eliminacion == 0)
+                {
+                    printf("[DESAFÍO] Eliminación exitosa, partida continúa\n");
+                }
+                else
+                {
+                    printf("[DESAFÍO] Error en eliminación: código %d\n", resultado_eliminacion);
+                }
+            }
+
+            printf("[DESAFÍO] ===== FIN PROCESAMIENTO DESAFÍO =====\n");
+        }
+        /*else if (codigo == 25) // Confirmar eliminación después de desafío
+        {
+            // Formato: 25/usuario
+            // Este mensaje lo envía el cliente cuando está listo para que se elimine al jugador
+
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL && partida->eliminacion_pendiente)
+            {
+                // Proceder con la eliminación pendiente
+                char jugador_a_eliminar[50];
+                strcpy(jugador_a_eliminar, partida->jugador_pendiente_eliminacion);
+
+                // Eliminar al jugador (esto también avanzará a la siguiente ronda)
+                int resultado_eliminacion = eliminar_jugador_de_partida(partida, jugador_a_eliminar);
+
+                // Notificar sobre la eliminación
+                char mensaje_eliminacion[100];
+                sprintf(mensaje_eliminacion, "JUGADOR_ELIMINADO/%s", jugador_a_eliminar);
+                printf("[ELIMINACIÓN] Enviando notificación: %s\n", mensaje_eliminacion);
+                broadcast_to_group(partida->grupo_id, mensaje_eliminacion);
+
+                // Restablecer estado
+                partida->eliminacion_pendiente = 0;
+                partida->jugador_pendiente_eliminacion[0] = '\0';
+
+                // Verificar si queda solo un jugador (ganador)
+                if (partida->num_jugadores_activos == 1)
+                {
+                    // Buscar al jugador activo restante
+                    char *ganador = NULL;
+                    for (int i = 0; i < partida->num_jugadores; i++)
+                    {
+                        if (!partida->jugadores_eliminados[i])
+                        {
+                            ganador = partida->jugadores[i];
+                            break;
+                        }
+                    }
+                    // Notificar fin de partida con ganador
+                    if (ganador != NULL)
+                    {
+                        char mensaje_ganador[100];
+                        sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+                        broadcast_to_group(partida->grupo_id, mensaje_ganador);
+                        partida->estado = 2; // Finalizada
+                    }
+                }
+
+                strcpy(respuesta, "ELIMINACION_OK");
+            }
+            else if (partida && !partida->eliminacion_pendiente)
+            {
+                strcpy(respuesta, "ERROR/No hay eliminación pendiente");
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida activa");
+            }
+        }*/
+        else if (codigo == 26) // Obtener carta de la ronda actual
+        {
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                char carta_ronda[10] = {0};
+                obtener_carta_ronda_actual(partida, carta_ronda);
+                snprintf(respuesta, sizeof(respuesta), "CARTA_RONDA/%s", carta_ronda);
+                printf("[RONDA] Usuario %s solicita carta de ronda: %s\n", usuario, carta_ronda);
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida activa");
+            }
+        }
+        else if (codigo == 27) // Abandonar partida
+        {
+            // Formato: 27/nombre_usuario
+
+            // Verificar si el usuario está en una partida
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                // Verificar si la partida está en curso
+                if (partida->estado == 1) // Estado 1 = En curso
+                {
+                    // Marcar que el jugador abandona (similar a eliminarlo)
+                    int indice_jugador = -1;
+                    for (int i = 0; i < partida->num_jugadores; i++)
+                    {
+                        if (strcmp(partida->jugadores[i], usuario) == 0)
+                        {
+                            indice_jugador = i;
+                            break;
+                        }
+                    }
+
+                    if (indice_jugador != -1)
+                    {
+                        // Marcar como eliminado
+                        partida->jugadores_eliminados[indice_jugador] = 1;
+                        partida->num_jugadores_activos--;
+
+                        // Notificar a los demás jugadores
+                        char mensaje_abandono[100];
+                        sprintf(mensaje_abandono, "JUGADOR_ABANDONO/%s", usuario);
+                        broadcast_to_group(partida->grupo_id, mensaje_abandono);
+
+                        printf("[PARTIDA] Jugador %s abandonó la partida %d\n",
+                               usuario, partida->partida_id);
+
+                        // Si era el turno de este jugador, avanzar el turno
+                        if (partida->turno_actual == indice_jugador)
+                        {
+                            avanzar_turno(partida->partida_id);
+                        }
+
+                        // Si solo queda un jugador activo, terminar la partida
+                        if (partida->num_jugadores_activos == 1)
+                        {
+                            // Buscar al ganador...
+                            char *ganador = NULL;
+                            for (int i = 0; i < partida->num_jugadores; i++)
+                            {
+                                if (partida->jugadores_eliminados[i] == 0)
+                                {
+                                    ganador = partida->jugadores[i];
+                                    break;
+                                }
+                            }
+
+                            if (ganador != NULL)
+                            {
+                                char mensaje_ganador[100];
+                                sprintf(mensaje_ganador, "FIN_PARTIDA/%s", ganador);
+                                broadcast_to_group(partida->grupo_id, mensaje_ganador);
+
+                                // DECLARAR Y USAR grupo_id correctamente:
+                                int grupo_id = partida->grupo_id; // ← Añadir esta línea
+                                partida->estado = 2;              // Finalizada
+
+                                // Esperar un momento para que se procese el mensaje de fin
+                                usleep(500000); // 0.5 segundos
+
+                                // Disolver el grupo
+                                disolver_grupo(grupo_id);
+
+                                printf("[PARTIDA] Partida %d finalizada y grupo %d disuelto\n",
+                                       partida->partida_id, grupo_id);
+                            }
+                        }
+
+                        strcpy(respuesta, "ABANDONO_OK");
+                    }
+                    else
+                    {
+                        strcpy(respuesta, "ERROR/No se encontró al jugador en la partida");
+                    }
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/La partida no está en curso");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida");
+            }
+        }
+        else if (codigo == 28) // Salir de partida después de eliminación
+        {
+            // Formato: 28/usuario/accion (donde accion puede ser "ESPECTADOR" o "SALIR")
+
+            GameInfo *partida = obtener_partida_por_jugador(usuario);
+            if (partida != NULL)
+            {
+                if (strcmp(contrasena, "SALIR") == 0)
+                {
+                    // El jugador quiere salir del grupo completamente
+                    int grupo_id = obtener_grupo_id(usuario);
+
+                    if (grupo_id > 0)
+                    {
+                        // Notificar salida del grupo
+                        char mensaje_salida[256];
+                        snprintf(mensaje_salida, sizeof(mensaje_salida), "GRUPO_SALIDA/%s", usuario);
+                        broadcast_to_group(grupo_id, mensaje_salida);
+
+                        // Remover del grupo
+                        pthread_mutex_lock(&client_list_mutex);
+                        ClientNode *current = client_list;
+                        while (current != NULL)
+                        {
+                            if (strcmp(current->usuario, usuario) == 0)
+                            {
+                                current->grupo_id = 0;
+                                break;
+                            }
+                            current = current->next;
+                        }
+                        pthread_mutex_unlock(&client_list_mutex);
+
+                        printf("[PARTIDA] Jugador %s salió del grupo %d después de eliminación\n",
+                               usuario, grupo_id);
+
+                        strcpy(respuesta, "SALIDA_OK");
+                    }
+                }
+                else if (strcmp(contrasena, "ESPECTADOR") == 0)
+                {
+                    // El jugador se queda como espectador
+                    printf("[PARTIDA] Jugador %s se queda como espectador\n", usuario);
+                    strcpy(respuesta, "ESPECTADOR_OK");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/No estás en una partida");
+            }
+        }
+        else if (codigo == 29) // Eliminar cuenta de usuario
+        {
+            printf("[BAJA] Solicitud de eliminación para usuario: %s\n", usuario);
+
+            // Verificar que el usuario existe
+            if (usuarioExiste(conn, usuario))
+            {
+                // Actualizar estado a desconectado
+                actualizarEstado(conn, usuario, 0);
+
+                // Eliminar el usuario
+                int resultado = eliminarUsuario(conn, usuario);
+
+                if (resultado == 0)
+                {
+                    printf("[BAJA] Usuario %s eliminado exitosamente\n", usuario);
+                    strcpy(respuesta, "BAJA_OK/Cuenta eliminada exitosamente");
+
+                    // **ENVIAR RESPUESTA PRIMERO**
+                    send(sock_conn, respuesta, strlen(respuesta), 0);
+
+                    // **LIMPIAR ESTE CLIENTE DE LA LISTA ANTES DEL BROADCAST**
+                    limpiar_cliente_desconectado(sock_conn, conn);
+
+                    // **ACTUALIZAR LISTA SOLO SI HAY OTROS CLIENTES**
+                    pthread_mutex_lock(&client_list_mutex);
+                    if (client_list != NULL)
+                    {
+                        char buffer[1024] = {0};
+                        listarConectados(conn, buffer, sizeof(buffer));
+                        broadcast_to_all(buffer);
+                    }
+                    pthread_mutex_unlock(&client_list_mutex);
+
+                    printf("[BAJA] Proceso de eliminación completado para %s\n", usuario);
+
+                    // **MARCAR PARA SALIR DEL BUCLE**
+                    break;
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/Error al eliminar la cuenta");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/El usuario no existe");
+            }
+        }
+        else if (codigo == 30) // Buscar partidas con amigo
+        {
+            // Formato esperado: 30/usuario_solicitante/nombre_amigo
+            char nombre_amigo[50] = {0};
+
+            if (contrasena != NULL)
+            {
+                strncpy(nombre_amigo, contrasena, sizeof(nombre_amigo) - 1);
+                nombre_amigo[sizeof(nombre_amigo) - 1] = '\0';
+
+                printf("[PARTIDAS_AMIGO] Solicitud de partidas entre %s y %s\n", usuario, nombre_amigo);
+
+                // Verificar que ambos usuarios existen
+                if (usuarioExiste(conn, usuario) && usuarioExiste(conn, nombre_amigo))
+                {
+                    listarPartidasConAmigo(conn, usuario, nombre_amigo, respuesta, sizeof(respuesta));
+                    printf("[PARTIDAS_AMIGO] Respuesta enviada (primeros 100 chars): %.100s\n", respuesta);
+                }
+                else
+                {
+                    strcpy(respuesta, "ERROR/Uno de los usuarios no existe");
+                }
+            }
+            else
+            {
+                strcpy(respuesta, "ERROR/Formato de petición incorrecto");
+            }
+        }
+        else
+        {
+            strcpy(respuesta, "ERROR/Comando desconocido");
+        }
+
+        printf("Resultado: %s\n", respuesta);
+        if (write(sock_conn, respuesta, strlen(respuesta)) < 0)
+        {
+            perror("Error al escribir en socket");
+            break;
+        }
+    }
+
+    // CLIENTE SE DESCONECTÓ - Limpiar recursos
+    printf("[DESCONEXIÓN] Cliente desconectado (socket %d)\n", sock_conn);
+
+    // Actualizar estado en base de datos si corresponde
+    if (strlen(usuario) > 0)
+    {
+        actualizarEstado(conn, usuario, 0);
+        printf("[DESCONEXIÓN] Estado de %s actualizado a desconectado\n", usuario);
+    }
+
+    // Limpiar cliente de la lista global de forma segura
+    pthread_mutex_lock(&client_list_mutex);
+
+    ClientNode *current = client_list;
+    ClientNode *previous = NULL;
+    int grupo_usuario = 0;
+
+    while (current != NULL)
+    {
+        if (current->socket == sock_conn)
+        {
+            // Guardar información del grupo antes de eliminar
+            grupo_usuario = current->grupo_id;
+
+            printf("[DESCONEXIÓN] Removiendo usuario %s del grupo %d\n",
+                   current->usuario ? current->usuario : "desconocido", grupo_usuario);
+
+            // Remover de la lista
+            if (previous == NULL)
+            {
+                client_list = current->next;
+            }
+            else
+            {
+                previous->next = current->next;
+            }
+
+            // Liberar memoria
+            if (current->usuario)
+            {
+                free(current->usuario);
+            }
+            free(current);
+            break;
+        }
+
+        previous = current;
+        current = current->next;
+    }
+
+    pthread_mutex_unlock(&client_list_mutex);
+
+    // Notificar al grupo DESPUÉS de liberar el mutex
+    if (grupo_usuario > 0 && strlen(usuario) > 0)
+    {
+        char mensaje_desconexion[256];
+        snprintf(mensaje_desconexion, sizeof(mensaje_desconexion),
+                 "JUGADOR_DESCONECTADO/%s", usuario);
+
+        printf("[DESCONEXIÓN] Notificando desconexión al grupo %d\n", grupo_usuario);
+
+        // Esta llamada ya no incluirá al socket cerrado porque lo removimos de la lista
+        broadcast_to_group(grupo_usuario, mensaje_desconexion);
+    }
+
+    // Cerrar socket de forma segura
+    if (sock_conn > 0)
+    {
+        shutdown(sock_conn, SHUT_RDWR);
+        close(sock_conn);
+        printf("[DESCONEXIÓN] Socket %d cerrado correctamente\n", sock_conn);
+    }
+
+    // Cerrar conexión MySQL
+    if (conn)
+    {
+        mysql_close(conn);
+    }
+
+    printf("[DESCONEXIÓN] Limpieza completa para socket %d\n", sock_conn);
+
+    return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+    signal(SIGPIPE, SIG_IGN);
+    int sock_conn, sock_listen;
+    struct sockaddr_in serv_adr;
+
+    if ((sock_listen = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        perror("Error creant socket");
+        exit(1);
+    }
+
+    memset(&serv_adr, 0, sizeof(serv_adr));
+    serv_adr.sin_family = AF_INET;
+    serv_adr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serv_adr.sin_port = htons(50756);
+
+    if (bind(sock_listen, (struct sockaddr *)&serv_adr, sizeof(serv_adr)) < 0)
+    {
+        perror("Error al bind");
+        close(sock_listen);
+        exit(1);
+    }
+
+    if (listen(sock_listen, 10) < 0)
+    {
+        perror("Error en el listen");
+        close(sock_listen);
+        exit(1);
+    }
+
+    printf("Servidor escuchando en el puerto 50756...\n");
+
+    srand(time(NULL)); // Para la asignación aleatoria de turnos
+
+    while (1)
+    {
+        sock_conn = accept(sock_listen, NULL, NULL);
+        if (sock_conn < 0)
+        {
+            perror("Error en accept");
+            continue;
+        }
+        printf("Nuevo cliente conectado.\n");
+
+        int *socket_ptr = malloc(sizeof(int));
+        *socket_ptr = sock_conn;
+
+        pthread_t hilo;
+        if (pthread_create(&hilo, NULL, cliente, socket_ptr) != 0)
+        {
+            perror("Error al crear hilo");
+            close(sock_conn);
+            free(socket_ptr);
+        }
+        else
+        {
+            pthread_detach(hilo);
+        }
+    }
+
+    close(sock_listen);
+    return 0;
+}
