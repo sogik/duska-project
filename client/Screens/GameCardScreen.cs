@@ -1036,8 +1036,8 @@ namespace Duska.Screens
                 // Auto-regresar después de 10 segundos
                 // En MostrarPanelPartidaCancelada, cambiar el auto-regreso:
 
-                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS**
-                System.Threading.Tasks.Task.Delay(25000).ContinueWith(_ =>
+                // **AUTO-REGRESAR DESPUÉS DE 60 SEGUNDOS**
+                System.Threading.Tasks.Task.Delay(60000).ContinueWith(_ =>
                 {
                     if (panel.Visible)
                     {
@@ -1206,7 +1206,7 @@ namespace Duska.Screens
                 // En MostrarPanelFinPartida, cambiar el auto-regreso:
 
                 // **AUTO-REGRESAR DESPUÉS DE 20 SEGUNDOS EN LUGAR DE 15**
-                System.Threading.Tasks.Task.Delay(45000).ContinueWith(_ =>
+                System.Threading.Tasks.Task.Delay(60000).ContinueWith(_ =>
                 {
                     try
                     {
@@ -2638,7 +2638,7 @@ namespace Duska.Screens
                 // En MostrarPanelEliminacionDefinitivo, cambiar el auto-regreso:
 
                 // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 8**
-                System.Threading.Tasks.Task.Delay(30000).ContinueWith(_ =>
+                System.Threading.Tasks.Task.Delay(60000).ContinueWith(_ =>
                 {
                     try
                     {
@@ -2860,7 +2860,7 @@ namespace Duska.Screens
                 // En MostrarPanelEliminacionGeonbit, cambiar el auto-regreso:
 
                 // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 7**
-                System.Threading.Tasks.Task.Delay(30000).ContinueWith(_ =>
+                System.Threading.Tasks.Task.Delay(60000).ContinueWith(_ =>
                 {
                     if (panel != null && panel.Visible && estoyEliminado)
                     {
