@@ -222,30 +222,8 @@ namespace Duska.Screens
             UserInterface.Active.AddEntity(panel);
 
             // sliders title
-            panel.AddChild(new Header("Sliders"));
+            panel.AddChild(new Header("Options"));
             panel.AddChild(new HorizontalLine());
-            panel.AddChild(new Paragraph("Sliders help pick numeric value in range:"));
-
-            panel.AddChild(new Paragraph("\nDefault slider"));
-            {
-                var slider = panel.AddChild(new Slider(-10, 10, SliderSkin.Default)) as Slider;
-                var valueLabel = new Label("Value: 0");
-                slider.OnValueChange = (Entity entity) =>
-                {
-                    valueLabel.Text = "Value: " + slider.Value;
-                };
-                panel.AddChild(valueLabel);
-            }
-
-            panel.AddChild(new Paragraph("\nFancy slider"));
-            panel.AddChild(new Slider(0, 10, SliderSkin.Fancy));
-
-            // progressbar title
-            panel.AddChild(new LineSpace(3));
-            panel.AddChild(new Header("Progress bar"));
-            panel.AddChild(new HorizontalLine());
-            panel.AddChild(new Paragraph("Works just like sliders:"));
-            panel.AddChild(new ProgressBar(0, 10));
 
             Button changeThemeBtn = new Button("Change Theme", ButtonSkin.Default);
             changeThemeBtn.OnClick = (Entity entity) =>
