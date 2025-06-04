@@ -1817,7 +1817,7 @@ namespace Duska.Screens
             try
             {
                 IPAddress direc = IPAddress.Parse("84.235.233.248");
-                IPEndPoint ipep = new IPEndPoint(direc, 50756);
+                IPEndPoint ipep = new IPEndPoint(direc, 50757);
                 server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                 server.Connect(ipep);
                 conectado = true;
