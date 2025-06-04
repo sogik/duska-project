@@ -457,9 +457,6 @@ namespace Duska.Screens
                         // Crear nueva instancia del menú principal con socket limpio
                         var mainMenuScreen = new MainMenuScreen(Game, usuario);
 
-                        // IMPORTANTE: No pasar el socket existente para que se cree una nueva conexión
-                        // mainMenuScreen.SetExistingSocket(server); // NO hacer esto
-
                         // Cambiar a la pantalla del menú principal
                         ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black, 0.5f));
                     });
@@ -501,7 +498,6 @@ namespace Duska.Screens
 
         private string GetTipoCartaPorTextura(Texture2D textura)
         {
-            // **DEVOLVER NOMBRES EXACTOS QUE ESPERA EL SERVIDOR**
             if (textura == _cartas[0]) // ace
                 return "ace";
             else if (textura == _cartas[1]) // jack  
@@ -516,10 +512,7 @@ namespace Duska.Screens
                 return "desconocida";
         }
 
-        // Añadir este nuevo método a GameCardScreen:
-
-        // Simplificar ActualizarSoloPanelMensajes:
-
+        // Actulkizar el panel de mensajes sin recrear toda la interfaz:
         private void ActualizarSoloPanelMensajes()
         {
             try
@@ -596,8 +589,6 @@ namespace Duska.Screens
                     }
                     return;
                 }
-                // En ProcessServerMessage, cambiar la sección de CHAT/:
-
                 else if (message.StartsWith("CHAT/"))
                 {
                     string chatMessage = message.Substring(5).Trim();
@@ -665,7 +656,6 @@ namespace Duska.Screens
                 }
                 else if (message.StartsWith("ACTION/"))
                 {
-                    // Formato esperado: ACTION/jugador/accion/datos
                     string[] parts = message.Substring(7).Split('/');
 
                     if (parts.Length >= 3)
@@ -1011,9 +1001,6 @@ namespace Duska.Screens
 
                 Debug.WriteLine("[UI] *** Panel partida cancelada creado exitosamente ***");
 
-                // Auto-regresar después de 10 segundos
-                // En MostrarPanelPartidaCancelada, cambiar el auto-regreso:
-
                 // **AUTO-REGRESAR DESPUÉS DE 60 SEGUNDOS**
                 System.Threading.Tasks.Task.Delay(60000).ContinueWith(_ =>
                 {
@@ -1037,83 +1024,7 @@ namespace Duska.Screens
             }
         }
 
-        private void InicializarUIJuego()
-        {
-            try
-            {
-                Debug.WriteLine("[UI] Regenerando UI del juego...");
-
-                // Recrear elementos básicos de la UI del juego
-                // Solo si necesitas mantener elementos visibles como espectador
-
-                // Por ejemplo, recrear el panel de chat:
-                Panel chatPanel = new Panel(new Vector2(300, 200), PanelSkin.Default, Anchor.BottomLeft);
-                chatPanel.Visible = true;
-                UserInterface.Active.AddEntity(chatPanel);
-
-                // Añadir otros elementos de UI que necesites mantener visibles
-
-                Debug.WriteLine("[UI] UI del juego regenerada");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al regenerar UI: {ex.Message}");
-            }
-        }
-
-        // Agregar este método nuevo a la clase:
-
-        private void MostrarPanelEliminacion()
-        {
-            // Panel principal centrado - usando solo el tema por defecto
-            var panelEliminacion = new GeonBit.UI.Entities.Panel(
-                new Vector2(500, 300),
-                PanelSkin.Default,
-                Anchor.Center
-            );
-
-            // Título del panel
-            var titulo = new GeonBit.UI.Entities.Header("¡ELIMINADO!");
-            titulo.Anchor = Anchor.TopCenter;
-            titulo.FillColor = Color.Red;
-            panelEliminacion.AddChild(titulo);
-
-            // Mensaje explicativo
-            var mensaje = new GeonBit.UI.Entities.Paragraph(
-                "Has sido eliminado de la partida.\nLa partida ha terminado para ti."
-            );
-            mensaje.Anchor = Anchor.Center;
-            mensaje.Scale = 0.8f;
-            panelEliminacion.AddChild(mensaje);
-
-            // Botón para continuar
-            var botonContinuar = new GeonBit.UI.Entities.Button("Regresar al Menú");
-            botonContinuar.Anchor = Anchor.BottomCenter;
-            botonContinuar.Size = new Vector2(250, 60);
-
-            // Evento del botón
-            botonContinuar.OnClick = (GeonBit.UI.Entities.Entity entity) =>
-            {
-                Debug.WriteLine("[PANEL] Botón presionado - regresando al menú");
-
-                // Remover el panel
-                UserInterface.Active.RemoveEntity(panelEliminacion);
-
-                // Regresar al menú principal
-                var mainMenuScreen = new MainMenuScreen(Game, usuario);
-                ScreenManager.LoadScreen(mainMenuScreen, new FadeTransition(GraphicsDevice, Color.Black));
-            };
-
-            panelEliminacion.AddChild(botonContinuar);
-
-            // Agregar el panel a la interfaz
-            UserInterface.Active.AddEntity(panelEliminacion);
-
-            Debug.WriteLine("[GEONBIT] Panel de eliminación mostrado");
-        }
-
-        // Reemplazar MostrarPanelFinPartida en GameCardScreen.cs:
-
+        // Muestra el panel al acabar la partida
         private void MostrarPanelFinPartida(string ganador)
         {
             try
@@ -1408,7 +1319,7 @@ namespace Duska.Screens
                     }
                 }
 
-                // Validar que tenemos cartas para mostrar y añadir las 4 cartas si no hay
+                // Validar que tenemos cartas para mostrar
                 if (totalCartas == 0)
                 {
                     Debug.WriteLine("[CARTAS] ¡ADVERTENCIA! No se añadieron cartas. Usando respaldo.");
@@ -1504,7 +1415,7 @@ namespace Duska.Screens
                 {
                     Debug.WriteLine("[CARTAS] Reiniciando hilo de escucha...");
                     StartMessageListener();
-                    Thread.Sleep(100); // Pequeña pausa para dar tiempo a que se inicie el hilo
+                    Thread.Sleep(100);
                 }
 
                 // Enviar solicitud
@@ -1562,7 +1473,7 @@ namespace Duska.Screens
              mensaje.Contains("Unknown command")))
                 {
                     Debug.WriteLine($"[CHAT] Mensaje filtrado: {mensaje}");
-                    return; // **NO AÑADIR AL HISTORIAL**
+                    return;
                 }
                 // Si hay un nuevo mensaje, añadirlo al historial
                 if (!string.IsNullOrEmpty(mensaje))
@@ -1589,7 +1500,6 @@ namespace Duska.Screens
                 // **NO RECREAR LA UI SI YA EXISTE Y SOLO AÑADIMOS MENSAJE**
                 if (!string.IsNullOrEmpty(mensaje) && UserInterface.Active != null && UserInterface.Active.Root.Children.Count > 0)
                 {
-                    // Solo añadir el mensaje sin recrear toda la UI
                     Debug.WriteLine("[CHAT] Mensaje añadido al historial sin recrear UI");
                     return;
                 }
@@ -1657,8 +1567,7 @@ namespace Duska.Screens
             }
         }
 
-        // Mantener AgregarMensajesAlPanel como está, pero con menos mensajes:
-
+        // Agrega mensajeas al panel del chat
         private void AgregarMensajesAlPanel(Panel mensajesPanel, int altoPanelMensajes)
         {
             try
@@ -1846,7 +1755,6 @@ namespace Duska.Screens
                 {
                     GetCards(usuario);
                     historialChat.Add("Sistema: Solicitando nuevas cartas...");
-                    // NO recrear UI aquí, solo añadir mensaje
                 }
                 else
                 {
@@ -1915,7 +1823,7 @@ namespace Duska.Screens
                 conectado = true;
                 Debug.WriteLine("Conexión al servidor establecida.");
             }
-            catch (Exception ex) // Capturar cualquier excepción, no solo SocketException
+            catch (Exception ex) // Errores
             {
                 Debug.WriteLine("Error al conectar al servidor: " + ex.Message);
                 conectado = false;
@@ -1943,13 +1851,11 @@ namespace Duska.Screens
                             string mensaje = "DISCONNECT/" + usuario;
                             byte[] msg = Encoding.ASCII.GetBytes(mensaje);
                             server.Send(msg);
-
-                            // Dar tiempo para que llegue el mensaje
                             System.Threading.Thread.Sleep(100);
                         }
                         catch
                         {
-                            // Ignorar errores al enviar mensaje de desconexión
+                            // Ignorar errores
                         }
 
                         server.Shutdown(SocketShutdown.Both);
@@ -2028,7 +1934,7 @@ namespace Duska.Screens
             Debug.WriteLine("[PRUEBA] Mensajes de prueba enviados.");
         }
 
-        // Reemplaza el método StartMessageListener con esta versión mejorada
+        // Hilo para leer los mensajes del server
         private void StartMessageListener()
         {
             stopMessageListener = false;
@@ -2269,23 +2175,6 @@ namespace Duska.Screens
             }
         }
 
-        /*private void EnviarConfirmacionEliminacion()
-        {
-            try
-            {
-                // Enviar mensaje código 25 para confirmar eliminación
-                string mensaje = $"25/{usuario}/Lala";
-                byte[] msg = Encoding.ASCII.GetBytes(mensaje);
-                server.Send(msg);
-
-                Debug.WriteLine($"[DESAFÍO] Confirmación de eliminación enviada");
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[ERROR] Error al enviar confirmación de eliminación: {ex.Message}");
-            }
-        }*/
-
         private void LimpiarCartasEnviadas()
         {
             if (_cartasConFiltro == null || _cartasDisponibles == null)
@@ -2414,9 +2303,9 @@ namespace Duska.Screens
                     return;
                 }
 
-                // Obtener estados de entrada actuales - USAR NOMBRES ÚNICOS
+                // Obtener estados de entrada actuales
                 KeyboardState estadoTeclado = Keyboard.GetState();
-                var keyboardExtended = KeyboardExtended.GetState(); // ← CAMBIAR NOMBRE
+                var keyboardExtended = KeyboardExtended.GetState();
                 var mouseState = MouseExtended.GetState();
 
                 // Permitir que UserInterface procese la entrad
@@ -2426,7 +2315,6 @@ namespace Duska.Screens
                 if (UserInterface.Active != null)
                 {
                     // Comprueba si el ratón está sobre alguna entidad de UI
-                    // GeonBit.UI no tiene IsMouseOverAnyEntity, pero puedes comprobar si el mouse está sobre alguna entidad así:
                     ratónSobreUI = UserInterface.Active.TargetEntity != null && UserInterface.Active.TargetEntity.IsMouseOver;
                 }
 
@@ -2612,10 +2500,7 @@ namespace Duska.Screens
 
                 Debug.WriteLine("[PANEL] *** PANEL DE ELIMINACIÓN CREADO Y MOSTRADO ***");
 
-                // **AUTO-REGRESAR DESPUÉS DE 8 SEGUNDOS**
-                // En MostrarPanelEliminacionDefinitivo, cambiar el auto-regreso:
-
-                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 8**
+                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS**
                 System.Threading.Tasks.Task.Delay(60000).ContinueWith(_ =>
                 {
                     try
@@ -2834,10 +2719,7 @@ namespace Duska.Screens
 
                 Debug.WriteLine("[UI] *** PANEL ELIMINACIÓN GEONBIT CREADO Y VISIBLE ***");
 
-                // **AUTO-REGRESAR MÁS RÁPIDO**
-                // En MostrarPanelEliminacionGeonbit, cambiar el auto-regreso:
-
-                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 7**
+                // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS*
                 System.Threading.Tasks.Task.Delay(60000).ContinueWith(_ =>
                 {
                     if (panel != null && panel.Visible && estoyEliminado)
