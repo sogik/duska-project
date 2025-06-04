@@ -297,6 +297,15 @@ namespace Duska.Screens
             };
             panel.AddChild(optionsBtn);
 
+            Button infoBtn = new Button("Controles", ButtonSkin.Default);
+
+            infoBtn.OnClick = (Entity btn) =>
+            {
+                MostrarPanelControles();
+            };
+            panel.AddChild(infoBtn);
+
+
             // Añadir nuevo botón para abandonar partida
             Button abandonarBtn = new Button("Abandonar Partida", ButtonSkin.Default);
             abandonarBtn.OnClick = (Entity btn) =>
@@ -309,6 +318,118 @@ namespace Duska.Screens
                 MostrarPanelConfirmacionAbandono();
             };
             panel.AddChild(abandonarBtn);
+        }
+
+        // Agregar este nuevo método:
+
+        private void MostrarPanelControles()
+        {
+            try
+            {
+                Debug.WriteLine("[CONTROLES] Mostrando panel de controles");
+
+                // **CREAR PANEL PRINCIPAL CENTRADO**
+                Panel panelControles = new Panel(new Vector2(600, 450), PanelSkin.Default, Anchor.Center);
+                panelControles.FillColor = Color.Black * 0.9f;
+                panelControles.OutlineColor = Color.Blue;
+                panelControles.OutlineWidth = 3;
+                panelControles.Visible = true;
+                panelControles.Identifier = "PanelControles";
+
+                // **TÍTULO**
+                Header titulo = new Header("CONTROLES DEL JUEGO");
+                titulo.FillColor = Color.LightBlue;
+                titulo.Scale = 1.5f;
+                panelControles.AddChild(titulo);
+
+                panelControles.AddChild(new HorizontalLine());
+
+                // **SECCIÓN CONTROLES DE CARTAS**
+                Header seccionCartas = new Header("Controles de Cartas:");
+                seccionCartas.FillColor = Color.Yellow;
+                seccionCartas.Scale = 1.2f;
+                panelControles.AddChild(seccionCartas);
+
+                Paragraph controlCartas1 = new Paragraph("• Q = Acercar/Alejar cartas");
+                controlCartas1.FillColor = Color.White;
+                controlCartas1.Scale = 1.0f;
+                panelControles.AddChild(controlCartas1);
+
+                Paragraph controlCartas2 = new Paragraph("• Flechas Izquierda/Derecha = Navegar entre cartas");
+                controlCartas2.FillColor = Color.White;
+                controlCartas2.Scale = 1.0f;
+                panelControles.AddChild(controlCartas2);
+
+                Paragraph controlCartas3 = new Paragraph("• Espacio = Seleccionar/Jugar carta");
+                controlCartas3.FillColor = Color.LightGreen;
+                controlCartas3.Scale = 1.0f;
+                panelControles.AddChild(controlCartas3);
+
+                panelControles.AddChild(new LineSpace(1));
+
+                // **SECCIÓN CONTROLES DE CHAT**
+                Header seccionChat = new Header("Controles de Chat:");
+                seccionChat.FillColor = Color.Yellow;
+                seccionChat.Scale = 1.2f;
+                panelControles.AddChild(seccionChat);
+
+                Paragraph controlChat1 = new Paragraph("• E = Enviar carta actual (sin seleccionar)");
+                controlChat1.FillColor = Color.White;
+                controlChat1.Scale = 1.0f;
+                panelControles.AddChild(controlChat1);
+
+                Paragraph controlChat2 = new Paragraph("• F = Desafiar cartas de otros jugadores");
+                controlChat2.FillColor = Color.Orange;
+                controlChat2.Scale = 1.0f;
+                panelControles.AddChild(controlChat2);
+
+                panelControles.AddChild(new LineSpace(1));
+
+                // **SECCIÓN REGLAS ESPECIALES**
+                Header seccionReglas = new Header("Reglas Especiales:");
+                seccionReglas.FillColor = Color.Yellow;
+                seccionReglas.Scale = 1.2f;
+                panelControles.AddChild(seccionReglas);
+
+                Paragraph regla1 = new Paragraph("• Los Jokers (Jack) son comodines universales");
+                regla1.FillColor = Color.Gold;
+                regla1.Scale = 1.0f;
+                panelControles.AddChild(regla1);
+
+                Paragraph regla2 = new Paragraph("• Solo puedes pedir cartas una vez por ronda");
+                regla2.FillColor = Color.LightCyan;
+                regla2.Scale = 1.0f;
+                panelControles.AddChild(regla2);
+
+                Paragraph regla3 = new Paragraph("• Debes jugar cartas que coincidan con la carta de ronda");
+                regla3.FillColor = Color.LightCyan;
+                regla3.Scale = 1.0f;
+                panelControles.AddChild(regla3);
+
+                panelControles.AddChild(new HorizontalLine());
+
+                // **BOTÓN CERRAR**
+                Button cerrarBtn = new Button("CERRAR");
+                cerrarBtn.Size = new Vector2(200, 50);
+                cerrarBtn.FillColor = Color.Green;
+                cerrarBtn.Anchor = Anchor.BottomCenter;
+                cerrarBtn.Scale = 1.2f;
+                cerrarBtn.OnClick = (Entity btn) =>
+                {
+                    Debug.WriteLine("[CONTROLES] Cerrando panel de controles");
+                    UserInterface.Active.RemoveEntity(panelControles);
+                };
+                panelControles.AddChild(cerrarBtn);
+
+                // **AÑADIR EL PANEL A LA UI**
+                UserInterface.Active.AddEntity(panelControles);
+
+                Debug.WriteLine("[CONTROLES] Panel de controles creado y mostrado");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ERROR] Error creando panel de controles: {ex.Message}");
+            }
         }
 
         private void MostrarPanelConfirmacionAbandono()
@@ -916,7 +1037,7 @@ namespace Duska.Screens
                 // En MostrarPanelPartidaCancelada, cambiar el auto-regreso:
 
                 // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS**
-                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
+                System.Threading.Tasks.Task.Delay(25000).ContinueWith(_ =>
                 {
                     if (panel.Visible)
                     {
@@ -1085,7 +1206,7 @@ namespace Duska.Screens
                 // En MostrarPanelFinPartida, cambiar el auto-regreso:
 
                 // **AUTO-REGRESAR DESPUÉS DE 20 SEGUNDOS EN LUGAR DE 15**
-                System.Threading.Tasks.Task.Delay(20000).ContinueWith(_ =>
+                System.Threading.Tasks.Task.Delay(45000).ContinueWith(_ =>
                 {
                     try
                     {
@@ -1522,15 +1643,15 @@ namespace Duska.Screens
             {
                 // **BOTÓN ENVIAR MENSAJE**
                 Button enviarBtn = new Button("Enviar");
-                enviarBtn.Size = new Vector2(150, 35);
-                enviarBtn.Anchor = Anchor.TopLeft;
+                enviarBtn.Size = new Vector2(140, 35);
+                enviarBtn.Anchor = Anchor.BottomLeft;
                 enviarBtn.OnClick = (Entity btn) => EnviarMensajeChat(text);
                 panel.AddChild(enviarBtn);
 
                 // **BOTÓN PEDIR CARTAS**
                 Button cartasBtn = new Button("Pedir Cartas");
-                cartasBtn.Size = new Vector2(150, 35);
-                cartasBtn.Anchor = Anchor.TopRight;
+                cartasBtn.Size = new Vector2(140, 35);
+                cartasBtn.Anchor = Anchor.BottomRight;
 
                 bool cartasYaPedidas = VerificarCartasYaPedidas();
 
@@ -2517,7 +2638,7 @@ namespace Duska.Screens
                 // En MostrarPanelEliminacionDefinitivo, cambiar el auto-regreso:
 
                 // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 8**
-                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
+                System.Threading.Tasks.Task.Delay(30000).ContinueWith(_ =>
                 {
                     try
                     {
@@ -2739,7 +2860,7 @@ namespace Duska.Screens
                 // En MostrarPanelEliminacionGeonbit, cambiar el auto-regreso:
 
                 // **AUTO-REGRESAR DESPUÉS DE 15 SEGUNDOS EN LUGAR DE 7**
-                System.Threading.Tasks.Task.Delay(15000).ContinueWith(_ =>
+                System.Threading.Tasks.Task.Delay(30000).ContinueWith(_ =>
                 {
                     if (panel != null && panel.Visible && estoyEliminado)
                     {

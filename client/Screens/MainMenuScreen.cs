@@ -1589,7 +1589,7 @@ namespace Duska.Screens
                 SolicitarInformacionSala();
                 return;
             }
-            eelse if (message.StartsWith("GAMESTART/") || message.StartsWith("START_GAME_OK") ||
+            else if (message.StartsWith("GAMESTART/") || message.StartsWith("START_GAME_OK") ||
          message.Contains("PARTIDA_INICIADA") || message.Contains("GAME_STARTED"))
             {
                 Debug.WriteLine("[JUEGO] *** MENSAJE DE INICIO DE PARTIDA DETECTADO ***");
