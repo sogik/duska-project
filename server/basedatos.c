@@ -72,21 +72,39 @@ int insertarUsuario(MYSQL *conn, const char *nombre_usuario, const char *contras
 
     return 0;
 }
+
 int eliminarUsuario(MYSQL *conn, const char *nombre_usuario)
 {
     char consulta[256];
 
-    // Eliminar el usuario de la tabla Jugadores
-    snprintf(consulta, sizeof(consulta), "DELETE FROM Jugadores WHERE nombre_usuario = '%s'", nombre_usuario);
+    // Primero eliminar registros dependientes en Partida_Jugadores
+    snprintf(consulta, sizeof(consulta), 
+             "DELETE FROM Partida_Jugadores WHERE nombre_usuario = '%s'", 
+             nombre_usuario);
 
     int err = mysql_query(conn, consulta);
     if (err != 0)
     {
-        printf("Error al eliminar usuario de la base %u %s\n", mysql_errno(conn), mysql_error(conn));
+        printf("Error al eliminar registros de Partida_Jugadores: %u %s\n", 
+               mysql_errno(conn), mysql_error(conn));
         return -1;
     }
 
-    // Verificar que se eliminó al menos una fila
+    printf("Registros de Partida_Jugadores eliminados para '%s'\n", nombre_usuario);
+
+    // Luego eliminar el usuario de la tabla Jugadores
+    snprintf(consulta, sizeof(consulta), 
+             "DELETE FROM Jugadores WHERE nombre_usuario = '%s'", 
+             nombre_usuario);
+
+    err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al eliminar usuario de la base %u %s\n", 
+               mysql_errno(conn), mysql_error(conn));
+        return -1;
+    }
+
     if (mysql_affected_rows(conn) > 0)
     {
         printf("Usuario '%s' eliminado exitosamente de la base de datos\n", nombre_usuario);
