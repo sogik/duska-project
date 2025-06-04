@@ -406,7 +406,7 @@ namespace Duska.Screens
             try
             {
                 IPAddress direc = IPAddress.Parse("84.235.233.248"); //10.4.119.5
-                IPEndPoint ipep = new IPEndPoint(direc, 50756);
+                IPEndPoint ipep = new IPEndPoint(direc, 50757);
                 server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
                 try
@@ -477,7 +477,7 @@ namespace Duska.Screens
             try
             {
                 IPAddress direc = IPAddress.Parse("84.235.233.248"); //10.4.119.5
-                IPEndPoint ipep = new IPEndPoint(direc, 50756);
+                IPEndPoint ipep = new IPEndPoint(direc, 50757);
                 server = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
                 try
