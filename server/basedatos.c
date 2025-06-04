@@ -92,7 +92,23 @@ int eliminarUsuario(MYSQL *conn, const char *nombre_usuario)
 
     printf("Registros de Partida_Jugadores eliminados para '%s'\n", nombre_usuario);
 
-    // Luego eliminar el usuario de la tabla Jugadores
+    // Limpiar referencias en Partidas donde el usuario es ganador
+    snprintf(consulta, sizeof(consulta),
+             "UPDATE Partidas SET ganador_id = NULL WHERE ganador_id = "
+             "(SELECT id_jugador FROM Jugadores WHERE nombre_usuario = '%s')",
+             nombre_usuario);
+
+    err = mysql_query(conn, consulta);
+    if (err != 0)
+    {
+        printf("Error al limpiar referencias de ganador: %u %s\n", 
+               mysql_errno(conn), mysql_error(conn));
+        return -1;
+    }
+
+    printf("Referencias de ganador limpiadas para '%s'\n", nombre_usuario);
+
+    // Finalmente eliminar el usuario de la tabla Jugadores
     snprintf(consulta, sizeof(consulta), 
              "DELETE FROM Jugadores WHERE nombre_usuario = '%s'", 
              nombre_usuario);
